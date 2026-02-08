@@ -1,0 +1,27 @@
+{
+	"FileVersion": 3,
+	"EngineAssociation": "5.4",
+	"Category": "",
+	"Description": "",
+	"Modules": [
+		{
+			"Name": "HCIEditorGen",
+			"Type": "Runtime",
+			"LoadingPhase": "Default"
+		},
+        {
+            "Name": "HCIEditorGenEditor",
+            "Type": "Editor",
+            "LoadingPhase": "Default"
+        }
+	],
+	"Plugins": [
+		{
+			"Name": "ModelingToolsEditorMode",
+			"Enabled": true,
+			"TargetAllowList": [
+				"Editor"
+			]
+		}
+	]
+}

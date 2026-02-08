@@ -1,0 +1,34 @@
+﻿
+# Unreal Engine
+Binaries/
+DerivedDataCache/
+Intermediate/
+Saved/
+
+# IDE
+.vs/
+.idea/
+.vsconfig
+*.suo
+*.user
+*.userprefs
+*.VC.db
+*.VC.VC.opendb
+
+# Logs/temp
+*.log
+*.tmp
+*.cache
+.DS_Store
+
+# Regeneratable project files (optional)
+*.sln
+*.xcodeproj
+*.xcworkspace
+*.code-workspace
+
+# Plugin build artifacts (keep plugin source)
+Plugins/*/Binaries/
+Plugins/*/Intermediate/
+Plugins/*/Saved/
+Plugins/Developer/RiderLink/

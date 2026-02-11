@@ -4,9 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "Engine/DataAsset.h"
-#include "EditorFramework/AssetImportData.h"
 #include "HCIAbilityKitAsset.generated.h"
-
 
 #if WITH_EDITORONLY_DATA
 class UAssetImportData;
@@ -38,7 +36,7 @@ public://游戏运行时用的
 	//因为玩家不需要知道这个源文件地址，去掉能缩小体积节省内存
 	UPROPERTY(VisibleAnywhere, Instanced, Category="HCI|Import")
 	TObjectPtr<UAssetImportData> AssetImportData;
-	FString SourceFile;//记录资产从哪个源文件导入的
+
 	//为了实现Reimport重导入功能，当修改表格，引擎点击Reimport，工具链就知道去哪找原来的文件
 	virtual void PostInitProperties() override;
 	virtual void GetAssetRegistryTags(FAssetRegistryTagsContext Context) const override;

@@ -40,11 +40,8 @@ private:
 		FString Id;
 		FString DisplayName;
 		float Damage = 0.0f;
-		FString SourceFileToStore;
 	};
 
-	static FString MakeSourcePathToStore(const FString& FullFilename);
-	static FString ResolveSourcePath(const FString& StoredPath);
 	static bool TryParseKitFile(const FString& FullFilename, FParsedKit& OutParsed, FString& OutError);
 	static void ApplyParsedToAsset(class UHCIAbilityKitAsset* Asset, const FParsedKit& Parsed);
 };

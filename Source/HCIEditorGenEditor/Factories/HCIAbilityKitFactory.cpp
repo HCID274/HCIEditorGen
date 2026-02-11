@@ -1,6 +1,7 @@
 ﻿#include "HCIAbilityKitFactory.h"
 
 #include "HCIEditorGen/Public/HCIAbilityKitAsset.h" // 引用你的资产定义
+#include "EditorFramework/AssetImportData.h" // <--- 本喵把它加在这里啦喵！
 #include "Misc/FileHelper.h"
 #include "Misc/Paths.h"
 #include "Misc/FeedbackContext.h" // 用于 Warn->Logf
@@ -143,18 +144,23 @@ EReimportResult::Type UHCIAbilityKitFactory::Reimport(UObject* Obj)
 	MyAsset->AssetImportData->ExtractFilenames(Files);
 	if (Files.Num()<1) return EReimportResult::Failed;
 
-	const FString FullFilename = Files[0];
-	
-	if (!FPaths::FileExists(FullFilename))
+	// **新增**：处理相对路径，确保路径是绝对路径
+	FString FilenameToLoad = Files[0];
+	if (FPaths::IsRelative(FilenameToLoad))
 	{
-		UE_LOG(LogHCIAbilityKitFactory, Error, TEXT("Reimport failed: File not found: %s"), *FullFilename);
+		FilenameToLoad = FPaths::ConvertRelativePathToFull(FPaths::ProjectDir(), FilenameToLoad);
+	}
+	
+	if (!FPaths::FileExists(FilenameToLoad))
+	{
+		UE_LOG(LogHCIAbilityKitFactory, Error, TEXT("Reimport failed: File not found: %s"), *FilenameToLoad);
 		return EReimportResult::Failed;
 	}
 
 	// 2. 重新解析
 	FParsedKit ParsedData;
 	FString ErrorMsg;
-	if (!TryParseKitFile(FullFilename, ParsedData, ErrorMsg))
+	if (!TryParseKitFile(FilenameToLoad, ParsedData, ErrorMsg))
 	{
 		UE_LOG(LogHCIAbilityKitFactory, Error, TEXT("Reimport failed: %s"), *ErrorMsg);
 		return EReimportResult::Failed;
@@ -163,13 +169,16 @@ EReimportResult::Type UHCIAbilityKitFactory::Reimport(UObject* Obj)
 	// 3. 写入数据（关键：Modify 用于支持撤销/Undo，MarkPackageDirty 用于提示保存）
 	MyAsset->Modify();
 	ApplyParsedToAsset(MyAsset, ParsedData);
-#if WITH_EDITORONLY_DATA
+	
 	if (MyAsset->AssetImportData)
 	{
-		MyAsset->AssetImportData->Update(FPaths::ConvertRelativePathToFull(FullFilename));
+		MyAsset->AssetImportData->Update(FilenameToLoad);
 	}
-#endif
+	
 	MyAsset->MarkPackageDirty();
+
+	// **新增**：通知编辑器资产已变更，刷新UI
+	MyAsset->PostEditChange();
 
 	return EReimportResult::Succeeded;
 #else
@@ -201,26 +210,47 @@ bool UHCIAbilityKitFactory::TryParseKitFile(const FString& FullFilename, FParsed
 		return false;
 	}
 
-	// 3. 提取字段 (这里对应你 DataAsset 里的属性)
-	// 如果 JSON 里没有这些字段，我们就用默认值
-	OutParsed.SchemaVersion = RootObject->GetIntegerField(TEXT("schema_version"));
-	OutParsed.Id = RootObject->GetStringField(TEXT("id"));
-	OutParsed.DisplayName = RootObject->GetStringField(TEXT("display_name"));
+	// 3. 提取字段 (安全模式)
+	int32 SchemaVersionTmp;
+	if (!RootObject->TryGetNumberField(TEXT("schema_version"), SchemaVersionTmp))
+	{
+		OutError = TEXT("Missing or invalid field: schema_version (must be an integer)");
+		return false;
+	}
+	OutParsed.SchemaVersion = SchemaVersionTmp;
+
+	FString IdTmp;
+	if (!RootObject->TryGetStringField(TEXT("id"), IdTmp) || IdTmp.IsEmpty())
+	{
+		OutError = TEXT("Missing or invalid field: id (must be a non-empty string)");
+		return false;
+	}
+	OutParsed.Id = IdTmp;
+
+	FString DisplayNameTmp;
+	if (!RootObject->TryGetStringField(TEXT("display_name"), DisplayNameTmp))
+	{
+		OutError = TEXT("Missing or invalid field: display_name (must be a string)");
+		return false;
+	}
+	OutParsed.DisplayName = DisplayNameTmp;
 	
 	// 读取嵌套的对象 (Params -> Damage)
 	const TSharedPtr<FJsonObject>* ParamsObj = nullptr;
-	if (RootObject->TryGetObjectField(TEXT("params"), ParamsObj))
+	if (!RootObject->TryGetObjectField(TEXT("params"), ParamsObj) || !ParamsObj || !(*ParamsObj).IsValid())
 	{
-		OutParsed.Damage = (*ParamsObj)->GetNumberField(TEXT("damage"));
-	}
-	else
-	{
-		OutParsed.Damage = 0.0f;
+		OutError = TEXT("Missing or invalid object: params");
+		return false;
 	}
 
-	// 记录原始路径用于重导入
-	OutParsed.SourceFileToStore = MakeSourcePathToStore(FullFilename);
-
+	double DamageTmp; // JSON 数字是 double
+	if (!(*ParamsObj)->TryGetNumberField(TEXT("damage"), DamageTmp))
+	{
+		OutError = TEXT("Missing or invalid field in params: damage (must be a number)");
+		return false;
+	}
+	OutParsed.Damage = static_cast<float>(DamageTmp);
+	
 	return true;
 }
 
@@ -235,20 +265,6 @@ void UHCIAbilityKitFactory::ApplyParsedToAsset(UHCIAbilityKitAsset* Asset, const
 	Asset->Damage = Parsed.Damage;
 
 #if WITH_EDITORONLY_DATA
-	Asset->SourceFile = Parsed.SourceFileToStore;
+	
 #endif
-}
-
-FString UHCIAbilityKitFactory::MakeSourcePathToStore(const FString& FullFilename)
-{
-	// 尽量存相对路径（相对于项目目录），这样队友拉下来也能用
-	FString RelPath = FullFilename;
-	FPaths::MakePathRelativeTo(RelPath, *FPaths::ProjectDir());
-	return RelPath;
-}
-
-FString UHCIAbilityKitFactory::ResolveSourcePath(const FString& StoredPath)
-{
-	// 把相对路径还原成绝对路径
-	return FPaths::ConvertRelativePathToFull(FPaths::ProjectDir(), StoredPath);
 }

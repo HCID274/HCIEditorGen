@@ -10,12 +10,12 @@
 #if WITH_EDITORONLY_DATA
 void UHCIAbilityKitAsset::PostInitProperties()
 {
+	Super::PostInitProperties();
+	
 	if (!HasAnyFlags(RF_ClassDefaultObject) && !AssetImportData)
 	{
  		AssetImportData = NewObject<UAssetImportData>(this, TEXT("AssetImportData"));
 	}
-
-	Super::PostInitProperties();
 }
 
 void UHCIAbilityKitAsset::GetAssetRegistryTags(FAssetRegistryTagsContext Context) const

@@ -49,3 +49,24 @@ Scope: whole repo.
 - 失败路径禁止脏写和半覆盖资产。
 - 错误信息必须可定位（文件/字段/原因/建议）。
 - 未通过验证的结论不得标记为“完成”。
+
+## 8. 当前进度快照（2026-02-12）
+
+- Step 1（结构迁移）已关闭：
+  - Slice1：插件双模块骨架落地并通过。
+  - Slice2：资产/Factory/Reimport 迁移到插件并通过。
+  - Slice3：项目本体 Editor 空壳模块下线并通过。
+  - Slice4：Reimport 失败通知可视化（含错误原因）并通过。
+- Step 2（服务抽离）进行中：
+  - Slice1：JSON 解析从 `UHCIAbilityKitFactory` 抽离到 Runtime `FHCIAbilityKitParserService`，通过。
+  - Slice2：打通 `Factory -> Runtime Service -> UE Python` 最小链路，受控失败可见（`__force_python_fail__`），通过。
+- 当前下一切片：`Step2-Slice3`（计划让 Python 产出参与字段映射，先从 `DisplayName` 单字段开始）。
+
+## 9. 用户协作习惯（固定）
+
+- 优先在聊天中直接给“下一步操作清单”，不要让用户先翻文档再执行。
+- 每个切片必须小步推进；完成后立即停下，等待用户在 UE 手测。
+- UE 内手工操作由用户执行；代码改动、构建验证、文档回写由助手执行。
+- 用户用 `Pass/Fail` 作为门禁信号；未收到 Pass 不得进入下一切片。
+- 回归步骤要具体可执行（短步骤、可复现、可定位失败原因）。
+- 继续坚持“接口简单、深度功能、依赖抽象、高内聚低耦合”。

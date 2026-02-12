@@ -8,12 +8,7 @@
 			"Name": "HCIEditorGen",
 			"Type": "Runtime",
 			"LoadingPhase": "Default"
-		},
-        {
-            "Name": "HCIEditorGenEditor",
-            "Type": "Editor",
-            "LoadingPhase": "Default"
-        }
+		}
 	],
 	"Plugins": [
 		{

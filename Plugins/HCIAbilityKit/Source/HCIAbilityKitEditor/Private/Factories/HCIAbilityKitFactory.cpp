@@ -4,13 +4,41 @@
 
 #include "Dom/JsonObject.h"
 #include "EditorFramework/AssetImportData.h"
+#include "Framework/Notifications/NotificationManager.h"
 #include "Misc/FeedbackContext.h"
 #include "Misc/FileHelper.h"
 #include "Misc/Paths.h"
 #include "Serialization/JsonReader.h"
 #include "Serialization/JsonSerializer.h"
+#include "Widgets/Notifications/SNotificationList.h"
 
 DEFINE_LOG_CATEGORY_STATIC(LogHCIAbilityKitFactory, Log, All);
+
+namespace
+{
+void ShowReimportFailureNotification(const UObject* Asset, const FString& Reason)
+{
+#if WITH_EDITOR
+	const FString AssetLabel = Asset ? Asset->GetName() : TEXT("<InvalidAsset>");
+	const FText Message = FText::FromString(FString::Printf(TEXT("Reimport failed for %s: %s"), *AssetLabel, *Reason));
+
+	FNotificationInfo NotificationInfo(Message);
+	NotificationInfo.bFireAndForget = true;
+	NotificationInfo.ExpireDuration = 6.0f;
+	NotificationInfo.FadeOutDuration = 0.2f;
+	NotificationInfo.bUseSuccessFailIcons = true;
+
+	const TSharedPtr<SNotificationItem> Notification = FSlateNotificationManager::Get().AddNotification(NotificationInfo);
+	if (Notification.IsValid())
+	{
+		Notification->SetCompletionState(SNotificationItem::CS_Fail);
+	}
+#else
+	(void)Asset;
+	(void)Reason;
+#endif
+}
+}
 
 UHCIAbilityKitFactory::UHCIAbilityKitFactory()
 {
@@ -121,12 +149,14 @@ EReimportResult::Type UHCIAbilityKitFactory::Reimport(UObject* Obj)
 	UHCIAbilityKitAsset* Asset = Cast<UHCIAbilityKitAsset>(Obj);
 	if (!Asset)
 	{
+		ShowReimportFailureNotification(Obj, TEXT("Selected object is not UHCIAbilityKitAsset"));
 		return EReimportResult::Failed;
 	}
 
 #if WITH_EDITORONLY_DATA
 	if (!Asset->AssetImportData)
 	{
+		ShowReimportFailureNotification(Asset, TEXT("AssetImportData is missing"));
 		return EReimportResult::Failed;
 	}
 
@@ -134,6 +164,7 @@ EReimportResult::Type UHCIAbilityKitFactory::Reimport(UObject* Obj)
 	Asset->AssetImportData->ExtractFilenames(Files);
 	if (Files.Num() < 1)
 	{
+		ShowReimportFailureNotification(Asset, TEXT("No recorded source file path"));
 		return EReimportResult::Failed;
 	}
 
@@ -146,7 +177,9 @@ EReimportResult::Type UHCIAbilityKitFactory::Reimport(UObject* Obj)
 
 	if (!FPaths::FileExists(FilenameToLoad))
 	{
-		UE_LOG(LogHCIAbilityKitFactory, Error, TEXT("Reimport failed: File not found: %s"), *FilenameToLoad);
+		const FString Reason = FString::Printf(TEXT("Source file not found: %s"), *FilenameToLoad);
+		UE_LOG(LogHCIAbilityKitFactory, Error, TEXT("Reimport failed: %s"), *Reason);
+		ShowReimportFailureNotification(Asset, Reason);
 		return EReimportResult::Failed;
 	}
 
@@ -156,6 +189,7 @@ EReimportResult::Type UHCIAbilityKitFactory::Reimport(UObject* Obj)
 	if (!TryParseKitFile(FilenameToLoad, ParsedData, ErrorMsg))
 	{
 		UE_LOG(LogHCIAbilityKitFactory, Error, TEXT("Reimport failed: %s"), *ErrorMsg);
+		ShowReimportFailureNotification(Asset, ErrorMsg);
 		return EReimportResult::Failed;
 	}
 

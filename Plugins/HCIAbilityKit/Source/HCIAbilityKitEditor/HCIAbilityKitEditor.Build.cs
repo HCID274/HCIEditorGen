@@ -29,7 +29,8 @@ public class HCIAbilityKitEditor : ModuleRules
 				"SlateCore",        // UI 核心喵
 				"ToolMenus",        // 菜单扩展喵
 				"ContentBrowser",   // 内容浏览器扩展喵
-				"Json"              // 用于解析导入文件的 JSON 数据喵
+				"Json",             // 用于解析导入文件的 JSON 数据喵
+				"PythonScriptPlugin" // 提供 UE 内置 Python 执行入口喵
 			});
 	}
 }

@@ -3,13 +3,56 @@
 #include "ContentBrowserMenuContexts.h"
 #include "Factories/HCIAbilityKitFactory.h"
 #include "HCIAbilityKitAsset.h"
+#include "IPythonScriptPlugin.h"
 #include "Misc/DelayedAutoRegister.h"
+#include "Misc/Paths.h"
 #include "Modules/ModuleManager.h"
+#include "Services/HCIAbilityKitParserService.h"
 #include "Styling/AppStyle.h"
 #include "ToolMenus.h"
 
 /** 用于重导入操作的全局工厂实例喵 */
 static TObjectPtr<UHCIAbilityKitFactory> GHCIAbilityKitFactory;
+static const TCHAR* GHCIAbilityKitPythonScriptPath = TEXT("SourceData/AbilityKits/Python/hci_abilitykit_hook.py");
+
+static bool HCI_RunPythonHook(const FString& SourceFilename, FHCIAbilityKitParsedData& InOutParsed, FString& OutError)
+{
+	(void)InOutParsed;
+
+	const FString ScriptPath = FPaths::ConvertRelativePathToFull(FPaths::ProjectDir(), GHCIAbilityKitPythonScriptPath);
+	if (!FPaths::FileExists(ScriptPath))
+	{
+		OutError = FString::Printf(TEXT("Python hook script not found: %s"), *ScriptPath);
+		return false;
+	}
+
+	IPythonScriptPlugin* PythonPlugin = IPythonScriptPlugin::Get();
+	if (!PythonPlugin || !PythonPlugin->IsPythonAvailable())
+	{
+		OutError = TEXT("PythonScriptPlugin is unavailable");
+		return false;
+	}
+
+	FPythonCommandEx Command;
+	Command.ExecutionMode = EPythonCommandExecutionMode::ExecuteFile;
+	Command.FileExecutionScope = EPythonFileExecutionScope::Private;
+	Command.Command = FString::Printf(TEXT("\"%s\" \"%s\""), *ScriptPath, *SourceFilename);
+
+	const bool bOk = PythonPlugin->ExecPythonCommandEx(Command);
+	if (!bOk)
+	{
+		if (!Command.CommandResult.IsEmpty())
+		{
+			OutError = Command.CommandResult;
+		}
+		else
+		{
+			OutError = FString::Printf(TEXT("Python hook execution failed: %s"), *ScriptPath);
+		}
+	}
+
+	return bOk;
+}
 
 /** 检查选中的资产是否可以被重导入喵 */
 static bool HCI_CanReimportSelectedAbilityKits(const FToolMenuContext& MenuContext)
@@ -54,6 +97,12 @@ static void HCI_ReimportSelectedAbilityKits(const FToolMenuContext& MenuContext)
 
 void FHCIAbilityKitEditorModule::StartupModule()
 {
+	FHCIAbilityKitParserService::SetPythonHook(
+		[](const FString& SourceFilename, FHCIAbilityKitParsedData& InOutParsed, FString& OutError)
+		{
+			return HCI_RunPythonHook(SourceFilename, InOutParsed, OutError);
+		});
+
 	// 创建一个持久化的工厂对象用于处理菜单操作喵
 	GHCIAbilityKitFactory = NewObject<UHCIAbilityKitFactory>(GetTransientPackage());
 	GHCIAbilityKitFactory->AddToRoot();
@@ -61,6 +110,8 @@ void FHCIAbilityKitEditorModule::StartupModule()
 
 void FHCIAbilityKitEditorModule::ShutdownModule()
 {
+	FHCIAbilityKitParserService::ClearPythonHook();
+
 	// 清理工厂对象喵
 	if (GHCIAbilityKitFactory)
 	{

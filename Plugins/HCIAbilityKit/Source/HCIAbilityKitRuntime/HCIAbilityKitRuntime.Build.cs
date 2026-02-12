@@ -22,7 +22,7 @@ public class HCIAbilityKitRuntime : ModuleRules
 		PrivateDependencyModuleNames.AddRange(
 			new string[]
 			{
-				// 这里目前是空的喵
+				"Json"
 			});
 	}
 }

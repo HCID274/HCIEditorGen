@@ -5,6 +5,8 @@
 #include "Factories/Factory.h"
 #include "HCIAbilityKitFactory.generated.h"
 
+struct FHCIAbilityKitParsedData;
+
 /**
  * HCI 技能组件工厂类
  * 负责处理 .hciabilitykit 文件的导入和重导入逻辑喵。
@@ -41,17 +43,6 @@ public:
 	virtual int32 GetPriority() const override { return 0; }
 
 private:
-	/** 用于暂存解析后的技能数据结构喵 */
-	struct FParsedKit
-	{
-		int32 SchemaVersion = 1;
-		FString Id;
-		FString DisplayName;
-		float Damage = 0.0f;
-	};
-
-	/** 解析 .hciabilitykit JSON 文件的辅助函数喵 */
-	static bool TryParseKitFile(const FString& FullFilename, FParsedKit& OutParsed, FString& OutError);
 	/** 将解析后的数据应用到资产对象上喵 */
-	static void ApplyParsedToAsset(class UHCIAbilityKitAsset* Asset, const FParsedKit& Parsed);
+	static void ApplyParsedToAsset(class UHCIAbilityKitAsset* Asset, const FHCIAbilityKitParsedData& Parsed);
 };

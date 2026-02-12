@@ -22,7 +22,8 @@ public class HCIAbilityKitEditor : ModuleRules
 				"Slate",
 				"SlateCore",
 				"ToolMenus",
-				"ContentBrowser"
+				"ContentBrowser",
+				"Json"
 			});
 	}
 }

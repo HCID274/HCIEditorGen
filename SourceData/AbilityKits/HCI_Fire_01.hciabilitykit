@@ -1,8 +1,8 @@
-﻿{
-    "schema_version": 1;
-    "id":"HCI_Fire_01",
-    "dispaly_name":"Fire 01",
-    "params":{
-        "damage":10.0
-    }
+{
+  "schema_version": 1,
+  "id": "HCI_Fire_01",
+  "display_name": "Fire 01",
+  "params": {
+    "damage": 10.0
+  }
 }

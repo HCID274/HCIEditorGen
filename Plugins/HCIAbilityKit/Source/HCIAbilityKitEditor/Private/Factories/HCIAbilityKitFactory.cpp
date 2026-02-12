@@ -1,43 +1,35 @@
-﻿#include "HCIAbilityKitFactory.h"
+#include "Factories/HCIAbilityKitFactory.h"
 
-#include "HCIEditorGen/Public/HCIAbilityKitAsset.h" // 引用你的资产定义
-#include "EditorFramework/AssetImportData.h" // <--- 本喵把它加在这里啦喵！
+#include "HCIAbilityKitAsset.h"
+
+#include "Dom/JsonObject.h"
+#include "EditorFramework/AssetImportData.h"
+#include "Misc/FeedbackContext.h"
 #include "Misc/FileHelper.h"
 #include "Misc/Paths.h"
-#include "Misc/FeedbackContext.h" // 用于 Warn->Logf
-
-// JSON 处理相关
-#include "Dom/JsonObject.h"
 #include "Serialization/JsonReader.h"
 #include "Serialization/JsonSerializer.h"
 
-// 定义日志分类，方便调试
 DEFINE_LOG_CATEGORY_STATIC(LogHCIAbilityKitFactory, Log, All);
 
 UHCIAbilityKitFactory::UHCIAbilityKitFactory()
 {
-	// 1. 告诉编辑器我支持什么后缀名
-	// 格式：后缀;描述
+	// 注册支持的文件扩展名和描述喵
 	Formats.Add(TEXT("hciabilitykit;HCI Ability Kit (*.hciabilitykit)"));
-
-	// 2. 告诉编辑器我产出什么类型的资产
+	// 指定工厂创建的资产类型喵
 	SupportedClass = UHCIAbilityKitAsset::StaticClass();
-
-	// 3. 配置工厂属性
-	bCreateNew = false; // 不允许在该类上点右键创建（必须从文件导入）
-	bText = true;       // 这是一个文本文件工厂（非二进制）
-	bEditorImport = true; // 这是一个编辑器导入工厂
+	// 设置为通过文件导入而非直接在编辑器创建喵
+	bCreateNew = false;
+	bText = true;
+	bEditorImport = true;
 }
 
 bool UHCIAbilityKitFactory::FactoryCanImport(const FString& Filename)
 {
-	// 简单粗暴：只看后缀名是不是 .hciabilitykit
+	// 检查文件扩展名是否匹配喵
 	return FPaths::GetExtension(Filename, true).Equals(TEXT(".hciabilitykit"), ESearchCase::IgnoreCase);
 }
 
-// =========================================================
-// 核心：创建新资产 (Import)
-// =========================================================
 UObject* UHCIAbilityKitFactory::FactoryCreateFile(
 	UClass* InClass,
 	UObject* InParent,
@@ -50,25 +42,21 @@ UObject* UHCIAbilityKitFactory::FactoryCreateFile(
 {
 	bOutOperationCanceled = false;
 
-	// 1. 解析文件内容到临时结构体
 	FParsedKit ParsedData;
 	FString ErrorMsg;
-	
-	// 注意：这里调用的是我们自己在下面写的私有函数
+	// 尝试解析源文件喵
 	if (!TryParseKitFile(Filename, ParsedData, ErrorMsg))
 	{
 		if (Warn)
 		{
 			Warn->Logf(ELogVerbosity::Error, TEXT("HCIAbilityKit import failed: %s"), *ErrorMsg);
 		}
-		// 也要输出到 Output Log 面板
 		UE_LOG(LogHCIAbilityKitFactory, Error, TEXT("Import failed: %s"), *ErrorMsg);
-		
 		bOutOperationCanceled = true;
 		return nullptr;
 	}
 
-	// 2. 创建资产对象 (NewObject)
+	// 创建资产实例喵
 	UHCIAbilityKitAsset* NewAsset = NewObject<UHCIAbilityKitAsset>(InParent, InClass, InName, Flags);
 	if (!NewAsset)
 	{
@@ -76,10 +64,11 @@ UObject* UHCIAbilityKitFactory::FactoryCreateFile(
 		return nullptr;
 	}
 
-	// 3. 把解析好的数据填进去
+	// 将解析的数据应用到新资产上喵
 	ApplyParsedToAsset(NewAsset, ParsedData);
 
 #if WITH_EDITORONLY_DATA
+	// 更新资产的导入源文件信息，用于重导入功能喵
 	if (NewAsset->AssetImportData)
 	{
 		const FString AbsoluteFilename = FPaths::ConvertRelativePathToFull(Filename);
@@ -91,22 +80,19 @@ UObject* UHCIAbilityKitFactory::FactoryCreateFile(
 	return NewAsset;
 }
 
-// =========================================================
-// 核心：重导入 (Reimport)
-// =========================================================
-
 bool UHCIAbilityKitFactory::CanReimport(UObject* Obj, TArray<FString>& OutFilenames)
 {
-	UHCIAbilityKitAsset* MyAsset = Cast<UHCIAbilityKitAsset>(Obj);
-	if (!MyAsset)
+	UHCIAbilityKitAsset* Asset = Cast<UHCIAbilityKitAsset>(Obj);
+	if (!Asset)
 	{
 		return false;
 	}
 
 #if WITH_EDITORONLY_DATA
-	if (MyAsset->AssetImportData)
+	// 提取资产中记录的源文件路径喵
+	if (Asset->AssetImportData)
 	{
-		MyAsset->AssetImportData->ExtractFilenames(OutFilenames);
+		Asset->AssetImportData->ExtractFilenames(OutFilenames);
 		return OutFilenames.Num() > 0;
 	}
 #endif
@@ -115,102 +101,97 @@ bool UHCIAbilityKitFactory::CanReimport(UObject* Obj, TArray<FString>& OutFilena
 
 void UHCIAbilityKitFactory::SetReimportPaths(UObject* Obj, const TArray<FString>& NewReimportPaths)
 {
-	UHCIAbilityKitAsset* MyAsset = Cast<UHCIAbilityKitAsset>(Obj);
-	if (MyAsset && NewReimportPaths.Num() > 0)
+	UHCIAbilityKitAsset* Asset = Cast<UHCIAbilityKitAsset>(Obj);
+	if (!Asset || NewReimportPaths.Num() == 0)
 	{
-#if WITH_EDITORONLY_DATA
-		// 更新内部存储的路径（存相对路径，方便多人协作）
-		if (MyAsset->AssetImportData)
-		{
-			MyAsset->AssetImportData->UpdateFilenameOnly(NewReimportPaths[0]);
-		}
-#endif
+		return;
 	}
+
+#if WITH_EDITORONLY_DATA
+	// 更新记录的重导入路径喵
+	if (Asset->AssetImportData)
+	{
+		Asset->AssetImportData->UpdateFilenameOnly(NewReimportPaths[0]);
+	}
+#endif
 }
 
 EReimportResult::Type UHCIAbilityKitFactory::Reimport(UObject* Obj)
 {
-	UHCIAbilityKitAsset* MyAsset = Cast<UHCIAbilityKitAsset>(Obj);
-	if (!MyAsset)
+	UHCIAbilityKitAsset* Asset = Cast<UHCIAbilityKitAsset>(Obj);
+	if (!Asset)
 	{
 		return EReimportResult::Failed;
 	}
 
 #if WITH_EDITORONLY_DATA
-	// 1. 找回文件路径
+	if (!Asset->AssetImportData)
+	{
+		return EReimportResult::Failed;
+	}
+
 	TArray<FString> Files;
-	if (!MyAsset->AssetImportData) return EReimportResult::Failed;
+	Asset->AssetImportData->ExtractFilenames(Files);
+	if (Files.Num() < 1)
+	{
+		return EReimportResult::Failed;
+	}
 
-	MyAsset->AssetImportData->ExtractFilenames(Files);
-	if (Files.Num()<1) return EReimportResult::Failed;
-
-	// **新增**：处理相对路径，确保路径是绝对路径
+	// 转换为绝对路径以确保能正确读取喵
 	FString FilenameToLoad = Files[0];
 	if (FPaths::IsRelative(FilenameToLoad))
 	{
 		FilenameToLoad = FPaths::ConvertRelativePathToFull(FPaths::ProjectDir(), FilenameToLoad);
 	}
-	
+
 	if (!FPaths::FileExists(FilenameToLoad))
 	{
 		UE_LOG(LogHCIAbilityKitFactory, Error, TEXT("Reimport failed: File not found: %s"), *FilenameToLoad);
 		return EReimportResult::Failed;
 	}
 
-	// 2. 重新解析
 	FParsedKit ParsedData;
 	FString ErrorMsg;
+	// 重新解析文件喵
 	if (!TryParseKitFile(FilenameToLoad, ParsedData, ErrorMsg))
 	{
 		UE_LOG(LogHCIAbilityKitFactory, Error, TEXT("Reimport failed: %s"), *ErrorMsg);
 		return EReimportResult::Failed;
 	}
 
-	// 3. 写入数据（关键：Modify 用于支持撤销/Undo，MarkPackageDirty 用于提示保存）
-	MyAsset->Modify();
-	ApplyParsedToAsset(MyAsset, ParsedData);
-	
-	if (MyAsset->AssetImportData)
-	{
-		MyAsset->AssetImportData->Update(FilenameToLoad);
-	}
-	
-	MyAsset->MarkPackageDirty();
-
-	// **新增**：通知编辑器资产已变更，刷新UI
-	MyAsset->PostEditChange();
-
+	// 标记对象即将修改，记录撤销/重做快照喵
+	Asset->Modify();
+	ApplyParsedToAsset(Asset, ParsedData);
+	Asset->AssetImportData->Update(FilenameToLoad);
+	Asset->MarkPackageDirty();
+	// 通知编辑器资产已更改喵
+	Asset->PostEditChange();
 	return EReimportResult::Succeeded;
 #else
 	return EReimportResult::Failed;
 #endif
 }
 
-// =========================================================
-// 辅助函数 (Helpers)
-// =========================================================
-
 bool UHCIAbilityKitFactory::TryParseKitFile(const FString& FullFilename, FParsedKit& OutParsed, FString& OutError)
 {
 	FString FileContent;
-	// 1. 读文件到字符串
+	// 读取文件内容为字符串喵
 	if (!FFileHelper::LoadFileToString(FileContent, *FullFilename))
 	{
 		OutError = FString::Printf(TEXT("Failed to load file: %s"), *FullFilename);
 		return false;
 	}
 
-	// 2. 解析 JSON
+	// 解析 JSON 喵
 	TSharedPtr<FJsonObject> RootObject;
-	TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(FileContent);
-
+	const TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(FileContent);
 	if (!FJsonSerializer::Deserialize(Reader, RootObject) || !RootObject.IsValid())
 	{
 		OutError = TEXT("Invalid JSON format");
 		return false;
 	}
 
-	// 3. 提取字段 (安全模式)
+	// 校验并提取各字段喵
 	int32 SchemaVersionTmp;
 	if (!RootObject->TryGetNumberField(TEXT("schema_version"), SchemaVersionTmp))
 	{
@@ -234,37 +215,34 @@ bool UHCIAbilityKitFactory::TryParseKitFile(const FString& FullFilename, FParsed
 		return false;
 	}
 	OutParsed.DisplayName = DisplayNameTmp;
-	
-	// 读取嵌套的对象 (Params -> Damage)
+
 	const TSharedPtr<FJsonObject>* ParamsObj = nullptr;
-	if (!RootObject->TryGetObjectField(TEXT("params"), ParamsObj) || !ParamsObj || !(*ParamsObj).IsValid())
+	if (!RootObject->TryGetObjectField(TEXT("params"), ParamsObj) || !ParamsObj || !ParamsObj->IsValid())
 	{
 		OutError = TEXT("Missing or invalid object: params");
 		return false;
 	}
 
-	double DamageTmp; // JSON 数字是 double
+	double DamageTmp;
 	if (!(*ParamsObj)->TryGetNumberField(TEXT("damage"), DamageTmp))
 	{
 		OutError = TEXT("Missing or invalid field in params: damage (must be a number)");
 		return false;
 	}
 	OutParsed.Damage = static_cast<float>(DamageTmp);
-	
 	return true;
 }
 
 void UHCIAbilityKitFactory::ApplyParsedToAsset(UHCIAbilityKitAsset* Asset, const FParsedKit& Parsed)
 {
-	if (!Asset) return;
+	if (!Asset)
+	{
+		return;
+	}
 
-	// 把解析出来的数据赋值给 Asset
+	// 将解析好的结构体数据同步到资产属性中喵
 	Asset->SchemaVersion = Parsed.SchemaVersion;
 	Asset->Id = Parsed.Id;
 	Asset->DisplayName = Parsed.DisplayName;
 	Asset->Damage = Parsed.Damage;
-
-#if WITH_EDITORONLY_DATA
-	
-#endif
 }

@@ -9,7 +9,7 @@ struct FHCIAbilityKitParsedData;
 
 /**
  * HCI 技能组件工厂类
- * 负责处理 .hciabilitykit 文件的导入和重导入逻辑喵。
+ * 负责处理 .hciabilitykit 文件的导入和重导入逻辑。
  */
 UCLASS()
 class HCIABILITYKITEDITOR_API UHCIAbilityKitFactory : public UFactory, public FReimportHandler
@@ -19,10 +19,10 @@ class HCIABILITYKITEDITOR_API UHCIAbilityKitFactory : public UFactory, public FR
 public:
 	UHCIAbilityKitFactory();
 
-	/** 检查文件是否可以被此工厂导入喵 */
+	/** 检查文件是否可以被此工厂导入 */
 	virtual bool FactoryCanImport(const FString& Filename) override;
 
-	/** 执行具体的文件导入逻辑，创建新的资产对象喵 */
+	/** 执行具体的文件导入逻辑，创建新的资产对象 */
 	virtual UObject* FactoryCreateFile(
 		UClass* InClass,
 		UObject* InParent,
@@ -33,16 +33,16 @@ public:
 		FFeedbackContext* Warn,
 		bool& bOutOperationCanceled) override;
 
-	/** 检查指定对象是否支持重导入，并返回源文件路径喵 */
+	/** 检查指定对象是否支持重导入，并返回源文件路径 */
 	virtual bool CanReimport(UObject* Obj, TArray<FString>& OutFilenames) override;
-	/** 设置资产的重导入路径喵 */
+	/** 设置资产的重导入路径 */
 	virtual void SetReimportPaths(UObject* Obj, const TArray<FString>& NewReimportPaths) override;
-	/** 执行资产的重导入逻辑喵 */
+	/** 执行资产的重导入逻辑 */
 	virtual EReimportResult::Type Reimport(UObject* Obj) override;
-	/** 获取重导入处理器的优先级，数值越大优先级越高喵 */
+	/** 获取重导入处理器的优先级，数值越大优先级越高 */
 	virtual int32 GetPriority() const override { return 0; }
 
 private:
-	/** 将解析后的数据应用到资产对象上喵 */
+	/** 将解析后的数据应用到资产对象上 */
 	static void ApplyParsedToAsset(class UHCIAbilityKitAsset* Asset, const FHCIAbilityKitParsedData& Parsed);
 };

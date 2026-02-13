@@ -4,24 +4,23 @@
 #include "Dom/JsonObject.h"
 #include "Factories/HCIAbilityKitFactory.h"
 #include "HAL/FileManager.h"
+#include "HAL/PlatformProcess.h"
 #include "HCIAbilityKitAsset.h"
 #include "IPythonScriptPlugin.h"
-#include "Misc/FileHelper.h"
 #include "Misc/DelayedAutoRegister.h"
+#include "Misc/FileHelper.h"
 #include "Misc/Guid.h"
 #include "Misc/Paths.h"
 #include "Modules/ModuleManager.h"
+#include "Search/HCIAbilityKitSearchIndexService.h"
 #include "Serialization/JsonReader.h"
 #include "Serialization/JsonSerializer.h"
 #include "Services/HCIAbilityKitParserService.h"
 #include "Styling/AppStyle.h"
 #include "ToolMenus.h"
 
-/** 
- * 全局持久化变量喵 
- */
-static TObjectPtr<UHCIAbilityKitFactory> GHCIAbilityKitFactory; // 缓存一个工厂实例，用于菜单操作喵
-static const TCHAR* GHCIAbilityKitPythonScriptPath = TEXT("SourceData/AbilityKits/Python/hci_abilitykit_hook.py"); // Python 脚本的相对路径喵
+static TObjectPtr<UHCIAbilityKitFactory> GHCIAbilityKitFactory;
+static const TCHAR* GHCIAbilityKitPythonScriptPath = TEXT("SourceData/AbilityKits/Python/hci_abilitykit_hook.py");
 
 static FString HCI_ToPythonStringLiteral(const FString& Value)
 {
@@ -57,9 +56,17 @@ static bool HCI_ParsePythonResponse(
 	const FString& ResponseFilename,
 	const FString& ScriptPath,
 	const FString& SourceFilename,
+	const FString& PythonCommandResult,
 	FHCIAbilityKitParsedData& InOutParsed,
 	FHCIAbilityKitParseError& OutError)
 {
+	IFileManager& FileManager = IFileManager::Get();
+	constexpr int32 MaxWaitAttempts = 50;
+	for (int32 Attempt = 0; Attempt < MaxWaitAttempts && !FileManager.FileExists(*ResponseFilename); ++Attempt)
+	{
+		FPlatformProcess::Sleep(0.01f);
+	}
+
 	FString ResponseContent;
 	if (!FFileHelper::LoadFileToString(ResponseContent, *ResponseFilename))
 	{
@@ -68,7 +75,9 @@ static bool HCI_ParsePythonResponse(
 		OutError.Field = TEXT("python_response");
 		OutError.Reason = TEXT("Python hook response file is missing");
 		OutError.Hint = TEXT("Check Python script output and response path");
-		OutError.Detail = ResponseFilename;
+		OutError.Detail = PythonCommandResult.IsEmpty()
+			? ResponseFilename
+			: FString::Printf(TEXT("response_file=%s; command_result=%s"), *ResponseFilename, *PythonCommandResult);
 		return false;
 	}
 
@@ -133,17 +142,11 @@ static bool HCI_ParsePythonResponse(
 	return true;
 }
 
-/**
- * 封装 Python 脚本的调用逻辑喵
- * 负责通过 IPythonScriptPlugin 接口在 C++ 中执行 Python 脚本喵
- */
 static bool HCI_RunPythonHook(const FString& SourceFilename, FHCIAbilityKitParsedData& InOutParsed, FHCIAbilityKitParseError& OutError)
 {
-	// 将相对路径转换为绝对路径，确保 Python 能找到它喵
 	const FString ScriptPath = FPaths::ConvertRelativePathToFull(FPaths::ProjectDir(), GHCIAbilityKitPythonScriptPath);
 	if (!FPaths::FileExists(ScriptPath))
 	{
-		// 如果脚本不存在，手动填充错误契约信息喵
 		OutError.Code = TEXT("E3002");
 		OutError.File = ScriptPath;
 		OutError.Field = TEXT("python_hook");
@@ -152,7 +155,6 @@ static bool HCI_RunPythonHook(const FString& SourceFilename, FHCIAbilityKitParse
 		return false;
 	}
 
-	// 获取 Python 脚本插件的接口喵
 	IPythonScriptPlugin* PythonPlugin = IPythonScriptPlugin::Get();
 	if (!PythonPlugin || !PythonPlugin->IsPythonAvailable())
 	{
@@ -164,19 +166,18 @@ static bool HCI_RunPythonHook(const FString& SourceFilename, FHCIAbilityKitParse
 		return false;
 	}
 
-	const FString ResponseDir = FPaths::Combine(FPaths::ProjectIntermediateDir(), TEXT("HCIAbilityKit"), TEXT("Python"));
+	const FString AbsoluteSourceFilename = FPaths::ConvertRelativePathToFull(SourceFilename);
+	const FString ResponseDir = FPaths::ConvertRelativePathToFull(
+		FPaths::Combine(FPaths::ProjectIntermediateDir(), TEXT("HCIAbilityKit"), TEXT("Python")));
 	IFileManager::Get().MakeDirectory(*ResponseDir, true);
-
 	const FString ResponseFilename = FPaths::Combine(
 		ResponseDir,
 		FString::Printf(TEXT("hook_response_%s.json"), *FGuid::NewGuid().ToString(EGuidFormats::Digits)));
 
-	// 构造 Python 命令喵
-	// 注意：UE ExecuteFile 不保证传递 argv，这里改为 ExecuteStatement + runpy 显式注入 sys.argv 喵
 	const FString PythonStatement = FString::Printf(
 		TEXT("import runpy, sys; sys.argv=[%s, %s, %s]; runpy.run_path(%s, run_name='__main__')"),
 		*HCI_ToPythonStringLiteral(ScriptPath),
-		*HCI_ToPythonStringLiteral(SourceFilename),
+		*HCI_ToPythonStringLiteral(AbsoluteSourceFilename),
 		*HCI_ToPythonStringLiteral(ResponseFilename),
 		*HCI_ToPythonStringLiteral(ScriptPath));
 
@@ -184,11 +185,9 @@ static bool HCI_RunPythonHook(const FString& SourceFilename, FHCIAbilityKitParse
 	Command.ExecutionMode = EPythonCommandExecutionMode::ExecuteStatement;
 	Command.Command = PythonStatement;
 
-	// 执行命令喵
 	const bool bExecOk = PythonPlugin->ExecPythonCommandEx(Command);
 	if (!bExecOk)
 	{
-		// 如果执行失败，尝试解析 Python 抛出的错误信息喵
 		OutError.Code = TEXT("E3001");
 		OutError.File = ScriptPath;
 		OutError.Field = TEXT("python_execution");
@@ -198,14 +197,17 @@ static bool HCI_RunPythonHook(const FString& SourceFilename, FHCIAbilityKitParse
 		return false;
 	}
 
-	const bool bParseOk = HCI_ParsePythonResponse(ResponseFilename, ScriptPath, SourceFilename, InOutParsed, OutError);
+	const bool bParseOk = HCI_ParsePythonResponse(
+		ResponseFilename,
+		ScriptPath,
+		AbsoluteSourceFilename,
+		Command.CommandResult,
+		InOutParsed,
+		OutError);
 	HCI_DeleteTempFile(ResponseFilename);
 	return bParseOk;
 }
 
-/** 
- * 菜单项可见性检查：判断当前选中的资产是否支持重导入喵 
- */
 static bool HCI_CanReimportSelectedAbilityKits(const FToolMenuContext& MenuContext)
 {
 	const UContentBrowserAssetContextMenuContext* Context = UContentBrowserAssetContextMenuContext::FindContextWithAssets(MenuContext);
@@ -214,7 +216,6 @@ static bool HCI_CanReimportSelectedAbilityKits(const FToolMenuContext& MenuConte
 		return false;
 	}
 
-	// 遍历所有选中的对象喵
 	for (UHCIAbilityKitAsset* Asset : Context->LoadSelectedObjects<UHCIAbilityKitAsset>())
 	{
 		if (!Asset)
@@ -223,7 +224,6 @@ static bool HCI_CanReimportSelectedAbilityKits(const FToolMenuContext& MenuConte
 		}
 
 		TArray<FString> SourceFiles;
-		// 只要有一个资产支持重导入，菜单就可见喵
 		if (GHCIAbilityKitFactory->CanReimport(Asset, SourceFiles))
 		{
 			return true;
@@ -233,9 +233,6 @@ static bool HCI_CanReimportSelectedAbilityKits(const FToolMenuContext& MenuConte
 	return false;
 }
 
-/** 
- * 菜单项点击回调：执行选中资产的重导入逻辑喵 
- */
 static void HCI_ReimportSelectedAbilityKits(const FToolMenuContext& MenuContext)
 {
 	const UContentBrowserAssetContextMenuContext* Context = UContentBrowserAssetContextMenuContext::FindContextWithAssets(MenuContext);
@@ -246,33 +243,28 @@ static void HCI_ReimportSelectedAbilityKits(const FToolMenuContext& MenuContext)
 
 	for (UHCIAbilityKitAsset* Asset : Context->LoadSelectedObjects<UHCIAbilityKitAsset>())
 	{
-		// 依次触发重导入流程喵
 		GHCIAbilityKitFactory->Reimport(Asset);
 	}
 }
 
 void FHCIAbilityKitEditorModule::StartupModule()
 {
-	// 1. 在运行时解析服务中注入 Python 钩子逻辑喵
-	// 使用 Lambda 表达式进行转发喵
+	FHCIAbilityKitSearchIndexService::Get().RebuildFromAssetRegistry();
+
 	FHCIAbilityKitParserService::SetPythonHook(
 		[](const FString& SourceFilename, FHCIAbilityKitParsedData& InOutParsed, FHCIAbilityKitParseError& OutError)
 		{
 			return HCI_RunPythonHook(SourceFilename, InOutParsed, OutError);
 		});
 
-	// 2. 创建并锁定一个工厂实例喵
-	// 这样做是为了在不需要弹出导入窗口的情况下，复用工厂的重导入逻辑喵
 	GHCIAbilityKitFactory = NewObject<UHCIAbilityKitFactory>(GetTransientPackage());
-	GHCIAbilityKitFactory->AddToRoot(); // 防止被 GC 喵
+	GHCIAbilityKitFactory->AddToRoot();
 }
 
 void FHCIAbilityKitEditorModule::ShutdownModule()
 {
-	// 1. 清理 Python 钩子，防止野指针调用喵
 	FHCIAbilityKitParserService::ClearPythonHook();
 
-	// 2. 释放工厂实例喵
 	if (GHCIAbilityKitFactory)
 	{
 		GHCIAbilityKitFactory->RemoveFromRoot();
@@ -282,20 +274,14 @@ void FHCIAbilityKitEditorModule::ShutdownModule()
 
 IMPLEMENT_MODULE(FHCIAbilityKitEditorModule, HCIAbilityKitEditor)
 
-/** 
- * 静态注册：使用延时注册机制来在引擎启动最后阶段扩展菜单喵 
- */
 static FDelayedAutoRegisterHelper HCIAbilityKitMenuRegister(EDelayedRegisterRunPhase::EndOfEngineInit, []
 {
 	UToolMenus::RegisterStartupCallback(FSimpleMulticastDelegate::FDelegate::CreateLambda([]()
 	{
 		FToolMenuOwnerScoped OwnerScoped(UE_MODULE_NAME);
-
-		// 针对 UHCIAbilityKitAsset 类资产，扩展其内容浏览器的上下文（右键）菜单喵
 		UToolMenu* Menu = UE::ContentBrowser::ExtendToolMenu_AssetContextMenu(UHCIAbilityKitAsset::StaticClass());
 		FToolMenuSection& Section = Menu->FindOrAddSection("GetAssetActions");
 
-		// 添加一个名为 Reimport 的菜单项喵
 		Section.AddDynamicEntry("HCIAbilityKit_Reimport", FNewToolMenuSectionDelegate::CreateLambda([](FToolMenuSection& InSection)
 		{
 			const TAttribute<FText> Label = NSLOCTEXT("HCIAbilityKit", "Reimport", "Reimport");
@@ -305,7 +291,6 @@ static FDelayedAutoRegisterHelper HCIAbilityKitMenuRegister(EDelayedRegisterRunP
 			FToolUIAction UIAction;
 			UIAction.ExecuteAction = FToolMenuExecuteAction::CreateStatic(&HCI_ReimportSelectedAbilityKits);
 			UIAction.CanExecuteAction = FToolMenuCanExecuteAction::CreateStatic(&HCI_CanReimportSelectedAbilityKits);
-
 			InSection.AddMenuEntry("HCIAbilityKit_Reimport", Label, ToolTip, Icon, UIAction);
 		}));
 	}));

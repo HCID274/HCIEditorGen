@@ -5,76 +5,76 @@
 
 /**
  * FHCIAbilityKitParsedData
- * AbilityKit 源文件解析后的标准化数据结构喵。
- * 包含了技能的核心元数据，如版本、ID、名称和数值参数喵。
+ * AbilityKit 源文件解析后的标准化数据结构。
+ * 包含了技能的核心元数据，如版本、ID、名称和数值参数。
  */
 struct HCIABILITYKITRUNTIME_API FHCIAbilityKitParsedData
 {
-	/** Schema 版本号，用于数据兼容性校验喵 */
+	/** Schema 版本号，用于数据兼容性校验 */
 	int32 SchemaVersion = 1;
-	/** 技能的唯一标识符喵 */
+	/** 技能的唯一标识符 */
 	FString Id;
-	/** 技能的显示名称喵 */
+	/** 技能的显示名称 */
 	FString DisplayName;
-	/** 技能的基础伤害数值喵 */
+	/** 技能的基础伤害数值 */
 	float Damage = 0.0f;
 };
 
 /**
  * FHCIAbilityKitParseError
- * 统一错误契约：用于 Import/Reimport 与 Python Hook 的错误回传喵。
+ * 统一错误契约：用于导入/重导入与 Python 钩子的错误回传。
  */
 struct HCIABILITYKITRUNTIME_API FHCIAbilityKitParseError
 {
-	/** 错误码（例如 E1001/E3001）喵 */
+	/** 错误码（例如 E1001/E3001） */
 	FString Code;
-	/** 发生错误的文件路径喵 */
+	/** 发生错误的文件路径 */
 	FString File;
-	/** 错误字段（例如 schema_version/params.damage/python_hook）喵 */
+	/** 错误字段（例如 schema_version/params.damage/python_hook） */
 	FString Field;
-	/** 人类可读原因喵 */
+	/** 人类可读的错误原因 */
 	FString Reason;
-	/** 修复建议喵 */
+	/** 针对该错误的修复建议 */
 	FString Hint;
-	/** 详细信息（日志用，可选）喵 */
+	/** 详细错误信息（主要用于日志记录，可选） */
 	FString Detail;
 
-	/** 是否包含有效错误信息喵 */
+	/** 检查错误对象是否包含有效的错误信息 */
 	bool IsValid() const;
-	/** 输出统一错误模板字符串喵 */
+	/** 将错误信息格式化为统一契约定义的模板字符串 */
 	FString ToContractString() const;
 };
 
 /** 
- * Python 钩子函数定义喵 
- * 允许在 C++ 解析后调用 Python 脚本进行二次处理或校验喵。
+ * Python 钩子函数定义
+ * 允许在 C++ 完成基础解析后，调用 Python 脚本进行二次处理或数据校验。
  */
 using FHCIAbilityKitPythonHook = TFunction<bool(const FString& SourceFilename, FHCIAbilityKitParsedData& InOutParsed, FHCIAbilityKitParseError& OutError)>;
 
 /**
  * FHCIAbilityKitParserService
- * AbilityKit 解析服务：负责读取与校验 .hciabilitykit 源文件喵。
- * 它是连接外部 JSON 数据与 UE 资产对象的桥梁喵。
+ * AbilityKit 解析服务：负责读取、解析并校验 .hciabilitykit 源文件。
+ * 它是连接外部 JSON 数据与虚幻引擎资产对象的桥梁。
  */
 class HCIABILITYKITRUNTIME_API FHCIAbilityKitParserService
 {
 public:
-	/** 设置 Python 钩子，用于注入 Python 端的处理逻辑喵 */
+	/** 设置 Python 钩子，用于注入 Python 端的处理逻辑 */
 	static void SetPythonHook(FHCIAbilityKitPythonHook InHook);
-	/** 清除 Python 钩子喵 */
+	/** 清除已设置的 Python 钩子 */
 	static void ClearPythonHook();
 
 	/** 
-	 * 尝试解析指定路径的 Kit 文件喵 
-	 * @param FullFilename 文件的绝对路径喵
-	 * @param OutParsed 解析成功后的数据承载体喵
-	 * @param OutError 如果解析失败，存储结构化错误信息喵
-	 * @return 解析成功返回 true，否则返回 false 喵
+	 * 尝试解析指定路径的 Kit 文件
+	 * @param FullFilename 待解析文件的绝对路径
+	 * @param OutParsed 存储解析成功后的结构化数据
+	 * @param OutError 如果解析失败，存储详细的结构化错误信息
+	 * @return 解析成功返回 true，否则返回 false
 	 */
 	static bool TryParseKitFile(const FString& FullFilename, FHCIAbilityKitParsedData& OutParsed, FHCIAbilityKitParseError& OutError);
 
 	/**
-	 * 兼容接口：将结构化错误转为字符串输出喵
+	 * 兼容性接口：将解析错误直接转换为字符串输出
 	 */
 	static bool TryParseKitFile(const FString& FullFilename, FHCIAbilityKitParsedData& OutParsed, FString& OutError);
 };

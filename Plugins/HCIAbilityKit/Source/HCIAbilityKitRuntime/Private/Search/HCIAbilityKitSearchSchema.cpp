@@ -118,6 +118,19 @@ void AppendUsageSceneTokens(TSet<FString>& OutTokens, const TArray<EHCIAbilityUs
 		}
 	}
 }
+
+template <typename TKey>
+void RemoveIdFromBuckets(TMap<TKey, TArray<FString>>& Buckets, const TKey& Key, const FString& Id)
+{
+	if (TArray<FString>* Bucket = Buckets.Find(Key))
+	{
+		Bucket->Remove(Id);
+		if (Bucket->Num() == 0)
+		{
+			Buckets.Remove(Key);
+		}
+	}
+}
 }
 
 bool FHCIAbilitySearchDocument::IsValid() const
@@ -165,6 +178,31 @@ bool FHCIAbilitySearchIndex::AddDocument(const FHCIAbilitySearchDocument& InDocu
 	for (const FString& Token : InDocument.Tokens)
 	{
 		IdsByToken.FindOrAdd(Token).Add(InDocument.Id);
+	}
+
+	return true;
+}
+
+bool FHCIAbilitySearchIndex::RemoveDocumentById(const FString& InId)
+{
+	FHCIAbilitySearchDocument ExistingDocument;
+	if (!DocumentsById.RemoveAndCopyValue(InId, ExistingDocument))
+	{
+		return false;
+	}
+
+	RemoveIdFromBuckets(IdsByElement, ExistingDocument.Element, InId);
+	RemoveIdFromBuckets(IdsByDamageTier, ExistingDocument.DamageTier, InId);
+	RemoveIdFromBuckets(IdsByControlProfile, ExistingDocument.ControlProfile, InId);
+
+	for (const EHCIAbilityUsageScene Scene : ExistingDocument.UsageScenes)
+	{
+		RemoveIdFromBuckets(IdsByUsageScene, Scene, InId);
+	}
+
+	for (const FString& Token : ExistingDocument.Tokens)
+	{
+		RemoveIdFromBuckets(IdsByToken, Token, InId);
 	}
 
 	return true;

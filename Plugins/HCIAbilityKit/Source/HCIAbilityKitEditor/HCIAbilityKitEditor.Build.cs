@@ -1,36 +1,37 @@
 using UnrealBuildTool;
 
 /**
- * HCIAbilityKit 插件的编辑器模块构建规则喵
- * 该模块包含了工厂、菜单扩展等编辑器专用功能喵
+ * HCIAbilityKit 插件的编辑器模块构建规则。
+ * 包含资产工厂、菜单扩展以及 Python 脚本集成等编辑器专用逻辑。
  */
 public class HCIAbilityKitEditor : ModuleRules
 {
 	public HCIAbilityKitEditor(ReadOnlyTargetRules Target) : base(Target)
 	{
+		// 启用预编译头以优化编译速度
 		PCHUsage = PCHUsageMode.UseExplicitOrSharedPCHs;
 
-		// 公共依赖项，这里包含对 Runtime 模块的依赖喵
+		// 公共依赖项，包含对运行时模块的引用以访问其定义的资产类型
 		PublicDependencyModuleNames.AddRange(
 			new string[]
 			{
 				"Core",
 				"CoreUObject",
 				"Engine",
-				"HCIAbilityKitRuntime" // 依赖运行时模块以使用其定义的资产类型喵
+				"HCIAbilityKitRuntime" 
 			});
 
-		// 编辑器专属依赖项，这些模块在打包后的游戏中不可用喵
+		// 私有依赖项，仅在编辑器环境下可用
 		PrivateDependencyModuleNames.AddRange(
 			new string[]
 			{
-				"UnrealEd",         // 编辑器核心逻辑喵
-				"Slate",            // UI 框架喵
-				"SlateCore",        // UI 核心喵
-				"ToolMenus",        // 菜单扩展喵
-				"ContentBrowser",   // 内容浏览器扩展喵
-				"Json",             // 用于解析导入文件的 JSON 数据喵
-				"PythonScriptPlugin" // 提供 UE 内置 Python 执行入口喵
+				"UnrealEd",         // 编辑器核心逻辑
+				"Slate",            // UI 系统
+				"SlateCore",        // UI 核心
+				"ToolMenus",        // 动态菜单系统
+				"ContentBrowser",   // 内容浏览器扩展
+				"Json",             // JSON 解析支持
+				"PythonScriptPlugin" // Python 脚本执行支持
 			});
 	}
 }

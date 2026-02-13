@@ -7,15 +7,16 @@
 #include "Framework/Notifications/NotificationManager.h"
 #include "Misc/FeedbackContext.h"
 #include "Misc/Paths.h"
+#include "Search/HCIAbilityKitSearchIndexService.h"
 #include "Widgets/Notifications/SNotificationList.h"
 
-// 定义工厂专用的日志分类喵
+// 静态日志分类定义
 DEFINE_LOG_CATEGORY_STATIC(LogHCIAbilityKitFactory, Log, All);
 
 namespace
 {
 /**
- * 在编辑器右下角弹出重导入失败的通知提醒喵
+ * 在虚幻编辑器中显示导入/重导入失败的桌面通知
  */
 void ShowReimportFailureNotification(const UObject* Asset, const FString& Reason)
 {
@@ -43,11 +44,11 @@ void ShowReimportFailureNotification(const UObject* Asset, const FString& Reason
 
 UHCIAbilityKitFactory::UHCIAbilityKitFactory()
 {
-	// 注册支持的文件扩展名及其描述喵
+	// 注册受支持的文件扩展名及其 UI 描述字符串
 	Formats.Add(TEXT("hciabilitykit;HCI Ability Kit (*.hciabilitykit)"));
-	// 设置此工厂产出的资产类型为 UHCIAbilityKitAsset 喵
+	// 关联该工厂创建的资产类
 	SupportedClass = UHCIAbilityKitAsset::StaticClass();
-	// 设置为不支持手动新建，必须通过导入源文件来创建喵
+	// 设置该工厂仅支持通过文件导入，不支持在内容浏览器中直接新建
 	bCreateNew = false;
 	bText = true;
 	bEditorImport = true;
@@ -55,7 +56,7 @@ UHCIAbilityKitFactory::UHCIAbilityKitFactory()
 
 bool UHCIAbilityKitFactory::FactoryCanImport(const FString& Filename)
 {
-	// 检查文件后缀是否是我们支持的 .hciabilitykit 喵
+	// 基于文件扩展名判断是否可以进行导入
 	return FPaths::GetExtension(Filename, true).Equals(TEXT(".hciabilitykit"), ESearchCase::IgnoreCase);
 }
 
@@ -74,10 +75,9 @@ UObject* UHCIAbilityKitFactory::FactoryCreateFile(
 	FHCIAbilityKitParsedData ParsedData;
 	FHCIAbilityKitParseError ParseError;
 	
-	// 调用解析服务来尝试解析源文件喵
+	// 调用解析服务解析源文件内容
 	if (!FHCIAbilityKitParserService::TryParseKitFile(Filename, ParsedData, ParseError))
 	{
-		// 解析失败，获取符合契约格式的错误字符串喵
 		const FString ErrorMsg = ParseError.ToContractString();
 		if (Warn)
 		{
@@ -85,7 +85,6 @@ UObject* UHCIAbilityKitFactory::FactoryCreateFile(
 		}
 		UE_LOG(LogHCIAbilityKitFactory, Error, TEXT("Import failed: %s"), *ErrorMsg);
 		
-		// 如果有详细的错误描述，也一并记录下来喵
 		if (!ParseError.Detail.IsEmpty())
 		{
 			UE_LOG(LogHCIAbilityKitFactory, Error, TEXT("Import detail: %s"), *ParseError.Detail);
@@ -95,7 +94,7 @@ UObject* UHCIAbilityKitFactory::FactoryCreateFile(
 		return nullptr;
 	}
 
-	// 成功解析后，创建资产对象喵
+	// 成功解析后创建新的资产对象
 	UHCIAbilityKitAsset* NewAsset = NewObject<UHCIAbilityKitAsset>(InParent, InClass, InName, Flags);
 	if (!NewAsset)
 	{
@@ -103,11 +102,11 @@ UObject* UHCIAbilityKitFactory::FactoryCreateFile(
 		return nullptr;
 	}
 
-	// 将解析出来的数据填入资产喵
+	// 将解析结果应用到资产属性中
 	ApplyParsedToAsset(NewAsset, ParsedData);
 
 #if WITH_EDITORONLY_DATA
-	// 更新资产的导入源数据，用于日后的“重导入”操作喵
+	// 记录源文件路径，使资产支持重导入流程
 	if (NewAsset->AssetImportData)
 	{
 		const FString AbsoluteFilename = FPaths::ConvertRelativePathToFull(Filename);
@@ -115,8 +114,8 @@ UObject* UHCIAbilityKitFactory::FactoryCreateFile(
 	}
 #endif
 
-	// 标记资产为已修改状态喵
 	NewAsset->MarkPackageDirty();
+	FHCIAbilityKitSearchIndexService::Get().RefreshAsset(NewAsset);
 	return NewAsset;
 }
 
@@ -129,7 +128,7 @@ bool UHCIAbilityKitFactory::CanReimport(UObject* Obj, TArray<FString>& OutFilena
 	}
 
 #if WITH_EDITORONLY_DATA
-	// 从资产中提取原始导入时的源文件路径喵
+	// 尝试从资产关联的导入数据中提取源文件路径
 	if (Asset->AssetImportData)
 	{
 		Asset->AssetImportData->ExtractFilenames(OutFilenames);
@@ -148,7 +147,7 @@ void UHCIAbilityKitFactory::SetReimportPaths(UObject* Obj, const TArray<FString>
 	}
 
 #if WITH_EDITORONLY_DATA
-	// 更新资产记录的重导入路径喵
+	// 更新资产记录的源文件重导入路径
 	if (Asset->AssetImportData)
 	{
 		Asset->AssetImportData->UpdateFilenameOnly(NewReimportPaths[0]);
@@ -180,14 +179,14 @@ EReimportResult::Type UHCIAbilityKitFactory::Reimport(UObject* Obj)
 		return EReimportResult::Failed;
 	}
 
-	// 统一转换为绝对路径喵
+	// 转换为绝对路径以确保文件系统能够正确定位
 	FString FilenameToLoad = Files[0];
 	if (FPaths::IsRelative(FilenameToLoad))
 	{
 		FilenameToLoad = FPaths::ConvertRelativePathToFull(FPaths::ProjectDir(), FilenameToLoad);
 	}
 
-	// 如果物理文件不见了，构造一个错误对象喵
+	// 验证源文件是否存在
 	if (!FPaths::FileExists(FilenameToLoad))
 	{
 		FHCIAbilityKitParseError ParseError;
@@ -205,7 +204,7 @@ EReimportResult::Type UHCIAbilityKitFactory::Reimport(UObject* Obj)
 
 	FHCIAbilityKitParsedData ParsedData;
 	FHCIAbilityKitParseError ParseError;
-	// 重新执行解析逻辑喵
+	// 重新调用解析逻辑处理最新的源文件内容
 	if (!FHCIAbilityKitParserService::TryParseKitFile(FilenameToLoad, ParsedData, ParseError))
 	{
 		const FString ErrorMsg = ParseError.ToContractString();
@@ -218,14 +217,15 @@ EReimportResult::Type UHCIAbilityKitFactory::Reimport(UObject* Obj)
 		return EReimportResult::Failed;
 	}
 
-	// 资产数据更新前标记 Modify，以便支持撤销喵
+	// 修改资产前记录快照，以支持虚幻引擎的撤销（Undo）系统
 	Asset->Modify();
 	ApplyParsedToAsset(Asset, ParsedData);
 	Asset->AssetImportData->Update(FilenameToLoad);
 	Asset->MarkPackageDirty();
 	
-	// 通知引擎资产已变更喵
+	// 通知编辑器资产已完成更改
 	Asset->PostEditChange();
+	FHCIAbilityKitSearchIndexService::Get().RefreshAsset(Asset);
 	return EReimportResult::Succeeded;
 #else
 	return EReimportResult::Failed;
@@ -239,7 +239,7 @@ void UHCIAbilityKitFactory::ApplyParsedToAsset(UHCIAbilityKitAsset* Asset, const
 		return;
 	}
 
-	// 同步数据到资产属性喵
+	// 将解析出的结构化数据同步到资产属性中
 	Asset->SchemaVersion = Parsed.SchemaVersion;
 	Asset->Id = Parsed.Id;
 	Asset->DisplayName = Parsed.DisplayName;

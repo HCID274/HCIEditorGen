@@ -68,6 +68,7 @@ struct HCIABILITYKITRUNTIME_API FHCIAbilitySearchIndex
 	int32 GetDocumentCount() const;
 	bool ContainsId(const FString& InId) const;
 	bool AddDocument(const FHCIAbilitySearchDocument& InDocument);
+	bool RemoveDocumentById(const FString& InId);
 };
 
 /**

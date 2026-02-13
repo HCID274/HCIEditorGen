@@ -3,25 +3,15 @@ import pathlib
 import sys
 import traceback
 
-import unreal
+try:
+    import unreal
+except Exception:
+    unreal = None
 
-"""
-HCI Ability Kit Python 钩子脚本喵。
-该脚本在 C++ 解析 .hciabilitykit 文件后被调用，返回结构化 JSON 结果：
-{
-  "ok": true/false,
-  "patch": { "display_name": "..." },
-  "error": { "code": "...", "field": "...", "reason": "...", "hint": "...", "detail": "..." },
-  "audit": [ { "level": "info|warn|error", "code": "...", "message": "..." } ]
-}
-"""
 
 def _write_response(output_file: pathlib.Path, payload: dict) -> None:
     output_file.parent.mkdir(parents=True, exist_ok=True)
-    output_file.write_text(
-        json.dumps(payload, ensure_ascii=False, indent=2),
-        encoding="utf-8"
-    )
+    output_file.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
 def _error_payload(code: str, field: str, reason: str, hint: str, detail: str = "") -> dict:
@@ -33,27 +23,25 @@ def _error_payload(code: str, field: str, reason: str, hint: str, detail: str = 
             "field": field,
             "reason": reason,
             "hint": hint,
-            "detail": detail
+            "detail": detail,
         },
         "audit": [
             {
                 "level": "error",
                 "code": code,
-                "message": reason
+                "message": reason,
             }
-        ]
+        ],
     }
 
 
 def main() -> None:
-    # 参数：source_file + response_file
     if len(sys.argv) < 3:
         raise RuntimeError("Expected arguments: <source_file> <response_file>")
 
     source_file = pathlib.Path(sys.argv[1])
     response_file = pathlib.Path(sys.argv[2])
 
-    # 确保源文件确实存在喵
     if not source_file.exists():
         _write_response(
             response_file,
@@ -62,16 +50,14 @@ def main() -> None:
                 "file",
                 "AbilityKit source file not found",
                 "Check source path and file existence",
-                str(source_file)
+                str(source_file),
             ),
         )
         return
 
     try:
-        # 读取并解析 JSON 数据喵
         data = json.loads(source_file.read_text(encoding="utf-8"))
 
-        # 受控失败开关：用于验证 Python 失败链路喵
         if data.get("__force_python_fail__", False):
             _write_response(
                 response_file,
@@ -84,13 +70,8 @@ def main() -> None:
             )
             return
 
-        response = {
-            "ok": True,
-            "patch": {},
-            "audit": []
-        }
+        response = {"ok": True, "patch": {}, "audit": []}
 
-        # Slice3: 仅接管 DisplayName 字段映射
         if "display_name_ai" in data:
             if not isinstance(data["display_name_ai"], str):
                 _write_response(
@@ -122,7 +103,8 @@ def main() -> None:
             )
 
         _write_response(response_file, response)
-        unreal.log(f"[HCIAbilityKit] Python hook passed: {source_file}")
+        if unreal:
+            unreal.log(f"[HCIAbilityKit] Python hook passed: {source_file}")
     except Exception as ex:
         _write_response(
             response_file,
@@ -137,5 +119,4 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    # 执行主函数喵
     main()

@@ -1,8 +1,8 @@
 using UnrealBuildTool;
 
 /**
- * HCIAbilityKit 插件的运行时模块构建规则喵
- * 该模块必须是纯净的，不能依赖任何 Editor 模块喵
+ * HCIAbilityKit 插件的运行时模块构建规则。
+ * 包含资产定义与核心解析服务，不应依赖任何编辑器模块。
  */
 public class HCIAbilityKitRuntime : ModuleRules
 {
@@ -10,7 +10,7 @@ public class HCIAbilityKitRuntime : ModuleRules
 	{
 		PCHUsage = PCHUsageMode.UseExplicitOrSharedPCHs;
 
-		// 运行时基础依赖项喵
+		// 运行时基础框架依赖项
 		PublicDependencyModuleNames.AddRange(
 			new string[]
 			{
@@ -19,6 +19,7 @@ public class HCIAbilityKitRuntime : ModuleRules
 				"Engine"
 			});
 
+		// 私有 JSON 处理依赖
 		PrivateDependencyModuleNames.AddRange(
 			new string[]
 			{

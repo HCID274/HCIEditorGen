@@ -4,19 +4,19 @@ using UnrealBuildTool;
 using System.Collections.Generic;
 
 /**
- * HCIEditorGen 项目的 Editor 编译目标设置喵
+ * HCIEditorGen 项目的 Editor 编译目标设置。
  */
 public class HCIEditorGenEditorTarget : TargetRules
 {
 	public HCIEditorGenEditorTarget( TargetInfo Target) : base(Target)
 	{
-		// 目标类型为编辑器喵
+		// 目标类型定义为虚幻编辑器
 		Type = TargetType.Editor;
-		// 使用最新的编译设置版本喵
+		// 设置默认编译设置版本
 		DefaultBuildSettings = BuildSettingsVersion.V5;
-		// 包含顺序版本设置为 5.4 喵
+		// 设置头文件包含顺序版本
 		IncludeOrderVersion = EngineIncludeOrderVersion.Unreal5_4;
-		// Editor Target 仅装载项目运行时模块，编辑器能力由插件模块提供
+		// 添加主模块名称，编辑器能力由插件模块提供
 		ExtraModuleNames.AddRange(new string[]{"HCIEditorGen"});
 	}
 }

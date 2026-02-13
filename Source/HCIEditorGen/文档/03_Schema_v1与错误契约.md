@@ -118,3 +118,19 @@
 - 仅允许向后兼容升级（新增字段必须有默认值）。
 - `schema_version` 升级时，必须提供迁移策略。
 - 变更契约前，先更新测试样例和门禁文档。
+
+## 9. 索引统计契约（Step3-Slice2）
+
+- 输出来源：`FHCIAbilityKitSearchIndexStats::ToSummaryString()`。
+- 固定日志前缀：`[HCIAbilityKit][SearchIndex]`。
+- 最小统计字段：
+  - `mode`：`full_rebuild` / `incremental_refresh` / `incremental_remove`
+  - `docs`：当前索引文档数
+  - `display_name_coverage`
+  - `scene_coverage`
+  - `token_coverage`
+  - `refresh_ms`
+  - `updated_utc`
+- 验收约束：
+  - Editor 启动时必须输出一次 `full_rebuild`。
+  - Import/Reimport 成功后必须输出一次 `incremental_refresh`。

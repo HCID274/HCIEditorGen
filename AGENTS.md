@@ -7,6 +7,8 @@ Scope: whole repo.
 - 聚焦单一模块：`HCIAbilityKit`。
 - 解决三个核心痛点：策划填表难、资产检索难、数据校验累。
 - 核心理念：AI 不是目的，AI 只服务于编辑器工具效率与数据质量。
+- 功能规划必须对齐真实开发场景（优先策划检索与跨部门协同），禁止仅为演示而做“玩具化功能”。
+- 当前交付收束：只做“策划资产语义检索”专精模块，不做自动改写资产与审批/审阅 UI。
 
 ## 2. 架构基线（冻结）
 
@@ -23,6 +25,7 @@ Scope: whole repo.
 - B 层（执行审计）：生成者与审计者串行复核。
 - C 层（交互审阅）：Diff 风格逐项采纳，非黑盒覆盖。
 - 敏感操作（修改/删除/批量写入）必须先给出原因并走授权门禁。
+- Prompt/Skill 边界：一次性低风险分析可直接 Prompt；可复现、可审计、固定流程能力必须走 Skill。
 
 ## 4. 开发节奏与门禁
 
@@ -40,6 +43,7 @@ Scope: whole repo.
 
 - 进度唯一权威：`Source/HCIEditorGen/文档/00_总进度.md`。
 - 方案唯一权威：`Source/HCIEditorGen/文档/01_技术方案_插件双模块.md`。
+- 执行主计划权威：`Source/HCIEditorGen/文档/05_开发执行总方案_检索优先.md`（Step3 专精主线切片必须按此顺序推进）。
 - 代码结构发生变化（新增/删除/移动关键代码文件）时，必须同步更新：`Source/HCIEditorGen/文档/04_代码框架总览_树状图.md`（树内中文注释需与实际一致）。
 - 任何范围/里程碑变化，先改文档再改代码。
 - 保持文档轻量，不扩散到无关主题。
@@ -51,17 +55,20 @@ Scope: whole repo.
 - 错误信息必须可定位（文件/字段/原因/建议）。
 - 未通过验证的结论不得标记为“完成”。
 
-## 8. 当前进度快照（2026-02-12）
+## 8. 当前进度快照（2026-02-13）
 
 - Step 1（结构迁移）已关闭：
   - Slice1：插件双模块骨架落地并通过。
   - Slice2：资产/Factory/Reimport 迁移到插件并通过。
   - Slice3：项目本体 Editor 空壳模块下线并通过。
   - Slice4：Reimport 失败通知可视化（含错误原因）并通过。
-- Step 2（服务抽离）进行中：
+- Step 2（服务抽离）已关闭：
   - Slice1：JSON 解析从 `UHCIAbilityKitFactory` 抽离到 Runtime `FHCIAbilityKitParserService`，通过。
   - Slice2：打通 `Factory -> Runtime Service -> UE Python` 最小链路，受控失败可见（`__force_python_fail__`），通过。
-- 当前下一切片：`Step2-Slice3`（计划让 Python 产出参与字段映射，先从 `DisplayName` 单字段开始）。
+  - Slice3：Python 结构化输出接入 `DisplayName` 字段映射，通过。
+  - Slice4：统一错误契约与 Python 审计输出，通过。
+- Step 3（AI 注入）进行中：
+  - 当前下一切片：`Step3-Slice1`（资产索引最小闭环，策划检索优先）。
 
 ## 9. 用户协作习惯（固定）
 

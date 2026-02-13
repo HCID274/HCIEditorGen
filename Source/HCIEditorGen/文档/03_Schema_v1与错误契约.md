@@ -91,7 +91,29 @@
 - `TC_FAIL_03`：源文件失效（期望 `E1005`）
 - `TC_FAIL_04`：敏感操作拒绝授权（期望 `E2002`）
 
-## 7. 演进规则
+## 7. 检索文档契约（Step3-Slice1）
+
+- 目标结构：`FHCIAbilitySearchDocument`（Runtime，纯只读检索语义）。
+- 字段最小集（冻结）：
+  - `AssetPath`：资产路径（审计与定位）。
+  - `Id` / `DisplayName` / `Damage`：基础检索字段。
+  - `Element`：`Unknown/Fire/Ice/Nature/Lightning/Physical`。
+  - `DamageTier`：`Low/Medium/High`（当前阈值：`<=120`、`<=300`、`>300`）。
+  - `ControlProfile`：`None/SoftControl/HardControl`。
+  - `UsageScenes`：`General/Forest/BossPhase2`。
+  - `Tokens`：基础词 + 语义扩展词（中英混合）。
+- 索引结构（冻结）：
+  - `DocumentsById`
+  - `IdsByElement`
+  - `IdsByDamageTier`
+  - `IdsByControlProfile`
+  - `IdsByUsageScene`
+  - `IdsByToken`
+- 约束：
+  - 仅定义结构和语义映射，不在本切片实现资产扫描与增量刷新。
+  - 该结构需覆盖场景 `S1/S2/S3` 的过滤与解释字段需求。
+
+## 8. 演进规则
 
 - 仅允许向后兼容升级（新增字段必须有默认值）。
 - `schema_version` 升级时，必须提供迁移策略。

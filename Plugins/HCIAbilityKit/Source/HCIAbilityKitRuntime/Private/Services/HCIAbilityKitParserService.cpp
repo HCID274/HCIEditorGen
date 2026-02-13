@@ -7,9 +7,12 @@
 
 namespace
 {
-/** 全局 Python 钩子变量，用于存储被注入的解析逻辑喵 */
+/** 全局 Python 钩子函数，用于存储从模块层注入的 Python 校验逻辑喵 */
 FHCIAbilityKitPythonHook GPythonHook;
 
+/** 
+ * 快速构建结构化错误对象的辅助工具喵 
+ */
 FHCIAbilityKitParseError MakeParseError(
 	const FString& Code,
 	const FString& File,
@@ -31,11 +34,13 @@ FHCIAbilityKitParseError MakeParseError(
 
 bool FHCIAbilityKitParseError::IsValid() const
 {
+	// 判断错误对象是否被正确初始化，Code/File/Field/Reason 是最基本的四要素喵
 	return !Code.IsEmpty() && !File.IsEmpty() && !Field.IsEmpty() && !Reason.IsEmpty();
 }
 
 FString FHCIAbilityKitParseError::ToContractString() const
 {
+	// 按照“统一错误契约”格式化字符串，方便日志监控或外部工具解析喵
 	const FString SafeCode = Code.IsEmpty() ? TEXT("E0000") : Code;
 	const FString SafeFile = File.IsEmpty() ? TEXT("<unknown>") : File;
 	const FString SafeField = Field.IsEmpty() ? TEXT("<unknown>") : Field;
@@ -53,12 +58,13 @@ FString FHCIAbilityKitParseError::ToContractString() const
 
 void FHCIAbilityKitParserService::SetPythonHook(FHCIAbilityKitPythonHook InHook)
 {
-	// 使用 MoveTemp 移动函数对象，减少拷贝开销喵
+	// 注入 Python 处理逻辑，通常在 Editor 模块启动时调用喵
 	GPythonHook = MoveTemp(InHook);
 }
 
 void FHCIAbilityKitParserService::ClearPythonHook()
 {
+	// 清理钩子，防止模块卸载后发生野指针调用喵
 	GPythonHook = nullptr;
 }
 
@@ -68,7 +74,7 @@ bool FHCIAbilityKitParserService::TryParseKitFile(
 	FHCIAbilityKitParseError& OutError)
 {
 	FString FileContent;
-	// 首先尝试将文件内容读入字符串中喵
+	// 1. 加载物理文件喵
 	if (!FFileHelper::LoadFileToString(FileContent, *FullFilename))
 	{
 		OutError = MakeParseError(
@@ -80,10 +86,9 @@ bool FHCIAbilityKitParserService::TryParseKitFile(
 		return false;
 	}
 
-	// 准备 JSON 解析器喵
+	// 2. 解析 JSON 结构喵
 	TSharedPtr<FJsonObject> RootObject;
 	const TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(FileContent);
-	// 尝试反序列化 JSON 字符串喵
 	if (!FJsonSerializer::Deserialize(Reader, RootObject) || !RootObject.IsValid())
 	{
 		OutError = MakeParseError(
@@ -95,7 +100,7 @@ bool FHCIAbilityKitParserService::TryParseKitFile(
 		return false;
 	}
 
-	// 解析 schema_version 字段，确保数据格式版本正确喵
+	// 3. 校验 Schema 版本，确保兼容性喵
 	if (!RootObject->HasField(TEXT("schema_version")))
 	{
 		OutError = MakeParseError(
@@ -130,7 +135,7 @@ bool FHCIAbilityKitParserService::TryParseKitFile(
 	}
 	OutParsed.SchemaVersion = SchemaVersionTmp;
 
-	// 解析技能 ID，它是唯一标识喵
+	// 4. 解析 ID 字段喵
 	if (!RootObject->HasField(TEXT("id")))
 	{
 		OutError = MakeParseError(
@@ -165,7 +170,7 @@ bool FHCIAbilityKitParserService::TryParseKitFile(
 	}
 	OutParsed.Id = IdTmp;
 
-	// 解析显示名称喵
+	// 5. 解析显示名称喵
 	if (!RootObject->HasField(TEXT("display_name")))
 	{
 		OutError = MakeParseError(
@@ -190,7 +195,7 @@ bool FHCIAbilityKitParserService::TryParseKitFile(
 	}
 	OutParsed.DisplayName = DisplayNameTmp;
 
-	// 解析 params 对象，包含具体的技能数值喵
+	// 6. 解析 params 参数对象喵
 	if (!RootObject->HasField(TEXT("params")))
 	{
 		OutError = MakeParseError(
@@ -224,7 +229,7 @@ bool FHCIAbilityKitParserService::TryParseKitFile(
 		return false;
 	}
 
-	// 解析伤害数值喵
+	// 7. 解析具体的伤害数值喵
 	double DamageTmp;
 	if (!(*ParamsObj)->TryGetNumberField(TEXT("damage"), DamageTmp))
 	{
@@ -238,11 +243,12 @@ bool FHCIAbilityKitParserService::TryParseKitFile(
 	}
 	OutParsed.Damage = static_cast<float>(DamageTmp);
 
-	// 如果设置了 Python 钩子，则将初步解析的数据传给 Python 进一步处理喵
+	// 8. 执行 Python 钩子（如果已注入）进行二次验证喵
 	if (GPythonHook)
 	{
 		if (!GPythonHook(FullFilename, OutParsed, OutError))
 		{
+			// 如果 Python 逻辑返回 false 且没有填充错误对象，填充一个默认的 Python 失败错误喵
 			if (!OutError.IsValid())
 			{
 				OutError = MakeParseError(
@@ -264,6 +270,7 @@ bool FHCIAbilityKitParserService::TryParseKitFile(
 	FHCIAbilityKitParsedData& OutParsed,
 	FString& OutError)
 {
+	// 这是一个简单的封装接口，将结构化错误转换为字符串返回喵
 	FHCIAbilityKitParseError ParseError;
 	const bool bOk = TryParseKitFile(FullFilename, OutParsed, ParseError);
 	if (!bOk)

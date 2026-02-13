@@ -4,9 +4,15 @@
 #include "Factories/HCIAbilityKitFactory.h"
 #include "HCIAbilityKitAsset.h"
 #include "IPythonScriptPlugin.h"
+#include "Dom/JsonObject.h"
+#include "HAL/FileManager.h"
+#include "Misc/FileHelper.h"
 #include "Misc/DelayedAutoRegister.h"
+#include "Misc/Guid.h"
 #include "Misc/Paths.h"
 #include "Modules/ModuleManager.h"
+#include "Serialization/JsonReader.h"
+#include "Serialization/JsonSerializer.h"
 #include "Services/HCIAbilityKitParserService.h"
 #include "Styling/AppStyle.h"
 #include "ToolMenus.h"
@@ -14,44 +20,202 @@
 /** 用于重导入操作的全局工厂实例喵 */
 static TObjectPtr<UHCIAbilityKitFactory> GHCIAbilityKitFactory;
 static const TCHAR* GHCIAbilityKitPythonScriptPath = TEXT("SourceData/AbilityKits/Python/hci_abilitykit_hook.py");
+DEFINE_LOG_CATEGORY_STATIC(LogHCIAbilityKitPythonHook, Log, All);
 
-static bool HCI_RunPythonHook(const FString& SourceFilename, FHCIAbilityKitParsedData& InOutParsed, FString& OutError)
+namespace
 {
-	(void)InOutParsed;
+FHCIAbilityKitParseError MakePythonError(
+	const FString& SourceFilename,
+	const FString& Field,
+	const FString& Reason,
+	const FString& Hint,
+	const FString& Detail = FString(),
+	const FString& Code = TEXT("E3001"))
+{
+	FHCIAbilityKitParseError ParseError;
+	ParseError.Code = Code;
+	ParseError.File = SourceFilename;
+	ParseError.Field = Field;
+	ParseError.Reason = Reason;
+	ParseError.Hint = Hint;
+	ParseError.Detail = Detail;
+	return ParseError;
+}
 
+bool ReadPythonHookResponse(
+	const FString& SourceFilename,
+	const FString& ResponseFile,
+	FHCIAbilityKitParsedData& InOutParsed,
+	FHCIAbilityKitParseError& OutError)
+{
+	FString ResponseText;
+	if (!FFileHelper::LoadFileToString(ResponseText, *ResponseFile))
+	{
+		OutError = MakePythonError(
+			SourceFilename,
+			TEXT("python_hook_response"),
+			TEXT("Missing Python hook response file"),
+			TEXT("Check whether Python script writes the response JSON"));
+		return false;
+	}
+
+	TSharedPtr<FJsonObject> RootObject;
+	const TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(ResponseText);
+	if (!FJsonSerializer::Deserialize(Reader, RootObject) || !RootObject.IsValid())
+	{
+		OutError = MakePythonError(
+			SourceFilename,
+			TEXT("python_hook_response"),
+			TEXT("Invalid Python response JSON format"),
+			TEXT("Ensure Python returns valid JSON object"));
+		return false;
+	}
+
+	bool bOk = false;
+	if (!RootObject->TryGetBoolField(TEXT("ok"), bOk))
+	{
+		OutError = MakePythonError(
+			SourceFilename,
+			TEXT("python_hook_response.ok"),
+			TEXT("Missing required field: ok"),
+			TEXT("Python response must include boolean field ok"));
+		return false;
+	}
+
+	const TArray<TSharedPtr<FJsonValue>>* AuditArray = nullptr;
+	if (RootObject->TryGetArrayField(TEXT("audit"), AuditArray) && AuditArray)
+	{
+		for (const TSharedPtr<FJsonValue>& AuditValue : *AuditArray)
+		{
+			const TSharedPtr<FJsonObject> AuditObj = AuditValue.IsValid() ? AuditValue->AsObject() : nullptr;
+			if (!AuditObj.IsValid())
+			{
+				continue;
+			}
+
+			FString Level;
+			FString Code;
+			FString Message;
+			AuditObj->TryGetStringField(TEXT("level"), Level);
+			AuditObj->TryGetStringField(TEXT("code"), Code);
+			AuditObj->TryGetStringField(TEXT("message"), Message);
+			UE_LOG(LogHCIAbilityKitPythonHook, Display, TEXT("[HCIAbilityKit][PythonAudit] level=%s code=%s message=%s"), *Level, *Code, *Message);
+		}
+	}
+
+	if (!bOk)
+	{
+		const TSharedPtr<FJsonObject>* ErrorObj = nullptr;
+		if (RootObject->TryGetObjectField(TEXT("error"), ErrorObj) && ErrorObj && ErrorObj->IsValid())
+		{
+			FString ErrorCode;
+			FString Field;
+			FString Reason;
+			FString Hint;
+			FString Detail;
+			(*ErrorObj)->TryGetStringField(TEXT("code"), ErrorCode);
+			(*ErrorObj)->TryGetStringField(TEXT("field"), Field);
+			(*ErrorObj)->TryGetStringField(TEXT("reason"), Reason);
+			(*ErrorObj)->TryGetStringField(TEXT("hint"), Hint);
+			(*ErrorObj)->TryGetStringField(TEXT("detail"), Detail);
+
+			OutError = MakePythonError(
+				SourceFilename,
+				Field.IsEmpty() ? TEXT("python_hook") : Field,
+				Reason.IsEmpty() ? TEXT("Python hook reported failure") : Reason,
+				Hint.IsEmpty() ? TEXT("Check Python audit output") : Hint,
+				Detail,
+				ErrorCode.IsEmpty() ? TEXT("E3001") : ErrorCode);
+			return false;
+		}
+
+		OutError = MakePythonError(
+			SourceFilename,
+			TEXT("python_hook"),
+			TEXT("Python hook reported failure without error payload"),
+			TEXT("Return an error object with code/field/reason/hint"));
+		return false;
+	}
+
+	const TSharedPtr<FJsonObject>* PatchObj = nullptr;
+	if (RootObject->TryGetObjectField(TEXT("patch"), PatchObj) && PatchObj && PatchObj->IsValid())
+	{
+		if ((*PatchObj)->HasField(TEXT("display_name")))
+		{
+			FString DisplayName;
+			if (!(*PatchObj)->TryGetStringField(TEXT("display_name"), DisplayName))
+			{
+				OutError = MakePythonError(
+					SourceFilename,
+					TEXT("patch.display_name"),
+					TEXT("Invalid patch field type"),
+					TEXT("patch.display_name must be a string"));
+				return false;
+			}
+
+			InOutParsed.DisplayName = DisplayName;
+		}
+	}
+
+	return true;
+}
+}
+
+static bool HCI_RunPythonHook(const FString& SourceFilename, FHCIAbilityKitParsedData& InOutParsed, FHCIAbilityKitParseError& OutError)
+{
 	const FString ScriptPath = FPaths::ConvertRelativePathToFull(FPaths::ProjectDir(), GHCIAbilityKitPythonScriptPath);
 	if (!FPaths::FileExists(ScriptPath))
 	{
-		OutError = FString::Printf(TEXT("Python hook script not found: %s"), *ScriptPath);
+		OutError = MakePythonError(
+			SourceFilename,
+			TEXT("python_hook"),
+			TEXT("Python hook script not found"),
+			TEXT("Create script under SourceData/AbilityKits/Python"),
+			ScriptPath);
 		return false;
 	}
 
 	IPythonScriptPlugin* PythonPlugin = IPythonScriptPlugin::Get();
 	if (!PythonPlugin || !PythonPlugin->IsPythonAvailable())
 	{
-		OutError = TEXT("PythonScriptPlugin is unavailable");
+		OutError = MakePythonError(
+			SourceFilename,
+			TEXT("python_hook"),
+			TEXT("PythonScriptPlugin is unavailable"),
+			TEXT("Enable PythonScriptPlugin in project/plugin"));
 		return false;
 	}
+
+	const FString OutputDir = FPaths::Combine(FPaths::ProjectSavedDir(), TEXT("HCIAbilityKit"), TEXT("Python"));
+	IFileManager::Get().MakeDirectory(*OutputDir, true);
+	const FString OutputFile = FPaths::Combine(OutputDir, FString::Printf(TEXT("hook_result_%s.json"), *FGuid::NewGuid().ToString(EGuidFormats::Digits)));
 
 	FPythonCommandEx Command;
 	Command.ExecutionMode = EPythonCommandExecutionMode::ExecuteFile;
 	Command.FileExecutionScope = EPythonFileExecutionScope::Private;
-	Command.Command = FString::Printf(TEXT("\"%s\" \"%s\""), *ScriptPath, *SourceFilename);
+	Command.Command = FString::Printf(TEXT("\"%s\" \"%s\" \"%s\""), *ScriptPath, *SourceFilename, *OutputFile);
 
 	const bool bOk = PythonPlugin->ExecPythonCommandEx(Command);
 	if (!bOk)
 	{
-		if (!Command.CommandResult.IsEmpty())
-		{
-			OutError = Command.CommandResult;
-		}
-		else
-		{
-			OutError = FString::Printf(TEXT("Python hook execution failed: %s"), *ScriptPath);
-		}
+		OutError = MakePythonError(
+			SourceFilename,
+			TEXT("python_hook"),
+			TEXT("Python hook execution failed"),
+			TEXT("Inspect traceback in detail and fix script logic"),
+			Command.CommandResult.IsEmpty() ? ScriptPath : Command.CommandResult);
+		IFileManager::Get().Delete(*OutputFile, false, true, true);
+		return false;
 	}
 
-	return bOk;
+	const bool bResponseOk = ReadPythonHookResponse(SourceFilename, OutputFile, InOutParsed, OutError);
+	IFileManager::Get().Delete(*OutputFile, false, true, true);
+	if (!bResponseOk)
+	{
+		return false;
+	}
+
+	return true;
 }
 
 /** 检查选中的资产是否可以被重导入喵 */
@@ -98,7 +262,7 @@ static void HCI_ReimportSelectedAbilityKits(const FToolMenuContext& MenuContext)
 void FHCIAbilityKitEditorModule::StartupModule()
 {
 	FHCIAbilityKitParserService::SetPythonHook(
-		[](const FString& SourceFilename, FHCIAbilityKitParsedData& InOutParsed, FString& OutError)
+		[](const FString& SourceFilename, FHCIAbilityKitParsedData& InOutParsed, FHCIAbilityKitParseError& OutError)
 		{
 			return HCI_RunPythonHook(SourceFilename, InOutParsed, OutError);
 		});

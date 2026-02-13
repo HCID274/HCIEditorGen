@@ -68,15 +68,20 @@ UObject* UHCIAbilityKitFactory::FactoryCreateFile(
 	bOutOperationCanceled = false;
 
 	FHCIAbilityKitParsedData ParsedData;
-	FString ErrorMsg;
+	FHCIAbilityKitParseError ParseError;
 	// 尝试解析源文件喵
-	if (!FHCIAbilityKitParserService::TryParseKitFile(Filename, ParsedData, ErrorMsg))
+	if (!FHCIAbilityKitParserService::TryParseKitFile(Filename, ParsedData, ParseError))
 	{
+		const FString ErrorMsg = ParseError.ToContractString();
 		if (Warn)
 		{
 			Warn->Logf(ELogVerbosity::Error, TEXT("HCIAbilityKit import failed: %s"), *ErrorMsg);
 		}
 		UE_LOG(LogHCIAbilityKitFactory, Error, TEXT("Import failed: %s"), *ErrorMsg);
+		if (!ParseError.Detail.IsEmpty())
+		{
+			UE_LOG(LogHCIAbilityKitFactory, Error, TEXT("Import detail: %s"), *ParseError.Detail);
+		}
 		bOutOperationCanceled = true;
 		return nullptr;
 	}
@@ -174,18 +179,30 @@ EReimportResult::Type UHCIAbilityKitFactory::Reimport(UObject* Obj)
 
 	if (!FPaths::FileExists(FilenameToLoad))
 	{
-		const FString Reason = FString::Printf(TEXT("Source file not found: %s"), *FilenameToLoad);
-		UE_LOG(LogHCIAbilityKitFactory, Error, TEXT("Reimport failed: %s"), *Reason);
-		ShowReimportFailureNotification(Asset, Reason);
+		FHCIAbilityKitParseError ParseError;
+		ParseError.Code = TEXT("E1005");
+		ParseError.File = FilenameToLoad;
+		ParseError.Field = TEXT("file");
+		ParseError.Reason = TEXT("Source file not found");
+		ParseError.Hint = TEXT("Check AssetImportData source path or restore source file");
+
+		const FString ErrorMsg = ParseError.ToContractString();
+		UE_LOG(LogHCIAbilityKitFactory, Error, TEXT("Reimport failed: %s"), *ErrorMsg);
+		ShowReimportFailureNotification(Asset, ErrorMsg);
 		return EReimportResult::Failed;
 	}
 
 	FHCIAbilityKitParsedData ParsedData;
-	FString ErrorMsg;
+	FHCIAbilityKitParseError ParseError;
 	// 重新解析文件喵
-	if (!FHCIAbilityKitParserService::TryParseKitFile(FilenameToLoad, ParsedData, ErrorMsg))
+	if (!FHCIAbilityKitParserService::TryParseKitFile(FilenameToLoad, ParsedData, ParseError))
 	{
+		const FString ErrorMsg = ParseError.ToContractString();
 		UE_LOG(LogHCIAbilityKitFactory, Error, TEXT("Reimport failed: %s"), *ErrorMsg);
+		if (!ParseError.Detail.IsEmpty())
+		{
+			UE_LOG(LogHCIAbilityKitFactory, Error, TEXT("Reimport detail: %s"), *ParseError.Detail);
+		}
 		ShowReimportFailureNotification(Asset, ErrorMsg);
 		return EReimportResult::Failed;
 	}

@@ -20,11 +20,36 @@ struct HCIABILITYKITRUNTIME_API FHCIAbilityKitParsedData
 	float Damage = 0.0f;
 };
 
+/**
+ * FHCIAbilityKitParseError
+ * 统一错误契约：用于 Import/Reimport 与 Python Hook 的错误回传喵。
+ */
+struct HCIABILITYKITRUNTIME_API FHCIAbilityKitParseError
+{
+	/** 错误码（例如 E1001/E3001）喵 */
+	FString Code;
+	/** 发生错误的文件路径喵 */
+	FString File;
+	/** 错误字段（例如 schema_version/params.damage/python_hook）喵 */
+	FString Field;
+	/** 人类可读原因喵 */
+	FString Reason;
+	/** 修复建议喵 */
+	FString Hint;
+	/** 详细信息（日志用，可选）喵 */
+	FString Detail;
+
+	/** 是否包含有效错误信息喵 */
+	bool IsValid() const;
+	/** 输出统一错误模板字符串喵 */
+	FString ToContractString() const;
+};
+
 /** 
  * Python 钩子函数定义喵 
  * 允许在 C++ 解析后调用 Python 脚本进行二次处理或校验喵。
  */
-using FHCIAbilityKitPythonHook = TFunction<bool(const FString& SourceFilename, FHCIAbilityKitParsedData& InOutParsed, FString& OutError)>;
+using FHCIAbilityKitPythonHook = TFunction<bool(const FString& SourceFilename, FHCIAbilityKitParsedData& InOutParsed, FHCIAbilityKitParseError& OutError)>;
 
 /**
  * FHCIAbilityKitParserService
@@ -43,8 +68,13 @@ public:
 	 * 尝试解析指定路径的 Kit 文件喵 
 	 * @param FullFilename 文件的绝对路径喵
 	 * @param OutParsed 解析成功后的数据承载体喵
-	 * @param OutError 如果解析失败，存储错误描述信息喵
+	 * @param OutError 如果解析失败，存储结构化错误信息喵
 	 * @return 解析成功返回 true，否则返回 false 喵
+	 */
+	static bool TryParseKitFile(const FString& FullFilename, FHCIAbilityKitParsedData& OutParsed, FHCIAbilityKitParseError& OutError);
+
+	/**
+	 * 兼容接口：将结构化错误转为字符串输出喵
 	 */
 	static bool TryParseKitFile(const FString& FullFilename, FHCIAbilityKitParsedData& OutParsed, FString& OutError);
 };

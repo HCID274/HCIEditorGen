@@ -1,0 +1,9 @@
+{
+  "schema_version": 1,
+  "id": "b1_valid_mesh_binding_01",
+  "display_name": "B1 Valid Mesh Binding",
+  "representing_mesh": "/Game/Seed/SM_water_hole.SM_water_hole",
+  "params": {
+    "damage": 123.0
+  }
+}

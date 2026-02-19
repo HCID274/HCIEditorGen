@@ -214,6 +214,12 @@ static bool HCI_ParsePythonResponse(
 		{
 			InOutParsed.DisplayName = DisplayNamePatch;
 		}
+
+		FString RepresentingMeshPatch;
+		if ((*PatchObject)->TryGetStringField(TEXT("representing_mesh"), RepresentingMeshPatch))
+		{
+			InOutParsed.RepresentingMeshPath = RepresentingMeshPatch;
+		}
 	}
 
 	return true;

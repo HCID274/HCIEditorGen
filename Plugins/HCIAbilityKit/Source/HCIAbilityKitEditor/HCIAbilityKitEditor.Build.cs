@@ -30,6 +30,7 @@ public class HCIAbilityKitEditor : ModuleRules
 				"SlateCore",        // UI 核心
 				"ToolMenus",        // 动态菜单系统
 				"ContentBrowser",   // 内容浏览器扩展
+				"AssetRegistry",    // 资产路径与类型校验
 				"Json",             // JSON 解析支持
 				"PythonScriptPlugin" // Python 脚本执行支持
 			});

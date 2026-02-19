@@ -34,6 +34,7 @@ Plugins/*/Saved/
 Plugins/Developer/RiderLink/
 SourceData/AbilityKits/Generated/*
 SourceData/AbilityKits/Generated_Smoke/*
+SourceData/AbilityKits/Generated_B0_*/
 
 # Seed assets (large binary files)
 Content/Seed/

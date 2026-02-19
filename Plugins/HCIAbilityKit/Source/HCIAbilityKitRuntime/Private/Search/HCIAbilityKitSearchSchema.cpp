@@ -9,7 +9,7 @@ FString MakeSearchableText(const FString& Id, const FString& DisplayName)
 	return (Id + TEXT(" ") + DisplayName).ToLower();
 }
 
-bool ContainsAnyKeyword(const FString& Text, const TArray<const TCHAR*>& Keywords)
+bool ContainsAnyKeywordForSchema(const FString& Text, const TArray<const TCHAR*>& Keywords)
 {
 	for (const TCHAR* Keyword : Keywords)
 	{
@@ -235,19 +235,19 @@ EHCIAbilityElement FHCIAbilitySearchSchema::ResolveElement(const FString& Id, co
 {
 	const FString Text = MakeSearchableText(Id, DisplayName);
 
-	if (ContainsAnyKeyword(Text, { TEXT("fire"), TEXT("flame"), TEXT("burn"), TEXT("火") }))
+	if (ContainsAnyKeywordForSchema(Text, { TEXT("fire"), TEXT("flame"), TEXT("burn"), TEXT("火") }))
 	{
 		return EHCIAbilityElement::Fire;
 	}
-	if (ContainsAnyKeyword(Text, { TEXT("ice"), TEXT("frost"), TEXT("chill"), TEXT("冰") }))
+	if (ContainsAnyKeywordForSchema(Text, { TEXT("ice"), TEXT("frost"), TEXT("chill"), TEXT("冰") }))
 	{
 		return EHCIAbilityElement::Ice;
 	}
-	if (ContainsAnyKeyword(Text, { TEXT("nature"), TEXT("forest"), TEXT("vine"), TEXT("wood"), TEXT("森林") }))
+	if (ContainsAnyKeywordForSchema(Text, { TEXT("nature"), TEXT("forest"), TEXT("vine"), TEXT("wood"), TEXT("森林") }))
 	{
 		return EHCIAbilityElement::Nature;
 	}
-	if (ContainsAnyKeyword(Text, { TEXT("lightning"), TEXT("thunder"), TEXT("shock"), TEXT("雷") }))
+	if (ContainsAnyKeywordForSchema(Text, { TEXT("lightning"), TEXT("thunder"), TEXT("shock"), TEXT("雷") }))
 	{
 		return EHCIAbilityElement::Lightning;
 	}
@@ -274,11 +274,11 @@ EHCIAbilityControlProfile FHCIAbilitySearchSchema::ResolveControlProfile(
 {
 	const FString Text = MakeSearchableText(Id, DisplayName);
 
-	if (ContainsAnyKeyword(Text, { TEXT("stun"), TEXT("freeze"), TEXT("root"), TEXT("knockup"), TEXT("眩晕"), TEXT("冰冻"), TEXT("禁锢") }))
+	if (ContainsAnyKeywordForSchema(Text, { TEXT("stun"), TEXT("freeze"), TEXT("root"), TEXT("knockup"), TEXT("眩晕"), TEXT("冰冻"), TEXT("禁锢") }))
 	{
 		return EHCIAbilityControlProfile::HardControl;
 	}
-	if (ContainsAnyKeyword(Text, { TEXT("slow"), TEXT("chill"), TEXT("snare"), TEXT("减速"), TEXT("迟缓") }))
+	if (ContainsAnyKeywordForSchema(Text, { TEXT("slow"), TEXT("chill"), TEXT("snare"), TEXT("减速"), TEXT("迟缓") }))
 	{
 		return EHCIAbilityControlProfile::SoftControl;
 	}
@@ -293,11 +293,11 @@ TArray<EHCIAbilityUsageScene> FHCIAbilitySearchSchema::ResolveUsageScenes(
 	TArray<EHCIAbilityUsageScene> Scenes;
 	Scenes.Add(EHCIAbilityUsageScene::General);
 
-	if (ContainsAnyKeyword(Text, { TEXT("forest"), TEXT("jungle"), TEXT("wood"), TEXT("森林") }))
+	if (ContainsAnyKeywordForSchema(Text, { TEXT("forest"), TEXT("jungle"), TEXT("wood"), TEXT("森林") }))
 	{
 		Scenes.Add(EHCIAbilityUsageScene::Forest);
 	}
-	if (ContainsAnyKeyword(Text, { TEXT("boss"), TEXT("phase2"), TEXT("p2"), TEXT("二阶段") }))
+	if (ContainsAnyKeywordForSchema(Text, { TEXT("boss"), TEXT("phase2"), TEXT("p2"), TEXT("二阶段") }))
 	{
 		Scenes.Add(EHCIAbilityUsageScene::BossPhase2);
 	}

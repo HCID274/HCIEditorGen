@@ -73,12 +73,22 @@ Scope: whole repo.
   - `Stage A-SliceA1` 已完成：路线重规划文档冻结。
   - `Stage A-SliceA2` 已完成：审计结果契约/面数提取/RuleRegistry 冻结。
   - `Stage A-SliceA3` 已完成：实战资产导入方案冻结（种子资产、RepresentingMesh 引用链、Stage B 启动门禁）。
-  - 当前切片：`Stage B-SliceB0`（种子资产清单扫描与 10k 引用链绑定验证）。
-  - B0 最新状态：
+  - `Stage B-SliceB0` 已通过：种子资产清单扫描与 10k 引用链绑定验证。
+  - B0 结果：
     - 已完成：Seed 资产体检（`/Game/Seed` 资产类型分布、StaticMesh 面数读取）。
     - 已完成：在用户授权下批量重命名 12 个 StaticMesh，命名规范化为 `SM_*`（不合规从 12 降至 0）。
-    - 待完成：`seed_mesh_manifest` build/validate 手测门禁与 B0 Pass/Fail 结论。
-  - 下一切片：`Stage B-SliceB1`（`RepresentingMesh` 字段接入与导入绑定，前提是 B0 Pass）。
+    - 已完成：`seed_mesh_manifest` build/validate（12 条）与 10k 生成绑定验证（`representing_mesh_assigned=10000`）。
+    - 已完成：UE 手测门禁，用户已反馈 `StageB-SliceB0 Pass`。
+  - `Stage B-SliceB1` 已通过：`RepresentingMesh` 字段接入与导入绑定。
+  - B1 最新状态：
+    - 已完成：`FHCIAbilityKitParsedData` 增加 `RepresentingMeshPath`，并解析 `representing_mesh`（可选）字段。
+    - 已完成：`UHCIAbilityKitAsset` 增加 `RepresentingMesh(TSoftObjectPtr<UStaticMesh>)`。
+    - 已完成：Factory 增加 `E1006` 校验（路径格式/目标存在/类型为 StaticMesh）并完成 Import/Reimport 绑定。
+    - 已完成：Python Hook patch 支持可选 `representing_mesh` 覆盖。
+    - 已完成：UE 编译通过（`Build.bat HCIEditorGenEditor Win64 Development ...`）。
+    - 已完成：UE 导入/重导手测门禁，用户已反馈 `StageB-SliceB1 Pass`。
+  - 当前切片：`Stage B-SliceB2`（`AssetRegistry + FAssetData` 全量枚举）。
+  - 下一切片：`Stage B-SliceB3`（异步分片执行与进度汇报）。
 
 ## 9. 用户协作习惯（固定）
 

@@ -3,10 +3,14 @@
 #include "HCIAbilityKitAsset.h"
 #include "Services/HCIAbilityKitParserService.h"
 
+#include "AssetRegistry/AssetRegistryModule.h"
 #include "EditorFramework/AssetImportData.h"
+#include "Engine/StaticMesh.h"
 #include "Framework/Notifications/NotificationManager.h"
 #include "Misc/FeedbackContext.h"
+#include "Misc/PackageName.h"
 #include "Misc/Paths.h"
+#include "Modules/ModuleManager.h"
 #include "Search/HCIAbilityKitSearchIndexService.h"
 #include "Widgets/Notifications/SNotificationList.h"
 
@@ -18,11 +22,11 @@ namespace
 /**
  * 在虚幻编辑器中显示导入/重导入失败的桌面通知
  */
-void ShowReimportFailureNotification(const UObject* Asset, const FString& Reason)
+void ShowFailureNotification(const FString& Prefix, const UObject* Asset, const FString& Reason)
 {
 #if WITH_EDITOR
-	const FString AssetLabel = Asset ? Asset->GetName() : TEXT("<InvalidAsset>");
-	const FText Message = FText::FromString(FString::Printf(TEXT("Reimport failed for %s: %s"), *AssetLabel, *Reason));
+	const FString AssetLabel = Asset ? Asset->GetName() : TEXT("HCIAbilityKit");
+	const FText Message = FText::FromString(FString::Printf(TEXT("%s failed for %s: %s"), *Prefix, *AssetLabel, *Reason));
 
 	FNotificationInfo NotificationInfo(Message);
 	NotificationInfo.bFireAndForget = true;
@@ -36,9 +40,68 @@ void ShowReimportFailureNotification(const UObject* Asset, const FString& Reason
 		Notification->SetCompletionState(SNotificationItem::CS_Fail);
 	}
 #else
+	(void)Prefix;
 	(void)Asset;
 	(void)Reason;
 #endif
+}
+
+void ShowImportFailureNotification(const FString& Reason)
+{
+	ShowFailureNotification(TEXT("Import"), nullptr, Reason);
+}
+
+void ShowReimportFailureNotification(const UObject* Asset, const FString& Reason)
+{
+	ShowFailureNotification(TEXT("Reimport"), Asset, Reason);
+}
+
+bool ValidateRepresentingMeshPath(
+	const FString& SourceFilename,
+	const FString& RepresentingMeshPath,
+	FHCIAbilityKitParseError& OutError)
+{
+	if (RepresentingMeshPath.IsEmpty())
+	{
+		return true;
+	}
+
+	if (!FPackageName::IsValidObjectPath(RepresentingMeshPath))
+	{
+		OutError.Code = TEXT("E1006");
+		OutError.File = SourceFilename;
+		OutError.Field = TEXT("representing_mesh");
+		OutError.Reason = TEXT("Invalid UE object path format");
+		OutError.Hint = TEXT("Use UE long object path format: /Game/.../Asset.Asset");
+		OutError.Detail = RepresentingMeshPath;
+		return false;
+	}
+
+	const FAssetRegistryModule& AssetRegistryModule = FModuleManager::LoadModuleChecked<FAssetRegistryModule>("AssetRegistry");
+	const FAssetData AssetData = AssetRegistryModule.Get().GetAssetByObjectPath(FSoftObjectPath(RepresentingMeshPath));
+	if (!AssetData.IsValid())
+	{
+		OutError.Code = TEXT("E1006");
+		OutError.File = SourceFilename;
+		OutError.Field = TEXT("representing_mesh");
+		OutError.Reason = TEXT("Target asset does not exist");
+		OutError.Hint = TEXT("Ensure representing_mesh points to an existing /Game StaticMesh asset");
+		OutError.Detail = RepresentingMeshPath;
+		return false;
+	}
+
+	if (AssetData.AssetClassPath != UStaticMesh::StaticClass()->GetClassPathName())
+	{
+		OutError.Code = TEXT("E1006");
+		OutError.File = SourceFilename;
+		OutError.Field = TEXT("representing_mesh");
+		OutError.Reason = TEXT("Target asset is not UStaticMesh");
+		OutError.Hint = TEXT("Bind representing_mesh to a StaticMesh object path");
+		OutError.Detail = FString::Printf(TEXT("%s (class=%s)"), *RepresentingMeshPath, *AssetData.AssetClassPath.ToString());
+		return false;
+	}
+
+	return true;
 }
 }
 
@@ -89,7 +152,24 @@ UObject* UHCIAbilityKitFactory::FactoryCreateFile(
 		{
 			UE_LOG(LogHCIAbilityKitFactory, Error, TEXT("Import detail: %s"), *ParseError.Detail);
 		}
+		ShowImportFailureNotification(ErrorMsg);
 		
+		bOutOperationCanceled = true;
+		return nullptr;
+	}
+	if (!ValidateRepresentingMeshPath(Filename, ParsedData.RepresentingMeshPath, ParseError))
+	{
+		const FString ErrorMsg = ParseError.ToContractString();
+		if (Warn)
+		{
+			Warn->Logf(ELogVerbosity::Error, TEXT("HCIAbilityKit import failed: %s"), *ErrorMsg);
+		}
+		UE_LOG(LogHCIAbilityKitFactory, Error, TEXT("Import failed: %s"), *ErrorMsg);
+		if (!ParseError.Detail.IsEmpty())
+		{
+			UE_LOG(LogHCIAbilityKitFactory, Error, TEXT("Import detail: %s"), *ParseError.Detail);
+		}
+		ShowImportFailureNotification(ErrorMsg);
 		bOutOperationCanceled = true;
 		return nullptr;
 	}
@@ -98,6 +178,7 @@ UObject* UHCIAbilityKitFactory::FactoryCreateFile(
 	UHCIAbilityKitAsset* NewAsset = NewObject<UHCIAbilityKitAsset>(InParent, InClass, InName, Flags);
 	if (!NewAsset)
 	{
+		ShowImportFailureNotification(TEXT("Failed to create UHCIAbilityKitAsset object"));
 		bOutOperationCanceled = true;
 		return nullptr;
 	}
@@ -216,6 +297,17 @@ EReimportResult::Type UHCIAbilityKitFactory::Reimport(UObject* Obj)
 		ShowReimportFailureNotification(Asset, ErrorMsg);
 		return EReimportResult::Failed;
 	}
+	if (!ValidateRepresentingMeshPath(FilenameToLoad, ParsedData.RepresentingMeshPath, ParseError))
+	{
+		const FString ErrorMsg = ParseError.ToContractString();
+		UE_LOG(LogHCIAbilityKitFactory, Error, TEXT("Reimport failed: %s"), *ErrorMsg);
+		if (!ParseError.Detail.IsEmpty())
+		{
+			UE_LOG(LogHCIAbilityKitFactory, Error, TEXT("Reimport detail: %s"), *ParseError.Detail);
+		}
+		ShowReimportFailureNotification(Asset, ErrorMsg);
+		return EReimportResult::Failed;
+	}
 
 	// 修改资产前记录快照，以支持虚幻引擎的撤销（Undo）系统
 	Asset->Modify();
@@ -244,4 +336,7 @@ void UHCIAbilityKitFactory::ApplyParsedToAsset(UHCIAbilityKitAsset* Asset, const
 	Asset->Id = Parsed.Id;
 	Asset->DisplayName = Parsed.DisplayName;
 	Asset->Damage = Parsed.Damage;
+	Asset->RepresentingMesh = Parsed.RepresentingMeshPath.IsEmpty()
+		? TSoftObjectPtr<UStaticMesh>()
+		: TSoftObjectPtr<UStaticMesh>(FSoftObjectPath(Parsed.RepresentingMeshPath));
 }

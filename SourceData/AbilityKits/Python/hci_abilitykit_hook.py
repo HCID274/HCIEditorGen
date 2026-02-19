@@ -102,6 +102,28 @@ def main() -> None:
                 }
             )
 
+        if "representing_mesh_ai" in data:
+            if not isinstance(data["representing_mesh_ai"], str):
+                _write_response(
+                    response_file,
+                    _error_payload(
+                        "E1003",
+                        "representing_mesh_ai",
+                        "Invalid field type",
+                        "representing_mesh_ai must be a string",
+                    ),
+                )
+                return
+
+            response["patch"]["representing_mesh"] = data["representing_mesh_ai"]
+            response["audit"].append(
+                {
+                    "level": "info",
+                    "code": "A1003",
+                    "message": "Applied representing_mesh from representing_mesh_ai",
+                }
+            )
+
         _write_response(response_file, response)
         if unreal:
             unreal.log(f"[HCIAbilityKit] Python hook passed: {source_file}")

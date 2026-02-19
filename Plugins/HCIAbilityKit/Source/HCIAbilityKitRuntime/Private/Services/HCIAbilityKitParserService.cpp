@@ -195,7 +195,28 @@ bool FHCIAbilityKitParserService::TryParseKitFile(
 	}
 	OutParsed.DisplayName = DisplayNameTmp;
 
-	// 6. 解析参数对象 (params)
+	// 6. 解析代表性网格路径 (representing_mesh，可选)
+	if (RootObject->HasField(TEXT("representing_mesh")))
+	{
+		FString RepresentingMeshPathTmp;
+		if (!RootObject->TryGetStringField(TEXT("representing_mesh"), RepresentingMeshPathTmp))
+		{
+			OutError = MakeParseError(
+				TEXT("E1003"),
+				FullFilename,
+				TEXT("representing_mesh"),
+				TEXT("Invalid field type"),
+				TEXT("representing_mesh must be a string"));
+			return false;
+		}
+		OutParsed.RepresentingMeshPath = RepresentingMeshPathTmp;
+	}
+	else
+	{
+		OutParsed.RepresentingMeshPath.Reset();
+	}
+
+	// 7. 解析参数对象 (params)
 	if (!RootObject->HasField(TEXT("params")))
 	{
 		OutError = MakeParseError(
@@ -229,7 +250,7 @@ bool FHCIAbilityKitParserService::TryParseKitFile(
 		return false;
 	}
 
-	// 7. 解析基础伤害数值 (damage)
+	// 8. 解析基础伤害数值 (damage)
 	double DamageTmp;
 	if (!(*ParamsObj)->TryGetNumberField(TEXT("damage"), DamageTmp))
 	{
@@ -243,7 +264,7 @@ bool FHCIAbilityKitParserService::TryParseKitFile(
 	}
 	OutParsed.Damage = static_cast<float>(DamageTmp);
 
-	// 8. 调用 Python 钩子脚本进行深度处理或校验
+	// 9. 调用 Python 钩子脚本进行深度处理或校验
 	if (GPythonHook)
 	{
 		if (!GPythonHook(FullFilename, OutParsed, OutError))

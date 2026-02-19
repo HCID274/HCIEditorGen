@@ -18,6 +18,8 @@ struct HCIABILITYKITRUNTIME_API FHCIAbilityKitParsedData
 	FString DisplayName;
 	/** 技能的基础伤害数值 */
 	float Damage = 0.0f;
+	/** 代表性网格的 UE 长对象路径（可选） */
+	FString RepresentingMeshPath;
 };
 
 /**

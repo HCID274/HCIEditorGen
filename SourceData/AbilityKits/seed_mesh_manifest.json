@@ -1,0 +1,60 @@
+{
+  "schema_version": 1,
+  "generated_at_utc": "2026-02-19T11:13:42.596007+00:00",
+  "seed_root": "/Game/Seed",
+  "content_dir": "Content",
+  "name_prefixes": [
+    "SM_"
+  ],
+  "count": 12,
+  "entries": [
+    {
+      "object_path": "/Game/Seed/SM_banquet_lamb_rack_of_ribs_wktpfaks_raw1.SM_banquet_lamb_rack_of_ribs_wktpfaks_raw1",
+      "source_file": "Content/Seed/SM_banquet_lamb_rack_of_ribs_wktpfaks_raw1.uasset"
+    },
+    {
+      "object_path": "/Game/Seed/SM_banquet_roasted_quail_wktnfbds_raw1.SM_banquet_roasted_quail_wktnfbds_raw1",
+      "source_file": "Content/Seed/SM_banquet_roasted_quail_wktnfbds_raw1.uasset"
+    },
+    {
+      "object_path": "/Game/Seed/SM_industrial_junkyard_propane_tank_metal_xf3pbjy_raw1.SM_industrial_junkyard_propane_tank_metal_xf3pbjy_raw1",
+      "source_file": "Content/Seed/SM_industrial_junkyard_propane_tank_metal_xf3pbjy_raw1.uasset"
+    },
+    {
+      "object_path": "/Game/Seed/SM_roasted_chicken_leg_wd5ffbnaa_raw1.SM_roasted_chicken_leg_wd5ffbnaa_raw1",
+      "source_file": "Content/Seed/SM_roasted_chicken_leg_wd5ffbnaa_raw1.uasset"
+    },
+    {
+      "object_path": "/Game/Seed/SM_rusty_wheel_vj2meecs_raw1.SM_rusty_wheel_vj2meecs_raw1",
+      "source_file": "Content/Seed/SM_rusty_wheel_vj2meecs_raw1.uasset"
+    },
+    {
+      "object_path": "/Game/Seed/SM_srt_viper_gts_r.SM_srt_viper_gts_r",
+      "source_file": "Content/Seed/SM_srt_viper_gts_r.uasset"
+    },
+    {
+      "object_path": "/Game/Seed/SM_VR_room.SM_VR_room",
+      "source_file": "Content/Seed/SM_VR_room.uasset"
+    },
+    {
+      "object_path": "/Game/Seed/SM_vrchat_milk_sugar_latte.SM_vrchat_milk_sugar_latte",
+      "source_file": "Content/Seed/SM_vrchat_milk_sugar_latte.uasset"
+    },
+    {
+      "object_path": "/Game/Seed/SM_vrchat_rio.SM_vrchat_rio",
+      "source_file": "Content/Seed/SM_vrchat_rio.uasset"
+    },
+    {
+      "object_path": "/Game/Seed/SM_water_hole.SM_water_hole",
+      "source_file": "Content/Seed/SM_water_hole.uasset"
+    },
+    {
+      "object_path": "/Game/Seed/SM_wave_girl_ai_generated.SM_wave_girl_ai_generated",
+      "source_file": "Content/Seed/SM_wave_girl_ai_generated.uasset"
+    },
+    {
+      "object_path": "/Game/Seed/SM_wooden_table_veigfjmaw_high1.SM_wooden_table_veigfjmaw_high1",
+      "source_file": "Content/Seed/SM_wooden_table_veigfjmaw_high1.uasset"
+    }
+  ]
+}

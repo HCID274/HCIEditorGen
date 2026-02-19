@@ -25,7 +25,7 @@ FString MakeNormalizedText(const FString& Input)
 	return Output;
 }
 
-bool ContainsAnyKeyword(const FString& Text, const TArray<const TCHAR*>& Keywords)
+bool ContainsAnyKeywordForQuery(const FString& Text, const TArray<const TCHAR*>& Keywords)
 {
 	for (const TCHAR* Keyword : Keywords)
 	{
@@ -220,56 +220,56 @@ FHCIAbilitySearchQuery FHCIAbilityKitSearchQueryService::ParseQuery(
 
 	const FString& Text = Query.NormalizedText;
 
-	if (ContainsAnyKeyword(Text, { TEXT("fire"), TEXT("flame"), TEXT("burn"), TEXT("火") }))
+	if (ContainsAnyKeywordForQuery(Text, { TEXT("fire"), TEXT("flame"), TEXT("burn"), TEXT("火") }))
 	{
 		Query.RequiredElement = EHCIAbilityElement::Fire;
 	}
-	else if (ContainsAnyKeyword(Text, { TEXT("ice"), TEXT("frost"), TEXT("chill"), TEXT("冰") }))
+	else if (ContainsAnyKeywordForQuery(Text, { TEXT("ice"), TEXT("frost"), TEXT("chill"), TEXT("冰") }))
 	{
 		Query.RequiredElement = EHCIAbilityElement::Ice;
 	}
-	else if (ContainsAnyKeyword(Text, { TEXT("nature"), TEXT("forest"), TEXT("jungle"), TEXT("森林") }))
+	else if (ContainsAnyKeywordForQuery(Text, { TEXT("nature"), TEXT("forest"), TEXT("jungle"), TEXT("森林") }))
 	{
 		Query.RequiredElement = EHCIAbilityElement::Nature;
 	}
-	else if (ContainsAnyKeyword(Text, { TEXT("lightning"), TEXT("thunder"), TEXT("shock"), TEXT("雷") }))
+	else if (ContainsAnyKeywordForQuery(Text, { TEXT("lightning"), TEXT("thunder"), TEXT("shock"), TEXT("雷") }))
 	{
 		Query.RequiredElement = EHCIAbilityElement::Lightning;
 	}
 
-	if (ContainsAnyKeyword(Text, { TEXT("forest"), TEXT("jungle"), TEXT("森林") }))
+	if (ContainsAnyKeywordForQuery(Text, { TEXT("forest"), TEXT("jungle"), TEXT("森林") }))
 	{
 		Query.RequiredScenes.AddUnique(EHCIAbilityUsageScene::Forest);
 	}
-	if (ContainsAnyKeyword(Text, { TEXT("boss"), TEXT("phase2"), TEXT("二阶段") }))
+	if (ContainsAnyKeywordForQuery(Text, { TEXT("boss"), TEXT("phase2"), TEXT("二阶段") }))
 	{
 		Query.RequiredScenes.AddUnique(EHCIAbilityUsageScene::BossPhase2);
 	}
 
-	if (ContainsAnyKeyword(Text, { TEXT("hard control"), TEXT("hard_control"), TEXT("stun"), TEXT("freeze"), TEXT("眩晕"), TEXT("冰冻"), TEXT("硬控") }))
+	if (ContainsAnyKeywordForQuery(Text, { TEXT("hard control"), TEXT("hard_control"), TEXT("stun"), TEXT("freeze"), TEXT("眩晕"), TEXT("冰冻"), TEXT("硬控") }))
 	{
 		Query.RequiredControlProfile = EHCIAbilityControlProfile::HardControl;
 		Query.bRequireAnyControl = true;
 	}
-	else if (ContainsAnyKeyword(Text, { TEXT("soft control"), TEXT("soft_control"), TEXT("slow"), TEXT("减速"), TEXT("软控") }))
+	else if (ContainsAnyKeywordForQuery(Text, { TEXT("soft control"), TEXT("soft_control"), TEXT("slow"), TEXT("减速"), TEXT("软控") }))
 	{
 		Query.RequiredControlProfile = EHCIAbilityControlProfile::SoftControl;
 		Query.bRequireAnyControl = true;
 	}
-	else if (ContainsAnyKeyword(Text, { TEXT("control"), TEXT("控制"), TEXT("控场"), TEXT("控制倾向") }))
+	else if (ContainsAnyKeywordForQuery(Text, { TEXT("control"), TEXT("控制"), TEXT("控场"), TEXT("控制倾向") }))
 	{
 		Query.bRequireAnyControl = true;
 	}
 
-	if (ContainsAnyKeyword(Text, { TEXT("high burst"), TEXT("high_damage"), TEXT("高爆发"), TEXT("高伤"), TEXT("高伤害"), TEXT("爆发") }))
+	if (ContainsAnyKeywordForQuery(Text, { TEXT("high burst"), TEXT("high_damage"), TEXT("高爆发"), TEXT("高伤"), TEXT("高伤害"), TEXT("爆发") }))
 	{
 		Query.DamagePreference = EHCIAbilityDamagePreference::PreferHigh;
 	}
-	else if (ContainsAnyKeyword(Text, { TEXT("medium"), TEXT("中等") }))
+	else if (ContainsAnyKeywordForQuery(Text, { TEXT("medium"), TEXT("中等") }))
 	{
 		Query.DamagePreference = EHCIAbilityDamagePreference::PreferMedium;
 	}
-	else if (ContainsAnyKeyword(Text, { TEXT("low"), TEXT("lower"), TEXT("不高"), TEXT("更低"), TEXT("低伤") }))
+	else if (ContainsAnyKeywordForQuery(Text, { TEXT("low"), TEXT("lower"), TEXT("不高"), TEXT("更低"), TEXT("低伤") }))
 	{
 		Query.DamagePreference = EHCIAbilityDamagePreference::PreferLow;
 	}
@@ -283,7 +283,7 @@ FHCIAbilitySearchQuery FHCIAbilityKitSearchQueryService::ParseQuery(
 		}
 	}
 
-	if (!Query.SimilarToId.IsEmpty() && ContainsAnyKeyword(Text, { TEXT("lower"), TEXT("更低"), TEXT("不高"), TEXT("低") }))
+	if (!Query.SimilarToId.IsEmpty() && ContainsAnyKeywordForQuery(Text, { TEXT("lower"), TEXT("更低"), TEXT("不高"), TEXT("低") }))
 	{
 		Query.bRequireLowerDamageThanReference = true;
 	}

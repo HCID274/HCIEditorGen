@@ -8,6 +8,7 @@
 class UAssetImportData;
 class FAssetRegistryTagsContext;
 #endif
+class UStaticMesh;
 
 /**
  * HCI 技能组件资产类
@@ -34,6 +35,10 @@ public:
 	/** 技能造成的基础伤害数值 */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "HCI|Params")
 	float Damage = 0.0f;
+
+	/** 代表性网格（用于资产审计与场景可视化） */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "HCI|Audit")
+	TSoftObjectPtr<UStaticMesh> RepresentingMesh;
 
 #if WITH_EDITORONLY_DATA
 	/** 资产导入数据，记录了源文件的路径、哈希值等信息，用于实现重导入（Reimport）功能 */

@@ -3,6 +3,7 @@
 #include "ContentBrowserMenuContexts.h"
 #include "Dom/JsonObject.h"
 #include "Factories/HCIAbilityKitFactory.h"
+#include "HAL/IConsoleManager.h"
 #include "HAL/FileManager.h"
 #include "HAL/PlatformProcess.h"
 #include "HCIAbilityKitAsset.h"
@@ -13,13 +14,17 @@
 #include "Misc/Paths.h"
 #include "Modules/ModuleManager.h"
 #include "Search/HCIAbilityKitSearchIndexService.h"
+#include "Search/HCIAbilityKitSearchQueryService.h"
 #include "Serialization/JsonReader.h"
 #include "Serialization/JsonSerializer.h"
 #include "Services/HCIAbilityKitParserService.h"
 #include "Styling/AppStyle.h"
 #include "ToolMenus.h"
 
+DEFINE_LOG_CATEGORY_STATIC(LogHCIAbilityKitSearchQuery, Log, All);
+
 static TObjectPtr<UHCIAbilityKitFactory> GHCIAbilityKitFactory;
+static TUniquePtr<FAutoConsoleCommand> GHCIAbilityKitSearchCommand;
 static const TCHAR* GHCIAbilityKitPythonScriptPath = TEXT("SourceData/AbilityKits/Python/hci_abilitykit_hook.py");
 
 static FString HCI_ToPythonStringLiteral(const FString& Value)
@@ -49,6 +54,78 @@ static void HCI_DeleteTempFile(const FString& Filename)
 	if (!Filename.IsEmpty())
 	{
 		IFileManager::Get().Delete(*Filename, false, true, true);
+	}
+}
+
+static void HCI_RunAbilityKitSearchCommand(const TArray<FString>& Args)
+{
+	if (Args.Num() == 0)
+	{
+		UE_LOG(
+			LogHCIAbilityKitSearchQuery,
+			Warning,
+			TEXT("[HCIAbilityKit][SearchQuery] usage: HCIAbilityKit.Search <query text> [topk]"));
+		return;
+	}
+
+	int32 TopK = 5;
+	int32 QueryTokenCount = Args.Num();
+	if (Args.Num() >= 2)
+	{
+		int32 ParsedTopK = 0;
+		if (LexTryParseString(ParsedTopK, *Args.Last()))
+		{
+			TopK = ParsedTopK;
+			QueryTokenCount = Args.Num() - 1;
+		}
+	}
+
+	TArray<FString> QueryTokens;
+	QueryTokens.Reserve(QueryTokenCount);
+	for (int32 Index = 0; Index < QueryTokenCount; ++Index)
+	{
+		QueryTokens.Add(Args[Index]);
+	}
+	const FString QueryText = FString::Join(QueryTokens, TEXT(" "));
+	const FHCIAbilitySearchResult QueryResult = FHCIAbilityKitSearchQueryService::RunQuery(
+		QueryText,
+		TopK,
+		FHCIAbilityKitSearchIndexService::Get().GetIndex());
+
+	UE_LOG(
+		LogHCIAbilityKitSearchQuery,
+		Display,
+		TEXT("[HCIAbilityKit][SearchQuery] raw=\"%s\" parsed=%s"),
+		*QueryText,
+		*QueryResult.ParsedQuery.ToSummaryString());
+
+	UE_LOG(
+		LogHCIAbilityKitSearchQuery,
+		Display,
+		TEXT("[HCIAbilityKit][SearchQuery] %s"),
+		*QueryResult.ToSummaryString());
+
+	if (QueryResult.Candidates.Num() > 0)
+	{
+		for (const FHCIAbilitySearchCandidate& Candidate : QueryResult.Candidates)
+		{
+			UE_LOG(
+				LogHCIAbilityKitSearchQuery,
+				Display,
+				TEXT("[HCIAbilityKit][SearchQuery] hit id=%s score=%.2f"),
+				*Candidate.Id,
+				Candidate.Score);
+		}
+		return;
+	}
+
+	for (const FString& Suggestion : QueryResult.Suggestions)
+	{
+		UE_LOG(
+			LogHCIAbilityKitSearchQuery,
+			Warning,
+			TEXT("[HCIAbilityKit][SearchQuery] suggestion=%s"),
+			*Suggestion);
 	}
 }
 
@@ -259,6 +336,14 @@ void FHCIAbilityKitEditorModule::StartupModule()
 
 	GHCIAbilityKitFactory = NewObject<UHCIAbilityKitFactory>(GetTransientPackage());
 	GHCIAbilityKitFactory->AddToRoot();
+
+	if (!GHCIAbilityKitSearchCommand.IsValid())
+	{
+		GHCIAbilityKitSearchCommand = MakeUnique<FAutoConsoleCommand>(
+			TEXT("HCIAbilityKit.Search"),
+			TEXT("Search AbilityKit assets by natural language. Usage: HCIAbilityKit.Search <query text> [topk]"),
+			FConsoleCommandWithArgsDelegate::CreateStatic(&HCI_RunAbilityKitSearchCommand));
+	}
 }
 
 void FHCIAbilityKitEditorModule::ShutdownModule()
@@ -270,6 +355,8 @@ void FHCIAbilityKitEditorModule::ShutdownModule()
 		GHCIAbilityKitFactory->RemoveFromRoot();
 		GHCIAbilityKitFactory = nullptr;
 	}
+
+	GHCIAbilityKitSearchCommand.Reset();
 }
 
 IMPLEMENT_MODULE(FHCIAbilityKitEditorModule, HCIAbilityKitEditor)

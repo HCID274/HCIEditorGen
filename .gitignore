@@ -32,3 +32,16 @@ Plugins/*/Binaries/
 Plugins/*/Intermediate/
 Plugins/*/Saved/
 Plugins/Developer/RiderLink/
+SourceData/AbilityKits/Generated/*
+SourceData/AbilityKits/Generated_Smoke/*
+
+# Seed assets (large binary files)
+Content/Seed/
+
+# UE5 World Partition / OFPA temp files
+Content/__ExternalActors__/
+Content/__ExternalObjects__/
+
+# Default untitled map (editor auto-created)
+Content/Untitled.umap
+Content/Untitled_HLOD0_Instancing.uasset

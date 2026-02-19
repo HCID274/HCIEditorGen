@@ -23,7 +23,8 @@ public class HCIAbilityKitRuntime : ModuleRules
 		PrivateDependencyModuleNames.AddRange(
 			new string[]
 			{
-				"Json"
+				"Json",
+				"AssetRegistry"
 			});
 	}
 }

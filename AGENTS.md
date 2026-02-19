@@ -94,8 +94,14 @@ Scope: whole repo.
     - 已完成：Editor 新增控制台命令 `HCIAbilityKit.AuditScan [log_top_n]`，输出扫描统计与样本行。
     - 已完成：UE 编译通过（`Build.bat HCIEditorGenEditor Win64 Development ...`）。
     - 已完成：UE 手测通过（`assets=2`，其中 1 个历史资产字段为空导致覆盖率 `50%`，符合预期；用户反馈 `Pass`）。
-  - 当前切片：`Stage B-SliceB3`（异步分片执行与进度汇报）。
-  - 下一切片：`Stage B-SliceB4`（任务中断/重试与失败收敛）。
+  - 当前切片：`Stage B-SliceB4`（任务中断/重试与失败收敛）。
+  - 下一切片：`Stage B-SliceB5`（采集 `triangle_count` 相关 Tags）。
+  - B3 最新状态：
+    - 已完成：新增 `HCIAbilityKit.AuditScanAsync [batch_size] [log_top_n]`，按分片执行 `AssetRegistry + FAssetData` 扫描，避免单帧全量阻塞。
+    - 已完成：新增 `HCIAbilityKit.AuditScanProgress`，可在扫描期间查询进度。
+    - 已完成：异步扫描输出 `progress=%` 与完成摘要（覆盖率/耗时/样本行）。
+    - 已完成：UE 编译通过（`Build.bat HCIEditorGenEditor Win64 Development ...`）。
+    - 已完成：UE 手测通过（`progress=idle -> start -> 50% -> 100% -> summary -> progress=idle`，用户反馈 `Pass`）。
 
 ## 9. 用户协作习惯（固定）
 

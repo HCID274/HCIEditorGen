@@ -1,8 +1,11 @@
 #include "HCIAbilityKitEditorModule.h"
 
+#include "AssetRegistry/AssetRegistryModule.h"
+#include "Audit/HCIAbilityKitAuditTagNames.h"
 #include "ContentBrowserMenuContexts.h"
 #include "Dom/JsonObject.h"
 #include "Audit/HCIAbilityKitAuditScanService.h"
+#include "Containers/Ticker.h"
 #include "Factories/HCIAbilityKitFactory.h"
 #include "HAL/IConsoleManager.h"
 #include "HAL/FileManager.h"
@@ -28,7 +31,24 @@ DEFINE_LOG_CATEGORY_STATIC(LogHCIAbilityKitAuditScan, Log, All);
 static TObjectPtr<UHCIAbilityKitFactory> GHCIAbilityKitFactory;
 static TUniquePtr<FAutoConsoleCommand> GHCIAbilityKitSearchCommand;
 static TUniquePtr<FAutoConsoleCommand> GHCIAbilityKitAuditScanCommand;
+static TUniquePtr<FAutoConsoleCommand> GHCIAbilityKitAuditScanAsyncCommand;
+static TUniquePtr<FAutoConsoleCommand> GHCIAbilityKitAuditScanProgressCommand;
 static const TCHAR* GHCIAbilityKitPythonScriptPath = TEXT("SourceData/AbilityKits/Python/hci_abilitykit_hook.py");
+
+struct FHCIAbilityKitAuditScanAsyncState
+{
+	bool bRunning = false;
+	int32 BatchSize = 256;
+	int32 LogTopN = 10;
+	int32 NextIndex = 0;
+	int32 LastLogPercentBucket = -1;
+	double StartTimeSeconds = 0.0;
+	TArray<FAssetData> AssetDatas;
+	FHCIAbilityKitAuditScanSnapshot Snapshot;
+	FTSTicker::FDelegateHandle TickHandle;
+};
+
+static FHCIAbilityKitAuditScanAsyncState GHCIAbilityKitAuditScanAsyncState;
 
 static FString HCI_ToPythonStringLiteral(const FString& Value)
 {
@@ -58,6 +78,125 @@ static void HCI_DeleteTempFile(const FString& Filename)
 	{
 		IFileManager::Get().Delete(*Filename, false, true, true);
 	}
+}
+
+static void HCI_ParseAuditRowFromAssetData(const FAssetData& AssetData, FHCIAbilityKitAuditAssetRow& OutRow)
+{
+	OutRow.AssetPath = AssetData.GetObjectPathString();
+	OutRow.AssetName = AssetData.AssetName.ToString();
+
+	AssetData.GetTagValue(HCIAbilityKitAuditTagNames::Id, OutRow.Id);
+	AssetData.GetTagValue(HCIAbilityKitAuditTagNames::DisplayName, OutRow.DisplayName);
+	AssetData.GetTagValue(HCIAbilityKitAuditTagNames::RepresentingMesh, OutRow.RepresentingMeshPath);
+
+	FString DamageText;
+	if (AssetData.GetTagValue(HCIAbilityKitAuditTagNames::Damage, DamageText))
+	{
+		LexTryParseString(OutRow.Damage, *DamageText);
+	}
+}
+
+static void HCI_AccumulateAuditCoverage(const FHCIAbilityKitAuditAssetRow& Row, FHCIAbilityKitAuditScanStats& InOutStats)
+{
+	if (!Row.Id.IsEmpty())
+	{
+		++InOutStats.IdCoveredCount;
+	}
+	if (!Row.DisplayName.IsEmpty())
+	{
+		++InOutStats.DisplayNameCoveredCount;
+	}
+	if (!Row.RepresentingMeshPath.IsEmpty())
+	{
+		++InOutStats.RepresentingMeshCoveredCount;
+	}
+}
+
+static void HCI_LogAuditRows(const TCHAR* Prefix, const TArray<FHCIAbilityKitAuditAssetRow>& Rows, const int32 LogTopN)
+{
+	const int32 CountToLog = FMath::Min(LogTopN, Rows.Num());
+	for (int32 Index = 0; Index < CountToLog; ++Index)
+	{
+		const FHCIAbilityKitAuditAssetRow& Row = Rows[Index];
+		UE_LOG(
+			LogHCIAbilityKitAuditScan,
+			Display,
+			TEXT("%s row=%d asset=%s id=%s display_name=%s damage=%.2f representing_mesh=%s"),
+			Prefix,
+			Index,
+			*Row.AssetPath,
+			*Row.Id,
+			*Row.DisplayName,
+			Row.Damage,
+			*Row.RepresentingMeshPath);
+	}
+}
+
+static void HCI_ResetAuditScanAsyncState()
+{
+	GHCIAbilityKitAuditScanAsyncState.bRunning = false;
+	GHCIAbilityKitAuditScanAsyncState.BatchSize = 256;
+	GHCIAbilityKitAuditScanAsyncState.LogTopN = 10;
+	GHCIAbilityKitAuditScanAsyncState.NextIndex = 0;
+	GHCIAbilityKitAuditScanAsyncState.LastLogPercentBucket = -1;
+	GHCIAbilityKitAuditScanAsyncState.StartTimeSeconds = 0.0;
+	GHCIAbilityKitAuditScanAsyncState.AssetDatas.Reset();
+	GHCIAbilityKitAuditScanAsyncState.Snapshot = FHCIAbilityKitAuditScanSnapshot();
+	GHCIAbilityKitAuditScanAsyncState.TickHandle.Reset();
+}
+
+static bool HCI_TickAbilityKitAuditScanAsync(float DeltaSeconds)
+{
+	FHCIAbilityKitAuditScanAsyncState& State = GHCIAbilityKitAuditScanAsyncState;
+	if (!State.bRunning)
+	{
+		return false;
+	}
+
+	const int32 TotalCount = State.AssetDatas.Num();
+	const int32 StartIndex = State.NextIndex;
+	const int32 EndIndex = FMath::Min(StartIndex + State.BatchSize, TotalCount);
+	for (int32 Index = StartIndex; Index < EndIndex; ++Index)
+	{
+		FHCIAbilityKitAuditAssetRow& Row = State.Snapshot.Rows.Emplace_GetRef();
+		HCI_ParseAuditRowFromAssetData(State.AssetDatas[Index], Row);
+		HCI_AccumulateAuditCoverage(Row, State.Snapshot.Stats);
+	}
+	State.NextIndex = EndIndex;
+
+	const int32 ProgressPercent = TotalCount > 0
+		? FMath::FloorToInt((static_cast<double>(State.NextIndex) / static_cast<double>(TotalCount)) * 100.0)
+		: 100;
+	const int32 ProgressBucket = ProgressPercent / 10;
+	if (ProgressBucket > State.LastLogPercentBucket || State.NextIndex >= TotalCount)
+	{
+		State.LastLogPercentBucket = ProgressBucket;
+		UE_LOG(
+			LogHCIAbilityKitAuditScan,
+			Display,
+			TEXT("[HCIAbilityKit][AuditScanAsync] progress=%d%% processed=%d/%d"),
+			ProgressPercent,
+			State.NextIndex,
+			TotalCount);
+	}
+
+	if (State.NextIndex < TotalCount)
+	{
+		return true;
+	}
+
+	State.Snapshot.Stats.AssetCount = State.Snapshot.Rows.Num();
+	State.Snapshot.Stats.UpdatedUtc = FDateTime::UtcNow();
+	State.Snapshot.Stats.DurationMs = (FPlatformTime::Seconds() - State.StartTimeSeconds) * 1000.0;
+	UE_LOG(
+		LogHCIAbilityKitAuditScan,
+		Display,
+		TEXT("[HCIAbilityKit][AuditScanAsync] %s"),
+		*State.Snapshot.Stats.ToSummaryString());
+	HCI_LogAuditRows(TEXT("[HCIAbilityKit][AuditScanAsync]"), State.Snapshot.Rows, State.LogTopN);
+
+	HCI_ResetAuditScanAsyncState();
+	return false;
 }
 
 static void HCI_RunAbilityKitSearchCommand(const TArray<FString>& Args)
@@ -160,21 +299,97 @@ static void HCI_RunAbilityKitAuditScanCommand(const TArray<FString>& Args)
 		return;
 	}
 
-	const int32 CountToLog = FMath::Min(LogTopN, Snapshot.Rows.Num());
-	for (int32 Index = 0; Index < CountToLog; ++Index)
+	HCI_LogAuditRows(TEXT("[HCIAbilityKit][AuditScan]"), Snapshot.Rows, LogTopN);
+}
+
+static void HCI_RunAbilityKitAuditScanAsyncCommand(const TArray<FString>& Args)
+{
+	if (GHCIAbilityKitAuditScanAsyncState.bRunning)
 	{
-		const FHCIAbilityKitAuditAssetRow& Row = Snapshot.Rows[Index];
+		UE_LOG(LogHCIAbilityKitAuditScan, Warning, TEXT("[HCIAbilityKit][AuditScanAsync] scan is already running"));
+		return;
+	}
+
+	int32 BatchSize = 256;
+	int32 LogTopN = 10;
+	if (Args.Num() >= 1)
+	{
+		int32 ParsedBatchSize = 0;
+		if (LexTryParseString(ParsedBatchSize, *Args[0]))
+		{
+			BatchSize = FMath::Max(1, ParsedBatchSize);
+		}
+	}
+	if (Args.Num() >= 2)
+	{
+		int32 ParsedTopN = 0;
+		if (LexTryParseString(ParsedTopN, *Args[1]))
+		{
+			LogTopN = FMath::Max(0, ParsedTopN);
+		}
+	}
+
+	FAssetRegistryModule& AssetRegistryModule = FModuleManager::LoadModuleChecked<FAssetRegistryModule>(TEXT("AssetRegistry"));
+	FARFilter Filter;
+	Filter.ClassPaths.Add(UHCIAbilityKitAsset::StaticClass()->GetClassPathName());
+	Filter.bRecursiveClasses = true;
+
+	TArray<FAssetData> AssetDatas;
+	AssetRegistryModule.Get().GetAssets(Filter, AssetDatas);
+
+	GHCIAbilityKitAuditScanAsyncState.bRunning = true;
+	GHCIAbilityKitAuditScanAsyncState.BatchSize = BatchSize;
+	GHCIAbilityKitAuditScanAsyncState.LogTopN = LogTopN;
+	GHCIAbilityKitAuditScanAsyncState.NextIndex = 0;
+	GHCIAbilityKitAuditScanAsyncState.LastLogPercentBucket = -1;
+	GHCIAbilityKitAuditScanAsyncState.StartTimeSeconds = FPlatformTime::Seconds();
+	GHCIAbilityKitAuditScanAsyncState.AssetDatas = MoveTemp(AssetDatas);
+	GHCIAbilityKitAuditScanAsyncState.Snapshot = FHCIAbilityKitAuditScanSnapshot();
+	GHCIAbilityKitAuditScanAsyncState.Snapshot.Stats.Source = TEXT("asset_registry_fassetdata_sliced");
+	GHCIAbilityKitAuditScanAsyncState.Snapshot.Rows.Reserve(GHCIAbilityKitAuditScanAsyncState.AssetDatas.Num());
+
+	UE_LOG(
+		LogHCIAbilityKitAuditScan,
+		Display,
+		TEXT("[HCIAbilityKit][AuditScanAsync] start total=%d batch_size=%d"),
+		GHCIAbilityKitAuditScanAsyncState.AssetDatas.Num(),
+		GHCIAbilityKitAuditScanAsyncState.BatchSize);
+
+	if (GHCIAbilityKitAuditScanAsyncState.AssetDatas.Num() == 0)
+	{
 		UE_LOG(
 			LogHCIAbilityKitAuditScan,
-			Display,
-			TEXT("[HCIAbilityKit][AuditScan] row=%d asset=%s id=%s display_name=%s damage=%.2f representing_mesh=%s"),
-			Index,
-			*Row.AssetPath,
-			*Row.Id,
-			*Row.DisplayName,
-			Row.Damage,
-			*Row.RepresentingMeshPath);
+			Warning,
+			TEXT("[HCIAbilityKit][AuditScanAsync] suggestion=当前未发现 AbilityKit 资产，请先导入至少一个 .hciabilitykit 文件"));
+		HCI_ResetAuditScanAsyncState();
+		return;
 	}
+
+	GHCIAbilityKitAuditScanAsyncState.TickHandle = FTSTicker::GetCoreTicker().AddTicker(
+		FTickerDelegate::CreateStatic(&HCI_TickAbilityKitAuditScanAsync),
+		0.0f);
+}
+
+static void HCI_RunAbilityKitAuditScanProgressCommand(const TArray<FString>& Args)
+{
+	if (!GHCIAbilityKitAuditScanAsyncState.bRunning)
+	{
+		UE_LOG(LogHCIAbilityKitAuditScan, Display, TEXT("[HCIAbilityKit][AuditScanAsync] progress=idle"));
+		return;
+	}
+
+	const int32 TotalCount = GHCIAbilityKitAuditScanAsyncState.AssetDatas.Num();
+	const int32 NextIndex = GHCIAbilityKitAuditScanAsyncState.NextIndex;
+	const int32 ProgressPercent = TotalCount > 0
+		? FMath::FloorToInt((static_cast<double>(NextIndex) / static_cast<double>(TotalCount)) * 100.0)
+		: 100;
+	UE_LOG(
+		LogHCIAbilityKitAuditScan,
+		Display,
+		TEXT("[HCIAbilityKit][AuditScanAsync] progress=%d%% processed=%d/%d"),
+		ProgressPercent,
+		NextIndex,
+		TotalCount);
 }
 
 static bool HCI_ParsePythonResponse(
@@ -406,6 +621,22 @@ void FHCIAbilityKitEditorModule::StartupModule()
 			TEXT("Enumerate AbilityKit metadata via AssetRegistry only. Usage: HCIAbilityKit.AuditScan [log_top_n]"),
 			FConsoleCommandWithArgsDelegate::CreateStatic(&HCI_RunAbilityKitAuditScanCommand));
 	}
+
+	if (!GHCIAbilityKitAuditScanAsyncCommand.IsValid())
+	{
+		GHCIAbilityKitAuditScanAsyncCommand = MakeUnique<FAutoConsoleCommand>(
+			TEXT("HCIAbilityKit.AuditScanAsync"),
+			TEXT("Slice-based non-blocking scan. Usage: HCIAbilityKit.AuditScanAsync [batch_size] [log_top_n]"),
+			FConsoleCommandWithArgsDelegate::CreateStatic(&HCI_RunAbilityKitAuditScanAsyncCommand));
+	}
+
+	if (!GHCIAbilityKitAuditScanProgressCommand.IsValid())
+	{
+		GHCIAbilityKitAuditScanProgressCommand = MakeUnique<FAutoConsoleCommand>(
+			TEXT("HCIAbilityKit.AuditScanProgress"),
+			TEXT("Print current progress of HCIAbilityKit.AuditScanAsync."),
+			FConsoleCommandWithArgsDelegate::CreateStatic(&HCI_RunAbilityKitAuditScanProgressCommand));
+	}
 }
 
 void FHCIAbilityKitEditorModule::ShutdownModule()
@@ -418,8 +649,16 @@ void FHCIAbilityKitEditorModule::ShutdownModule()
 		GHCIAbilityKitFactory = nullptr;
 	}
 
+	if (GHCIAbilityKitAuditScanAsyncState.bRunning)
+	{
+		FTSTicker::GetCoreTicker().RemoveTicker(GHCIAbilityKitAuditScanAsyncState.TickHandle);
+		HCI_ResetAuditScanAsyncState();
+	}
+
 	GHCIAbilityKitSearchCommand.Reset();
 	GHCIAbilityKitAuditScanCommand.Reset();
+	GHCIAbilityKitAuditScanAsyncCommand.Reset();
+	GHCIAbilityKitAuditScanProgressCommand.Reset();
 }
 
 IMPLEMENT_MODULE(FHCIAbilityKitEditorModule, HCIAbilityKitEditor)

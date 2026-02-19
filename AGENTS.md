@@ -55,7 +55,7 @@ Scope: whole repo.
 - 错误信息必须可定位（文件/字段/原因/建议）。
 - 未通过验证的结论不得标记为“完成”。
 
-## 8. 当前进度快照（2026-02-15）
+## 8. 当前进度快照（2026-02-19）
 
 - Step 1（结构迁移）已关闭：
   - Slice1：插件双模块骨架落地并通过。
@@ -72,8 +72,13 @@ Scope: whole repo.
 - 当前主线（资产审计优先）：
   - `Stage A-SliceA1` 已完成：路线重规划文档冻结。
   - `Stage A-SliceA2` 已完成：审计结果契约/面数提取/RuleRegistry 冻结。
-  - 当前切片：`Stage A-SliceA3`（实战资产导入方案冻结：种子资产、RepresentingMesh 引用链、Stage B 启动门禁）。
-  - 下一切片：`Stage B-SliceB0`（种子资产清单扫描与 10k 引用链绑定验证）。
+  - `Stage A-SliceA3` 已完成：实战资产导入方案冻结（种子资产、RepresentingMesh 引用链、Stage B 启动门禁）。
+  - 当前切片：`Stage B-SliceB0`（种子资产清单扫描与 10k 引用链绑定验证）。
+  - B0 最新状态：
+    - 已完成：Seed 资产体检（`/Game/Seed` 资产类型分布、StaticMesh 面数读取）。
+    - 已完成：在用户授权下批量重命名 12 个 StaticMesh，命名规范化为 `SM_*`（不合规从 12 降至 0）。
+    - 待完成：`seed_mesh_manifest` build/validate 手测门禁与 B0 Pass/Fail 结论。
+  - 下一切片：`Stage B-SliceB1`（`RepresentingMesh` 字段接入与导入绑定，前提是 B0 Pass）。
 
 ## 9. 用户协作习惯（固定）
 

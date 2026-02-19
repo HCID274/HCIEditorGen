@@ -1,0 +1,1028 @@
+{
+  "root_path": "/Game/Seed",
+  "total_assets_under_seed": 191,
+  "static_mesh_count": 12,
+  "non_static_asset_count": 179,
+  "naming_noncompliant_count": 0,
+  "triangle_known_count": 12,
+  "high_poly_ge_50000_count": 9,
+  "static_meshes": [
+    {
+      "object_path": "/Game/Seed/SM_wooden_table_veigfjmaw_high1.SM_wooden_table_veigfjmaw_high1",
+      "asset_name": "SM_wooden_table_veigfjmaw_high1",
+      "package_path": "/Game/Seed",
+      "class_name": "StaticMesh",
+      "name_ok": true,
+      "triangle_lod0": 14178,
+      "triangle_source": "tag:Triangles",
+      "notes": []
+    },
+    {
+      "object_path": "/Game/Seed/SM_wave_girl_ai_generated.SM_wave_girl_ai_generated",
+      "asset_name": "SM_wave_girl_ai_generated",
+      "package_path": "/Game/Seed",
+      "class_name": "StaticMesh",
+      "name_ok": true,
+      "triangle_lod0": 762028,
+      "triangle_source": "tag:Triangles",
+      "notes": []
+    },
+    {
+      "object_path": "/Game/Seed/SM_water_hole.SM_water_hole",
+      "asset_name": "SM_water_hole",
+      "package_path": "/Game/Seed",
+      "class_name": "StaticMesh",
+      "name_ok": true,
+      "triangle_lod0": 196608,
+      "triangle_source": "tag:Triangles",
+      "notes": []
+    },
+    {
+      "object_path": "/Game/Seed/SM_VR_room.SM_VR_room",
+      "asset_name": "SM_VR_room",
+      "package_path": "/Game/Seed",
+      "class_name": "StaticMesh",
+      "name_ok": true,
+      "triangle_lod0": 3747,
+      "triangle_source": "tag:Triangles",
+      "notes": []
+    },
+    {
+      "object_path": "/Game/Seed/SM_vrchat_rio.SM_vrchat_rio",
+      "asset_name": "SM_vrchat_rio",
+      "package_path": "/Game/Seed",
+      "class_name": "StaticMesh",
+      "name_ok": true,
+      "triangle_lod0": 1588,
+      "triangle_source": "tag:Triangles",
+      "notes": []
+    },
+    {
+      "object_path": "/Game/Seed/SM_vrchat_milk_sugar_latte.SM_vrchat_milk_sugar_latte",
+      "asset_name": "SM_vrchat_milk_sugar_latte",
+      "package_path": "/Game/Seed",
+      "class_name": "StaticMesh",
+      "name_ok": true,
+      "triangle_lod0": 184464,
+      "triangle_source": "tag:Triangles",
+      "notes": []
+    },
+    {
+      "object_path": "/Game/Seed/SM_srt_viper_gts_r.SM_srt_viper_gts_r",
+      "asset_name": "SM_srt_viper_gts_r",
+      "package_path": "/Game/Seed",
+      "class_name": "StaticMesh",
+      "name_ok": true,
+      "triangle_lod0": 65140,
+      "triangle_source": "tag:Triangles",
+      "notes": []
+    },
+    {
+      "object_path": "/Game/Seed/SM_rusty_wheel_vj2meecs_raw1.SM_rusty_wheel_vj2meecs_raw1",
+      "asset_name": "SM_rusty_wheel_vj2meecs_raw1",
+      "package_path": "/Game/Seed",
+      "class_name": "StaticMesh",
+      "name_ok": true,
+      "triangle_lod0": 1000058,
+      "triangle_source": "tag:Triangles",
+      "notes": []
+    },
+    {
+      "object_path": "/Game/Seed/SM_roasted_chicken_leg_wd5ffbnaa_raw1.SM_roasted_chicken_leg_wd5ffbnaa_raw1",
+      "asset_name": "SM_roasted_chicken_leg_wd5ffbnaa_raw1",
+      "package_path": "/Game/Seed",
+      "class_name": "StaticMesh",
+      "name_ok": true,
+      "triangle_lod0": 1000000,
+      "triangle_source": "tag:Triangles",
+      "notes": []
+    },
+    {
+      "object_path": "/Game/Seed/SM_industrial_junkyard_propane_tank_metal_xf3pbjy_raw1.SM_industrial_junkyard_propane_tank_metal_xf3pbjy_raw1",
+      "asset_name": "SM_industrial_junkyard_propane_tank_metal_xf3pbjy_raw1",
+      "package_path": "/Game/Seed",
+      "class_name": "StaticMesh",
+      "name_ok": true,
+      "triangle_lod0": 1000128,
+      "triangle_source": "tag:Triangles",
+      "notes": []
+    },
+    {
+      "object_path": "/Game/Seed/SM_banquet_roasted_quail_wktnfbds_raw1.SM_banquet_roasted_quail_wktnfbds_raw1",
+      "asset_name": "SM_banquet_roasted_quail_wktnfbds_raw1",
+      "package_path": "/Game/Seed",
+      "class_name": "StaticMesh",
+      "name_ok": true,
+      "triangle_lod0": 999998,
+      "triangle_source": "tag:Triangles",
+      "notes": []
+    },
+    {
+      "object_path": "/Game/Seed/SM_banquet_lamb_rack_of_ribs_wktpfaks_raw1.SM_banquet_lamb_rack_of_ribs_wktpfaks_raw1",
+      "asset_name": "SM_banquet_lamb_rack_of_ribs_wktpfaks_raw1",
+      "package_path": "/Game/Seed",
+      "class_name": "StaticMesh",
+      "name_ok": true,
+      "triangle_lod0": 999996,
+      "triangle_source": "tag:Triangles",
+      "notes": []
+    }
+  ],
+  "non_static_assets": [
+    {
+      "object_path": "/Game/Seed/wooden_table_veigfjmaw_high_texture_2.wooden_table_veigfjmaw_high_texture_2",
+      "asset_name": "wooden_table_veigfjmaw_high_texture_2",
+      "class_name": "Texture2D"
+    },
+    {
+      "object_path": "/Game/Seed/wooden_table_veigfjmaw_high_texture_1.wooden_table_veigfjmaw_high_texture_1",
+      "asset_name": "wooden_table_veigfjmaw_high_texture_1",
+      "class_name": "Texture2D"
+    },
+    {
+      "object_path": "/Game/Seed/wooden_table_veigfjmaw_high_texture_0.wooden_table_veigfjmaw_high_texture_0",
+      "asset_name": "wooden_table_veigfjmaw_high_texture_0",
+      "class_name": "Texture2D"
+    },
+    {
+      "object_path": "/Game/Seed/Wooden_Table_veigfjmaw_High.Wooden_Table_veigfjmaw_High",
+      "asset_name": "Wooden_Table_veigfjmaw_High",
+      "class_name": "MaterialInstanceConstant"
+    },
+    {
+      "object_path": "/Game/Seed/wing.wing",
+      "asset_name": "wing",
+      "class_name": "MaterialInstanceConstant"
+    },
+    {
+      "object_path": "/Game/Seed/wave_girl_ai_generated_texture_0.wave_girl_ai_generated_texture_0",
+      "asset_name": "wave_girl_ai_generated_texture_0",
+      "class_name": "Texture2D"
+    },
+    {
+      "object_path": "/Game/Seed/vrchat_rusk_texture_4.vrchat_rusk_texture_4",
+      "asset_name": "vrchat_rusk_texture_4",
+      "class_name": "Texture2D"
+    },
+    {
+      "object_path": "/Game/Seed/vrchat_rusk_texture_3.vrchat_rusk_texture_3",
+      "asset_name": "vrchat_rusk_texture_3",
+      "class_name": "Texture2D"
+    },
+    {
+      "object_path": "/Game/Seed/vrchat_rusk_texture_2.vrchat_rusk_texture_2",
+      "asset_name": "vrchat_rusk_texture_2",
+      "class_name": "Texture2D"
+    },
+    {
+      "object_path": "/Game/Seed/vrchat_rusk_texture_1.vrchat_rusk_texture_1",
+      "asset_name": "vrchat_rusk_texture_1",
+      "class_name": "Texture2D"
+    },
+    {
+      "object_path": "/Game/Seed/vrchat_rusk_texture_0.vrchat_rusk_texture_0",
+      "asset_name": "vrchat_rusk_texture_0",
+      "class_name": "Texture2D"
+    },
+    {
+      "object_path": "/Game/Seed/vrchat_rio_texture_5.vrchat_rio_texture_5",
+      "asset_name": "vrchat_rio_texture_5",
+      "class_name": "Texture2D"
+    },
+    {
+      "object_path": "/Game/Seed/vrchat_rio_texture_4.vrchat_rio_texture_4",
+      "asset_name": "vrchat_rio_texture_4",
+      "class_name": "Texture2D"
+    },
+    {
+      "object_path": "/Game/Seed/vrchat_rio_texture_3.vrchat_rio_texture_3",
+      "asset_name": "vrchat_rio_texture_3",
+      "class_name": "Texture2D"
+    },
+    {
+      "object_path": "/Game/Seed/vrchat_rio_texture_2.vrchat_rio_texture_2",
+      "asset_name": "vrchat_rio_texture_2",
+      "class_name": "Texture2D"
+    },
+    {
+      "object_path": "/Game/Seed/vrchat_rio_texture_1.vrchat_rio_texture_1",
+      "asset_name": "vrchat_rio_texture_1",
+      "class_name": "Texture2D"
+    },
+    {
+      "object_path": "/Game/Seed/vrchat_rio_texture_0.vrchat_rio_texture_0",
+      "asset_name": "vrchat_rio_texture_0",
+      "class_name": "Texture2D"
+    },
+    {
+      "object_path": "/Game/Seed/vrchat_milk__sugar_latte_texture_9.vrchat_milk__sugar_latte_texture_9",
+      "asset_name": "vrchat_milk__sugar_latte_texture_9",
+      "class_name": "Texture2D"
+    },
+    {
+      "object_path": "/Game/Seed/vrchat_milk__sugar_latte_texture_8.vrchat_milk__sugar_latte_texture_8",
+      "asset_name": "vrchat_milk__sugar_latte_texture_8",
+      "class_name": "Texture2D"
+    },
+    {
+      "object_path": "/Game/Seed/vrchat_milk__sugar_latte_texture_7.vrchat_milk__sugar_latte_texture_7",
+      "asset_name": "vrchat_milk__sugar_latte_texture_7",
+      "class_name": "Texture2D"
+    },
+    {
+      "object_path": "/Game/Seed/vrchat_milk__sugar_latte_texture_6.vrchat_milk__sugar_latte_texture_6",
+      "asset_name": "vrchat_milk__sugar_latte_texture_6",
+      "class_name": "Texture2D"
+    },
+    {
+      "object_path": "/Game/Seed/vrchat_milk__sugar_latte_texture_5.vrchat_milk__sugar_latte_texture_5",
+      "asset_name": "vrchat_milk__sugar_latte_texture_5",
+      "class_name": "Texture2D"
+    },
+    {
+      "object_path": "/Game/Seed/vrchat_milk__sugar_latte_texture_4.vrchat_milk__sugar_latte_texture_4",
+      "asset_name": "vrchat_milk__sugar_latte_texture_4",
+      "class_name": "Texture2D"
+    },
+    {
+      "object_path": "/Game/Seed/vrchat_milk__sugar_latte_texture_3.vrchat_milk__sugar_latte_texture_3",
+      "asset_name": "vrchat_milk__sugar_latte_texture_3",
+      "class_name": "Texture2D"
+    },
+    {
+      "object_path": "/Game/Seed/vrchat_milk__sugar_latte_texture_2.vrchat_milk__sugar_latte_texture_2",
+      "asset_name": "vrchat_milk__sugar_latte_texture_2",
+      "class_name": "Texture2D"
+    },
+    {
+      "object_path": "/Game/Seed/vrchat_milk__sugar_latte_texture_1.vrchat_milk__sugar_latte_texture_1",
+      "asset_name": "vrchat_milk__sugar_latte_texture_1",
+      "class_name": "Texture2D"
+    },
+    {
+      "object_path": "/Game/Seed/vrchat_milk__sugar_latte_texture_0.vrchat_milk__sugar_latte_texture_0",
+      "asset_name": "vrchat_milk__sugar_latte_texture_0",
+      "class_name": "Texture2D"
+    },
+    {
+      "object_path": "/Game/Seed/vrchat_lime_texture_5.vrchat_lime_texture_5",
+      "asset_name": "vrchat_lime_texture_5",
+      "class_name": "Texture2D"
+    },
+    {
+      "object_path": "/Game/Seed/vrchat_lime_texture_4.vrchat_lime_texture_4",
+      "asset_name": "vrchat_lime_texture_4",
+      "class_name": "Texture2D"
+    },
+    {
+      "object_path": "/Game/Seed/vrchat_lime_texture_3.vrchat_lime_texture_3",
+      "asset_name": "vrchat_lime_texture_3",
+      "class_name": "Texture2D"
+    },
+    {
+      "object_path": "/Game/Seed/vrchat_lime_texture_2.vrchat_lime_texture_2",
+      "asset_name": "vrchat_lime_texture_2",
+      "class_name": "Texture2D"
+    },
+    {
+      "object_path": "/Game/Seed/vrchat_lime_texture_1.vrchat_lime_texture_1",
+      "asset_name": "vrchat_lime_texture_1",
+      "class_name": "Texture2D"
+    },
+    {
+      "object_path": "/Game/Seed/vrchat_lime_texture_0.vrchat_lime_texture_0",
+      "asset_name": "vrchat_lime_texture_0",
+      "class_name": "Texture2D"
+    },
+    {
+      "object_path": "/Game/Seed/vrchat_fonmy_texture_8.vrchat_fonmy_texture_8",
+      "asset_name": "vrchat_fonmy_texture_8",
+      "class_name": "Texture2D"
+    },
+    {
+      "object_path": "/Game/Seed/vrchat_fonmy_texture_7.vrchat_fonmy_texture_7",
+      "asset_name": "vrchat_fonmy_texture_7",
+      "class_name": "Texture2D"
+    },
+    {
+      "object_path": "/Game/Seed/vrchat_fonmy_texture_6.vrchat_fonmy_texture_6",
+      "asset_name": "vrchat_fonmy_texture_6",
+      "class_name": "Texture2D"
+    },
+    {
+      "object_path": "/Game/Seed/vrchat_fonmy_texture_5.vrchat_fonmy_texture_5",
+      "asset_name": "vrchat_fonmy_texture_5",
+      "class_name": "Texture2D"
+    },
+    {
+      "object_path": "/Game/Seed/vrchat_fonmy_texture_4.vrchat_fonmy_texture_4",
+      "asset_name": "vrchat_fonmy_texture_4",
+      "class_name": "Texture2D"
+    },
+    {
+      "object_path": "/Game/Seed/vrchat_fonmy_texture_3.vrchat_fonmy_texture_3",
+      "asset_name": "vrchat_fonmy_texture_3",
+      "class_name": "Texture2D"
+    },
+    {
+      "object_path": "/Game/Seed/vrchat_fonmy_texture_2.vrchat_fonmy_texture_2",
+      "asset_name": "vrchat_fonmy_texture_2",
+      "class_name": "Texture2D"
+    },
+    {
+      "object_path": "/Game/Seed/vrchat_fonmy_texture_1.vrchat_fonmy_texture_1",
+      "asset_name": "vrchat_fonmy_texture_1",
+      "class_name": "Texture2D"
+    },
+    {
+      "object_path": "/Game/Seed/vrchat_fonmy_texture_0.vrchat_fonmy_texture_0",
+      "asset_name": "vrchat_fonmy_texture_0",
+      "class_name": "Texture2D"
+    },
+    {
+      "object_path": "/Game/Seed/vrchat_elena_texture_5.vrchat_elena_texture_5",
+      "asset_name": "vrchat_elena_texture_5",
+      "class_name": "Texture2D"
+    },
+    {
+      "object_path": "/Game/Seed/vrchat_elena_texture_4.vrchat_elena_texture_4",
+      "asset_name": "vrchat_elena_texture_4",
+      "class_name": "Texture2D"
+    },
+    {
+      "object_path": "/Game/Seed/vrchat_elena_texture_3.vrchat_elena_texture_3",
+      "asset_name": "vrchat_elena_texture_3",
+      "class_name": "Texture2D"
+    },
+    {
+      "object_path": "/Game/Seed/vrchat_elena_texture_2.vrchat_elena_texture_2",
+      "asset_name": "vrchat_elena_texture_2",
+      "class_name": "Texture2D"
+    },
+    {
+      "object_path": "/Game/Seed/vrchat_elena_texture_1.vrchat_elena_texture_1",
+      "asset_name": "vrchat_elena_texture_1",
+      "class_name": "Texture2D"
+    },
+    {
+      "object_path": "/Game/Seed/vrchat_elena_texture_0.vrchat_elena_texture_0",
+      "asset_name": "vrchat_elena_texture_0",
+      "class_name": "Texture2D"
+    },
+    {
+      "object_path": "/Game/Seed/vrchat_chocolat_texture_4.vrchat_chocolat_texture_4",
+      "asset_name": "vrchat_chocolat_texture_4",
+      "class_name": "Texture2D"
+    },
+    {
+      "object_path": "/Game/Seed/vrchat_chocolat_texture_3.vrchat_chocolat_texture_3",
+      "asset_name": "vrchat_chocolat_texture_3",
+      "class_name": "Texture2D"
+    },
+    {
+      "object_path": "/Game/Seed/vrchat_chocolat_texture_2.vrchat_chocolat_texture_2",
+      "asset_name": "vrchat_chocolat_texture_2",
+      "class_name": "Texture2D"
+    },
+    {
+      "object_path": "/Game/Seed/vrchat_chocolat_texture_1.vrchat_chocolat_texture_1",
+      "asset_name": "vrchat_chocolat_texture_1",
+      "class_name": "Texture2D"
+    },
+    {
+      "object_path": "/Game/Seed/vrchat_chocolat_texture_0.vrchat_chocolat_texture_0",
+      "asset_name": "vrchat_chocolat_texture_0",
+      "class_name": "Texture2D"
+    },
+    {
+      "object_path": "/Game/Seed/venom_egt_rim_blur.venom_egt_rim_blur",
+      "asset_name": "venom_egt_rim_blur",
+      "class_name": "MaterialInstanceConstant"
+    },
+    {
+      "object_path": "/Game/Seed/venom_egt_rim.venom_egt_rim",
+      "asset_name": "venom_egt_rim",
+      "class_name": "MaterialInstanceConstant"
+    },
+    {
+      "object_path": "/Game/Seed/venom_egt_lights.venom_egt_lights",
+      "asset_name": "venom_egt_lights",
+      "class_name": "MaterialInstanceConstant"
+    },
+    {
+      "object_path": "/Game/Seed/venom_egt_cpit_hd_tr.venom_egt_cpit_hd_tr",
+      "asset_name": "venom_egt_cpit_hd_tr",
+      "class_name": "MaterialInstanceConstant"
+    },
+    {
+      "object_path": "/Game/Seed/venom_egt_cpit_hd_cage.venom_egt_cpit_hd_cage",
+      "asset_name": "venom_egt_cpit_hd_cage",
+      "class_name": "MaterialInstanceConstant"
+    },
+    {
+      "object_path": "/Game/Seed/venom_egt_chassis.venom_egt_chassis",
+      "asset_name": "venom_egt_chassis",
+      "class_name": "MaterialInstanceConstant"
+    },
+    {
+      "object_path": "/Game/Seed/urd_twall_inside.urd_twall_inside",
+      "asset_name": "urd_twall_inside",
+      "class_name": "MaterialInstanceConstant"
+    },
+    {
+      "object_path": "/Game/Seed/urd_twall.urd_twall",
+      "asset_name": "urd_twall",
+      "class_name": "MaterialInstanceConstant"
+    },
+    {
+      "object_path": "/Game/Seed/urd_tread.urd_tread",
+      "asset_name": "urd_tread",
+      "class_name": "MaterialInstanceConstant"
+    },
+    {
+      "object_path": "/Game/Seed/urd_grill_style4.urd_grill_style4",
+      "asset_name": "urd_grill_style4",
+      "class_name": "MaterialInstanceConstant"
+    },
+    {
+      "object_path": "/Game/Seed/urd_grill_style3.urd_grill_style3",
+      "asset_name": "urd_grill_style3",
+      "class_name": "MaterialInstanceConstant"
+    },
+    {
+      "object_path": "/Game/Seed/urd_disc_style3.urd_disc_style3",
+      "asset_name": "urd_disc_style3",
+      "class_name": "MaterialInstanceConstant"
+    },
+    {
+      "object_path": "/Game/Seed/urd_disc_style2.urd_disc_style2",
+      "asset_name": "urd_disc_style2",
+      "class_name": "MaterialInstanceConstant"
+    },
+    {
+      "object_path": "/Game/Seed/urd_cal_style1.urd_cal_style1",
+      "asset_name": "urd_cal_style1",
+      "class_name": "MaterialInstanceConstant"
+    },
+    {
+      "object_path": "/Game/Seed/Untitled1.Untitled1",
+      "asset_name": "Untitled1",
+      "class_name": "Texture2D"
+    },
+    {
+      "object_path": "/Game/Seed/Untitled.Untitled",
+      "asset_name": "Untitled",
+      "class_name": "Texture2D"
+    },
+    {
+      "object_path": "/Game/Seed/underwear_transparent.underwear_transparent",
+      "asset_name": "underwear_transparent",
+      "class_name": "MaterialInstanceConstant"
+    },
+    {
+      "object_path": "/Game/Seed/underwear.underwear",
+      "asset_name": "underwear",
+      "class_name": "MaterialInstanceConstant"
+    },
+    {
+      "object_path": "/Game/Seed/srt_viper_gts-r_texture_9.srt_viper_gts-r_texture_9",
+      "asset_name": "srt_viper_gts-r_texture_9",
+      "class_name": "Texture2D"
+    },
+    {
+      "object_path": "/Game/Seed/srt_viper_gts-r_texture_8.srt_viper_gts-r_texture_8",
+      "asset_name": "srt_viper_gts-r_texture_8",
+      "class_name": "Texture2D"
+    },
+    {
+      "object_path": "/Game/Seed/srt_viper_gts-r_texture_7.srt_viper_gts-r_texture_7",
+      "asset_name": "srt_viper_gts-r_texture_7",
+      "class_name": "Texture2D"
+    },
+    {
+      "object_path": "/Game/Seed/srt_viper_gts-r_texture_6.srt_viper_gts-r_texture_6",
+      "asset_name": "srt_viper_gts-r_texture_6",
+      "class_name": "Texture2D"
+    },
+    {
+      "object_path": "/Game/Seed/srt_viper_gts-r_texture_5.srt_viper_gts-r_texture_5",
+      "asset_name": "srt_viper_gts-r_texture_5",
+      "class_name": "Texture2D"
+    },
+    {
+      "object_path": "/Game/Seed/srt_viper_gts-r_texture_4.srt_viper_gts-r_texture_4",
+      "asset_name": "srt_viper_gts-r_texture_4",
+      "class_name": "Texture2D"
+    },
+    {
+      "object_path": "/Game/Seed/srt_viper_gts-r_texture_3.srt_viper_gts-r_texture_3",
+      "asset_name": "srt_viper_gts-r_texture_3",
+      "class_name": "Texture2D"
+    },
+    {
+      "object_path": "/Game/Seed/srt_viper_gts-r_texture_2.srt_viper_gts-r_texture_2",
+      "asset_name": "srt_viper_gts-r_texture_2",
+      "class_name": "Texture2D"
+    },
+    {
+      "object_path": "/Game/Seed/srt_viper_gts-r_texture_17.srt_viper_gts-r_texture_17",
+      "asset_name": "srt_viper_gts-r_texture_17",
+      "class_name": "Texture2D"
+    },
+    {
+      "object_path": "/Game/Seed/srt_viper_gts-r_texture_16.srt_viper_gts-r_texture_16",
+      "asset_name": "srt_viper_gts-r_texture_16",
+      "class_name": "Texture2D"
+    },
+    {
+      "object_path": "/Game/Seed/srt_viper_gts-r_texture_15.srt_viper_gts-r_texture_15",
+      "asset_name": "srt_viper_gts-r_texture_15",
+      "class_name": "Texture2D"
+    },
+    {
+      "object_path": "/Game/Seed/srt_viper_gts-r_texture_14.srt_viper_gts-r_texture_14",
+      "asset_name": "srt_viper_gts-r_texture_14",
+      "class_name": "Texture2D"
+    },
+    {
+      "object_path": "/Game/Seed/srt_viper_gts-r_texture_13.srt_viper_gts-r_texture_13",
+      "asset_name": "srt_viper_gts-r_texture_13",
+      "class_name": "Texture2D"
+    },
+    {
+      "object_path": "/Game/Seed/srt_viper_gts-r_texture_12.srt_viper_gts-r_texture_12",
+      "asset_name": "srt_viper_gts-r_texture_12",
+      "class_name": "Texture2D"
+    },
+    {
+      "object_path": "/Game/Seed/srt_viper_gts-r_texture_11.srt_viper_gts-r_texture_11",
+      "asset_name": "srt_viper_gts-r_texture_11",
+      "class_name": "Texture2D"
+    },
+    {
+      "object_path": "/Game/Seed/srt_viper_gts-r_texture_10.srt_viper_gts-r_texture_10",
+      "asset_name": "srt_viper_gts-r_texture_10",
+      "class_name": "Texture2D"
+    },
+    {
+      "object_path": "/Game/Seed/srt_viper_gts-r_texture_1.srt_viper_gts-r_texture_1",
+      "asset_name": "srt_viper_gts-r_texture_1",
+      "class_name": "Texture2D"
+    },
+    {
+      "object_path": "/Game/Seed/srt_viper_gts-r_texture_0.srt_viper_gts-r_texture_0",
+      "asset_name": "srt_viper_gts-r_texture_0",
+      "class_name": "Texture2D"
+    },
+    {
+      "object_path": "/Game/Seed/rusty_wheel_vj2meecs_raw_texture_2.rusty_wheel_vj2meecs_raw_texture_2",
+      "asset_name": "rusty_wheel_vj2meecs_raw_texture_2",
+      "class_name": "Texture2D"
+    },
+    {
+      "object_path": "/Game/Seed/rusty_wheel_vj2meecs_raw_texture_1.rusty_wheel_vj2meecs_raw_texture_1",
+      "asset_name": "rusty_wheel_vj2meecs_raw_texture_1",
+      "class_name": "Texture2D"
+    },
+    {
+      "object_path": "/Game/Seed/rusty_wheel_vj2meecs_raw_texture_0.rusty_wheel_vj2meecs_raw_texture_0",
+      "asset_name": "rusty_wheel_vj2meecs_raw_texture_0",
+      "class_name": "Texture2D"
+    },
+    {
+      "object_path": "/Game/Seed/Rusty_Wheel_vj2meecs_Raw.Rusty_Wheel_vj2meecs_Raw",
+      "asset_name": "Rusty_Wheel_vj2meecs_Raw",
+      "class_name": "MaterialInstanceConstant"
+    },
+    {
+      "object_path": "/Game/Seed/Rusk_Hair_Transparent.Rusk_Hair_Transparent",
+      "asset_name": "Rusk_Hair_Transparent",
+      "class_name": "MaterialInstanceConstant"
+    },
+    {
+      "object_path": "/Game/Seed/Rusk_Hair.Rusk_Hair",
+      "asset_name": "Rusk_Hair",
+      "class_name": "MaterialInstanceConstant"
+    },
+    {
+      "object_path": "/Game/Seed/Rusk_Face.Rusk_Face",
+      "asset_name": "Rusk_Face",
+      "class_name": "MaterialInstanceConstant"
+    },
+    {
+      "object_path": "/Game/Seed/Rusk_Costume.Rusk_Costume",
+      "asset_name": "Rusk_Costume",
+      "class_name": "MaterialInstanceConstant"
+    },
+    {
+      "object_path": "/Game/Seed/Rusk_Body.Rusk_Body",
+      "asset_name": "Rusk_Body",
+      "class_name": "MaterialInstanceConstant"
+    },
+    {
+      "object_path": "/Game/Seed/Rusk_Alpha.Rusk_Alpha",
+      "asset_name": "Rusk_Alpha",
+      "class_name": "MaterialInstanceConstant"
+    },
+    {
+      "object_path": "/Game/Seed/RPMBAR.RPMBAR",
+      "asset_name": "RPMBAR",
+      "class_name": "MaterialInstanceConstant"
+    },
+    {
+      "object_path": "/Game/Seed/roasted_chicken_leg_wd5ffbnaa_raw_texture_2.roasted_chicken_leg_wd5ffbnaa_raw_texture_2",
+      "asset_name": "roasted_chicken_leg_wd5ffbnaa_raw_texture_2",
+      "class_name": "Texture2D"
+    },
+    {
+      "object_path": "/Game/Seed/roasted_chicken_leg_wd5ffbnaa_raw_texture_1.roasted_chicken_leg_wd5ffbnaa_raw_texture_1",
+      "asset_name": "roasted_chicken_leg_wd5ffbnaa_raw_texture_1",
+      "class_name": "Texture2D"
+    },
+    {
+      "object_path": "/Game/Seed/roasted_chicken_leg_wd5ffbnaa_raw_texture_0.roasted_chicken_leg_wd5ffbnaa_raw_texture_0",
+      "asset_name": "roasted_chicken_leg_wd5ffbnaa_raw_texture_0",
+      "class_name": "Texture2D"
+    },
+    {
+      "object_path": "/Game/Seed/Roasted_Chicken_Leg_wd5ffbnaa_Raw.Roasted_Chicken_Leg_wd5ffbnaa_Raw",
+      "asset_name": "Roasted_Chicken_Leg_wd5ffbnaa_Raw",
+      "class_name": "MaterialInstanceConstant"
+    },
+    {
+      "object_path": "/Game/Seed/Rio_junk.Rio_junk",
+      "asset_name": "Rio_junk",
+      "class_name": "MaterialInstanceConstant"
+    },
+    {
+      "object_path": "/Game/Seed/Rio_Hair_02.Rio_Hair_02",
+      "asset_name": "Rio_Hair_02",
+      "class_name": "MaterialInstanceConstant"
+    },
+    {
+      "object_path": "/Game/Seed/Rio_Face_Alpha.Rio_Face_Alpha",
+      "asset_name": "Rio_Face_Alpha",
+      "class_name": "MaterialInstanceConstant"
+    },
+    {
+      "object_path": "/Game/Seed/Rio_Face.Rio_Face",
+      "asset_name": "Rio_Face",
+      "class_name": "MaterialInstanceConstant"
+    },
+    {
+      "object_path": "/Game/Seed/Rio_Clothes_001.Rio_Clothes_001",
+      "asset_name": "Rio_Clothes_001",
+      "class_name": "MaterialInstanceConstant"
+    },
+    {
+      "object_path": "/Game/Seed/Rio_Clothes.Rio_Clothes",
+      "asset_name": "Rio_Clothes",
+      "class_name": "MaterialInstanceConstant"
+    },
+    {
+      "object_path": "/Game/Seed/Rio_Body.Rio_Body",
+      "asset_name": "Rio_Body",
+      "class_name": "MaterialInstanceConstant"
+    },
+    {
+      "object_path": "/Game/Seed/neclace_silver.neclace_silver",
+      "asset_name": "neclace_silver",
+      "class_name": "MaterialInstanceConstant"
+    },
+    {
+      "object_path": "/Game/Seed/necklace_cloth.necklace_cloth",
+      "asset_name": "necklace_cloth",
+      "class_name": "MaterialInstanceConstant"
+    },
+    {
+      "object_path": "/Game/Seed/Material_004.Material_004",
+      "asset_name": "Material_004",
+      "class_name": "MaterialInstanceConstant"
+    },
+    {
+      "object_path": "/Game/Seed/Material_001.Material_001",
+      "asset_name": "Material_001",
+      "class_name": "MaterialInstanceConstant"
+    },
+    {
+      "object_path": "/Game/Seed/material_0.material_0",
+      "asset_name": "material_0",
+      "class_name": "MaterialInstanceConstant"
+    },
+    {
+      "object_path": "/Game/Seed/Material.Material",
+      "asset_name": "Material",
+      "class_name": "MaterialInstanceConstant"
+    },
+    {
+      "object_path": "/Game/Seed/livery.livery",
+      "asset_name": "livery",
+      "class_name": "MaterialInstanceConstant"
+    },
+    {
+      "object_path": "/Game/Seed/jacket_fur.jacket_fur",
+      "asset_name": "jacket_fur",
+      "class_name": "MaterialInstanceConstant"
+    },
+    {
+      "object_path": "/Game/Seed/Jacket.Jacket",
+      "asset_name": "Jacket",
+      "class_name": "MaterialInstanceConstant"
+    },
+    {
+      "object_path": "/Game/Seed/industrial_junkyard_propane_tank_metal_xf3pbjy_raw_texture_2.industrial_junkyard_propane_tank_metal_xf3pbjy_raw_texture_2",
+      "asset_name": "industrial_junkyard_propane_tank_metal_xf3pbjy_raw_texture_2",
+      "class_name": "Texture2D"
+    },
+    {
+      "object_path": "/Game/Seed/industrial_junkyard_propane_tank_metal_xf3pbjy_raw_texture_1.industrial_junkyard_propane_tank_metal_xf3pbjy_raw_texture_1",
+      "asset_name": "industrial_junkyard_propane_tank_metal_xf3pbjy_raw_texture_1",
+      "class_name": "Texture2D"
+    },
+    {
+      "object_path": "/Game/Seed/industrial_junkyard_propane_tank_metal_xf3pbjy_raw_texture_0.industrial_junkyard_propane_tank_metal_xf3pbjy_raw_texture_0",
+      "asset_name": "industrial_junkyard_propane_tank_metal_xf3pbjy_raw_texture_0",
+      "class_name": "Texture2D"
+    },
+    {
+      "object_path": "/Game/Seed/Industrial_Junkyard_Propane_Tank_Metal_xf3pbjy_Raw.Industrial_Junkyard_Propane_Tank_Metal_xf3pbjy_Raw",
+      "asset_name": "Industrial_Junkyard_Propane_Tank_Metal_xf3pbjy_Raw",
+      "class_name": "MaterialInstanceConstant"
+    },
+    {
+      "object_path": "/Game/Seed/Hair_Transparent.Hair_Transparent",
+      "asset_name": "Hair_Transparent",
+      "class_name": "MaterialInstanceConstant"
+    },
+    {
+      "object_path": "/Game/Seed/Hair_fur_ponpon.Hair_fur_ponpon",
+      "asset_name": "Hair_fur_ponpon",
+      "class_name": "MaterialInstanceConstant"
+    },
+    {
+      "object_path": "/Game/Seed/Hair_fur_Ear.Hair_fur_Ear",
+      "asset_name": "Hair_fur_Ear",
+      "class_name": "MaterialInstanceConstant"
+    },
+    {
+      "object_path": "/Game/Seed/Hair_Alpha.Hair_Alpha",
+      "asset_name": "Hair_Alpha",
+      "class_name": "MaterialInstanceConstant"
+    },
+    {
+      "object_path": "/Game/Seed/Hairs.Hairs",
+      "asset_name": "Hairs",
+      "class_name": "MaterialInstanceConstant"
+    },
+    {
+      "object_path": "/Game/Seed/Hair.Hair",
+      "asset_name": "Hair",
+      "class_name": "MaterialInstanceConstant"
+    },
+    {
+      "object_path": "/Game/Seed/Gameconsole_Window.Gameconsole_Window",
+      "asset_name": "Gameconsole_Window",
+      "class_name": "MaterialInstanceConstant"
+    },
+    {
+      "object_path": "/Game/Seed/Face_eyebrow.Face_eyebrow",
+      "asset_name": "Face_eyebrow",
+      "class_name": "MaterialInstanceConstant"
+    },
+    {
+      "object_path": "/Game/Seed/Face_EX_3.Face_EX_3",
+      "asset_name": "Face_EX_3",
+      "class_name": "MaterialInstanceConstant"
+    },
+    {
+      "object_path": "/Game/Seed/Face_EX_2.Face_EX_2",
+      "asset_name": "Face_EX_2",
+      "class_name": "MaterialInstanceConstant"
+    },
+    {
+      "object_path": "/Game/Seed/Face_EX2.Face_EX2",
+      "asset_name": "Face_EX2",
+      "class_name": "MaterialInstanceConstant"
+    },
+    {
+      "object_path": "/Game/Seed/Face_EX1.Face_EX1",
+      "asset_name": "Face_EX1",
+      "class_name": "MaterialInstanceConstant"
+    },
+    {
+      "object_path": "/Game/Seed/Face_EX.Face_EX",
+      "asset_name": "Face_EX",
+      "class_name": "MaterialInstanceConstant"
+    },
+    {
+      "object_path": "/Game/Seed/Face_effect.Face_effect",
+      "asset_name": "Face_effect",
+      "class_name": "MaterialInstanceConstant"
+    },
+    {
+      "object_path": "/Game/Seed/Face1.Face1",
+      "asset_name": "Face1",
+      "class_name": "MaterialInstanceConstant"
+    },
+    {
+      "object_path": "/Game/Seed/Face.Face",
+      "asset_name": "Face",
+      "class_name": "MaterialInstanceConstant"
+    },
+    {
+      "object_path": "/Game/Seed/Elena_pantyhose.Elena_pantyhose",
+      "asset_name": "Elena_pantyhose",
+      "class_name": "MaterialInstanceConstant"
+    },
+    {
+      "object_path": "/Game/Seed/Elena_hair.Elena_hair",
+      "asset_name": "Elena_hair",
+      "class_name": "MaterialInstanceConstant"
+    },
+    {
+      "object_path": "/Game/Seed/Elena_face.Elena_face",
+      "asset_name": "Elena_face",
+      "class_name": "MaterialInstanceConstant"
+    },
+    {
+      "object_path": "/Game/Seed/Elena_effects.Elena_effects",
+      "asset_name": "Elena_effects",
+      "class_name": "MaterialInstanceConstant"
+    },
+    {
+      "object_path": "/Game/Seed/Elena_cloth.Elena_cloth",
+      "asset_name": "Elena_cloth",
+      "class_name": "MaterialInstanceConstant"
+    },
+    {
+      "object_path": "/Game/Seed/Elena_body.Elena_body",
+      "asset_name": "Elena_body",
+      "class_name": "MaterialInstanceConstant"
+    },
+    {
+      "object_path": "/Game/Seed/Costume.Costume",
+      "asset_name": "Costume",
+      "class_name": "MaterialInstanceConstant"
+    },
+    {
+      "object_path": "/Game/Seed/Construction_Concrete_001.Construction_Concrete_001",
+      "asset_name": "Construction_Concrete_001",
+      "class_name": "MaterialInstanceConstant"
+    },
+    {
+      "object_path": "/Game/Seed/Construction_Concrete.Construction_Concrete",
+      "asset_name": "Construction_Concrete",
+      "class_name": "MaterialInstanceConstant"
+    },
+    {
+      "object_path": "/Game/Seed/ConcreteConstruction_roughness.ConcreteConstruction_roughness",
+      "asset_name": "ConcreteConstruction_roughness",
+      "class_name": "Texture2D"
+    },
+    {
+      "object_path": "/Game/Seed/ConcreteConstruction_normalogl1.ConcreteConstruction_normalogl1",
+      "asset_name": "ConcreteConstruction_normalogl1",
+      "class_name": "Texture2D"
+    },
+    {
+      "object_path": "/Game/Seed/ConcreteConstruction_normalogl.ConcreteConstruction_normalogl",
+      "asset_name": "ConcreteConstruction_normalogl",
+      "class_name": "Texture2D"
+    },
+    {
+      "object_path": "/Game/Seed/ConcreteConstruction_basecolor1.ConcreteConstruction_basecolor1",
+      "asset_name": "ConcreteConstruction_basecolor1",
+      "class_name": "Texture2D"
+    },
+    {
+      "object_path": "/Game/Seed/ConcreteConstruction_basecolor.ConcreteConstruction_basecolor",
+      "asset_name": "ConcreteConstruction_basecolor",
+      "class_name": "Texture2D"
+    },
+    {
+      "object_path": "/Game/Seed/clothes_metal.clothes_metal",
+      "asset_name": "clothes_metal",
+      "class_name": "MaterialInstanceConstant"
+    },
+    {
+      "object_path": "/Game/Seed/clothes_fur_leg.clothes_fur_leg",
+      "asset_name": "clothes_fur_leg",
+      "class_name": "MaterialInstanceConstant"
+    },
+    {
+      "object_path": "/Game/Seed/clothes_fur_capponpon.clothes_fur_capponpon",
+      "asset_name": "clothes_fur_capponpon",
+      "class_name": "MaterialInstanceConstant"
+    },
+    {
+      "object_path": "/Game/Seed/clothes_bell.clothes_bell",
+      "asset_name": "clothes_bell",
+      "class_name": "MaterialInstanceConstant"
+    },
+    {
+      "object_path": "/Game/Seed/clothes1.clothes1",
+      "asset_name": "clothes1",
+      "class_name": "MaterialInstanceConstant"
+    },
+    {
+      "object_path": "/Game/Seed/Clothes.Clothes",
+      "asset_name": "Clothes",
+      "class_name": "MaterialInstanceConstant"
+    },
+    {
+      "object_path": "/Game/Seed/Chocolat_Hair.Chocolat_Hair",
+      "asset_name": "Chocolat_Hair",
+      "class_name": "MaterialInstanceConstant"
+    },
+    {
+      "object_path": "/Game/Seed/Chocolat_Face_effect.Chocolat_Face_effect",
+      "asset_name": "Chocolat_Face_effect",
+      "class_name": "MaterialInstanceConstant"
+    },
+    {
+      "object_path": "/Game/Seed/Chocolat_Face.Chocolat_Face",
+      "asset_name": "Chocolat_Face",
+      "class_name": "MaterialInstanceConstant"
+    },
+    {
+      "object_path": "/Game/Seed/Chocolat_Costume.Chocolat_Costume",
+      "asset_name": "Chocolat_Costume",
+      "class_name": "MaterialInstanceConstant"
+    },
+    {
+      "object_path": "/Game/Seed/Chocolat_Body.Chocolat_Body",
+      "asset_name": "Chocolat_Body",
+      "class_name": "MaterialInstanceConstant"
+    },
+    {
+      "object_path": "/Game/Seed/Body2.Body2",
+      "asset_name": "Body2",
+      "class_name": "MaterialInstanceConstant"
+    },
+    {
+      "object_path": "/Game/Seed/Body.Body",
+      "asset_name": "Body",
+      "class_name": "MaterialInstanceConstant"
+    },
+    {
+      "object_path": "/Game/Seed/Basebody_fur.Basebody_fur",
+      "asset_name": "Basebody_fur",
+      "class_name": "MaterialInstanceConstant"
+    },
+    {
+      "object_path": "/Game/Seed/Basebody.Basebody",
+      "asset_name": "Basebody",
+      "class_name": "MaterialInstanceConstant"
+    },
+    {
+      "object_path": "/Game/Seed/banquet_roasted_quail_wktnfbds_raw_texture_2.banquet_roasted_quail_wktnfbds_raw_texture_2",
+      "asset_name": "banquet_roasted_quail_wktnfbds_raw_texture_2",
+      "class_name": "Texture2D"
+    },
+    {
+      "object_path": "/Game/Seed/banquet_roasted_quail_wktnfbds_raw_texture_1.banquet_roasted_quail_wktnfbds_raw_texture_1",
+      "asset_name": "banquet_roasted_quail_wktnfbds_raw_texture_1",
+      "class_name": "Texture2D"
+    },
+    {
+      "object_path": "/Game/Seed/banquet_roasted_quail_wktnfbds_raw_texture_0.banquet_roasted_quail_wktnfbds_raw_texture_0",
+      "asset_name": "banquet_roasted_quail_wktnfbds_raw_texture_0",
+      "class_name": "Texture2D"
+    },
+    {
+      "object_path": "/Game/Seed/Banquet_Roasted_Quail_wktnfbds_Raw.Banquet_Roasted_Quail_wktnfbds_Raw",
+      "asset_name": "Banquet_Roasted_Quail_wktnfbds_Raw",
+      "class_name": "MaterialInstanceConstant"
+    },
+    {
+      "object_path": "/Game/Seed/banquet_lamb_rack_of_ribs_wktpfaks_raw_texture_2.banquet_lamb_rack_of_ribs_wktpfaks_raw_texture_2",
+      "asset_name": "banquet_lamb_rack_of_ribs_wktpfaks_raw_texture_2",
+      "class_name": "Texture2D"
+    },
+    {
+      "object_path": "/Game/Seed/banquet_lamb_rack_of_ribs_wktpfaks_raw_texture_1.banquet_lamb_rack_of_ribs_wktpfaks_raw_texture_1",
+      "asset_name": "banquet_lamb_rack_of_ribs_wktpfaks_raw_texture_1",
+      "class_name": "Texture2D"
+    },
+    {
+      "object_path": "/Game/Seed/banquet_lamb_rack_of_ribs_wktpfaks_raw_texture_0.banquet_lamb_rack_of_ribs_wktpfaks_raw_texture_0",
+      "asset_name": "banquet_lamb_rack_of_ribs_wktpfaks_raw_texture_0",
+      "class_name": "Texture2D"
+    },
+    {
+      "object_path": "/Game/Seed/Banquet_Lamb_Rack_of_Ribs_wktpfaks_Raw.Banquet_Lamb_Rack_of_Ribs_wktpfaks_Raw",
+      "asset_name": "Banquet_Lamb_Rack_of_Ribs_wktpfaks_Raw",
+      "class_name": "MaterialInstanceConstant"
+    },
+    {
+      "object_path": "/Game/Seed/banner.banner",
+      "asset_name": "banner",
+      "class_name": "MaterialInstanceConstant"
+    },
+    {
+      "object_path": "/Game/Seed/3-Ruth-Broadbent-Puddle-World-II_IMG_2922-min-copy-scaled.3-Ruth-Broadbent-Puddle-World-II_IMG_2922-min-copy-scaled",
+      "asset_name": "3-Ruth-Broadbent-Puddle-World-II_IMG_2922-min-copy-scaled",
+      "class_name": "Texture2D"
+    }
+  ]
+}

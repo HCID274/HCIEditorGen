@@ -1,0 +1,71 @@
+{
+  "root_path": "/Game/Seed",
+  "dry_run": false,
+  "renamed_count": 12,
+  "skipped_count": 0,
+  "failed_count": 0,
+  "renamed": [
+    {
+      "old_package": "/Game/Seed/wooden_table_veigfjmaw_high1",
+      "new_package": "/Game/Seed/SM_wooden_table_veigfjmaw_high1",
+      "status": "renamed"
+    },
+    {
+      "old_package": "/Game/Seed/wave_girl_ai_generated",
+      "new_package": "/Game/Seed/SM_wave_girl_ai_generated",
+      "status": "renamed"
+    },
+    {
+      "old_package": "/Game/Seed/water_hole",
+      "new_package": "/Game/Seed/SM_water_hole",
+      "status": "renamed"
+    },
+    {
+      "old_package": "/Game/Seed/VR_room",
+      "new_package": "/Game/Seed/SM_VR_room",
+      "status": "renamed"
+    },
+    {
+      "old_package": "/Game/Seed/vrchat_rio",
+      "new_package": "/Game/Seed/SM_vrchat_rio",
+      "status": "renamed"
+    },
+    {
+      "old_package": "/Game/Seed/vrchat_milk__sugar_latte",
+      "new_package": "/Game/Seed/SM_vrchat_milk_sugar_latte",
+      "status": "renamed"
+    },
+    {
+      "old_package": "/Game/Seed/srt_viper_gts-r",
+      "new_package": "/Game/Seed/SM_srt_viper_gts_r",
+      "status": "renamed"
+    },
+    {
+      "old_package": "/Game/Seed/rusty_wheel_vj2meecs_raw1",
+      "new_package": "/Game/Seed/SM_rusty_wheel_vj2meecs_raw1",
+      "status": "renamed"
+    },
+    {
+      "old_package": "/Game/Seed/roasted_chicken_leg_wd5ffbnaa_raw1",
+      "new_package": "/Game/Seed/SM_roasted_chicken_leg_wd5ffbnaa_raw1",
+      "status": "renamed"
+    },
+    {
+      "old_package": "/Game/Seed/industrial_junkyard_propane_tank_metal_xf3pbjy_raw1",
+      "new_package": "/Game/Seed/SM_industrial_junkyard_propane_tank_metal_xf3pbjy_raw1",
+      "status": "renamed"
+    },
+    {
+      "old_package": "/Game/Seed/banquet_roasted_quail_wktnfbds_raw1",
+      "new_package": "/Game/Seed/SM_banquet_roasted_quail_wktnfbds_raw1",
+      "status": "renamed"
+    },
+    {
+      "old_package": "/Game/Seed/banquet_lamb_rack_of_ribs_wktpfaks_raw1",
+      "new_package": "/Game/Seed/SM_banquet_lamb_rack_of_ribs_wktpfaks_raw1",
+      "status": "renamed"
+    }
+  ],
+  "skipped": [],
+  "failed": []
+}

@@ -87,8 +87,15 @@ Scope: whole repo.
     - 已完成：Python Hook patch 支持可选 `representing_mesh` 覆盖。
     - 已完成：UE 编译通过（`Build.bat HCIEditorGenEditor Win64 Development ...`）。
     - 已完成：UE 导入/重导手测门禁，用户已反馈 `StageB-SliceB1 Pass`。
-  - 当前切片：`Stage B-SliceB2`（`AssetRegistry + FAssetData` 全量枚举）。
-  - 下一切片：`Stage B-SliceB3`（异步分片执行与进度汇报）。
+  - `Stage B-SliceB2` 已通过：`AssetRegistry + FAssetData` 全量枚举。
+  - B2 最新状态：
+    - 已完成：Runtime 新增 `FHCIAbilityKitAuditScanService`，全量枚举 `UHCIAbilityKitAsset` 元数据（不加载资产对象）。
+    - 已完成：`UHCIAbilityKitAsset::GetAssetRegistryTags` 写入 `hci_id/hci_display_name/hci_damage/hci_representing_mesh` 标签，支撑纯元数据扫描。
+    - 已完成：Editor 新增控制台命令 `HCIAbilityKit.AuditScan [log_top_n]`，输出扫描统计与样本行。
+    - 已完成：UE 编译通过（`Build.bat HCIEditorGenEditor Win64 Development ...`）。
+    - 已完成：UE 手测通过（`assets=2`，其中 1 个历史资产字段为空导致覆盖率 `50%`，符合预期；用户反馈 `Pass`）。
+  - 当前切片：`Stage B-SliceB3`（异步分片执行与进度汇报）。
+  - 下一切片：`Stage B-SliceB4`（任务中断/重试与失败收敛）。
 
 ## 9. 用户协作习惯（固定）
 

@@ -2,6 +2,7 @@
 
 #include "ContentBrowserMenuContexts.h"
 #include "Dom/JsonObject.h"
+#include "Audit/HCIAbilityKitAuditScanService.h"
 #include "Factories/HCIAbilityKitFactory.h"
 #include "HAL/IConsoleManager.h"
 #include "HAL/FileManager.h"
@@ -22,9 +23,11 @@
 #include "ToolMenus.h"
 
 DEFINE_LOG_CATEGORY_STATIC(LogHCIAbilityKitSearchQuery, Log, All);
+DEFINE_LOG_CATEGORY_STATIC(LogHCIAbilityKitAuditScan, Log, All);
 
 static TObjectPtr<UHCIAbilityKitFactory> GHCIAbilityKitFactory;
 static TUniquePtr<FAutoConsoleCommand> GHCIAbilityKitSearchCommand;
+static TUniquePtr<FAutoConsoleCommand> GHCIAbilityKitAuditScanCommand;
 static const TCHAR* GHCIAbilityKitPythonScriptPath = TEXT("SourceData/AbilityKits/Python/hci_abilitykit_hook.py");
 
 static FString HCI_ToPythonStringLiteral(const FString& Value)
@@ -126,6 +129,51 @@ static void HCI_RunAbilityKitSearchCommand(const TArray<FString>& Args)
 			Warning,
 			TEXT("[HCIAbilityKit][SearchQuery] suggestion=%s"),
 			*Suggestion);
+	}
+}
+
+static void HCI_RunAbilityKitAuditScanCommand(const TArray<FString>& Args)
+{
+	int32 LogTopN = 10;
+	if (Args.Num() >= 1)
+	{
+		int32 ParsedTopN = 0;
+		if (LexTryParseString(ParsedTopN, *Args[0]))
+		{
+			LogTopN = FMath::Max(0, ParsedTopN);
+		}
+	}
+
+	const FHCIAbilityKitAuditScanSnapshot Snapshot = FHCIAbilityKitAuditScanService::Get().ScanFromAssetRegistry();
+	UE_LOG(
+		LogHCIAbilityKitAuditScan,
+		Display,
+		TEXT("[HCIAbilityKit][AuditScan] %s"),
+		*Snapshot.Stats.ToSummaryString());
+
+	if (Snapshot.Rows.Num() == 0)
+	{
+		UE_LOG(
+			LogHCIAbilityKitAuditScan,
+			Warning,
+			TEXT("[HCIAbilityKit][AuditScan] suggestion=当前未发现 AbilityKit 资产，请先导入至少一个 .hciabilitykit 文件"));
+		return;
+	}
+
+	const int32 CountToLog = FMath::Min(LogTopN, Snapshot.Rows.Num());
+	for (int32 Index = 0; Index < CountToLog; ++Index)
+	{
+		const FHCIAbilityKitAuditAssetRow& Row = Snapshot.Rows[Index];
+		UE_LOG(
+			LogHCIAbilityKitAuditScan,
+			Display,
+			TEXT("[HCIAbilityKit][AuditScan] row=%d asset=%s id=%s display_name=%s damage=%.2f representing_mesh=%s"),
+			Index,
+			*Row.AssetPath,
+			*Row.Id,
+			*Row.DisplayName,
+			Row.Damage,
+			*Row.RepresentingMeshPath);
 	}
 }
 
@@ -350,6 +398,14 @@ void FHCIAbilityKitEditorModule::StartupModule()
 			TEXT("Search AbilityKit assets by natural language. Usage: HCIAbilityKit.Search <query text> [topk]"),
 			FConsoleCommandWithArgsDelegate::CreateStatic(&HCI_RunAbilityKitSearchCommand));
 	}
+
+	if (!GHCIAbilityKitAuditScanCommand.IsValid())
+	{
+		GHCIAbilityKitAuditScanCommand = MakeUnique<FAutoConsoleCommand>(
+			TEXT("HCIAbilityKit.AuditScan"),
+			TEXT("Enumerate AbilityKit metadata via AssetRegistry only. Usage: HCIAbilityKit.AuditScan [log_top_n]"),
+			FConsoleCommandWithArgsDelegate::CreateStatic(&HCI_RunAbilityKitAuditScanCommand));
+	}
 }
 
 void FHCIAbilityKitEditorModule::ShutdownModule()
@@ -363,6 +419,7 @@ void FHCIAbilityKitEditorModule::ShutdownModule()
 	}
 
 	GHCIAbilityKitSearchCommand.Reset();
+	GHCIAbilityKitAuditScanCommand.Reset();
 }
 
 IMPLEMENT_MODULE(FHCIAbilityKitEditorModule, HCIAbilityKitEditor)

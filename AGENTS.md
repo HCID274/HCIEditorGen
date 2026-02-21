@@ -107,8 +107,21 @@ Scope: whole repo.
     - 已完成：新增控制台命令 `HCIAbilityKit.AuditScanAsyncStop` 与 `HCIAbilityKit.AuditScanAsyncRetry`。
     - 已完成：`HCIAbilityKit.AuditScanProgress` 增强，支持 `cancelled/failed/idle/running` 状态输出。
     - 已完成：UE 手测通过（用户日志命中 `interrupted ... can_retry=true` 与 `retry start ...`，反馈 `OK`）。
-  - 当前切片：`Stage B-SliceB5`（采集 `triangle_count` 相关 Tags）。
-  - 下一切片：`Stage B-SliceB6`（状态过滤：Locked/Dirty 资产跳过与留痕）。
+  - `Stage B-SliceB5` 已通过：`triangle_count` Tag 采集与 `triangle_source=tag_cached` 来源标记。
+  - B5 最新状态：
+    - 已完成：扩展 `triangle_count` Tag 候选解析（含 `hci_triangles_lod0/triangle_count_lod0/triangles_lod0/lod0_triangles/Triangles/NumTriangles`）。
+    - 已完成：`AuditScan/AuditScanAsync` 输出 `triangle_count_lod0/triangle_source/triangle_source_tag`。
+    - 已完成：统计摘要新增 `triangle_tag_coverage`。
+    - 已完成：UE 手测通过（用户日志命中 `triangle_tag_coverage=99.5%`，且多条 `triangle_source=tag_cached triangle_source_tag=Triangles`）。
+  - `Stage B-SliceB6` 已通过：状态过滤（`Locked/Dirty`）与跳过留痕。
+  - B6 最新状态：
+    - 已完成：同步/异步扫描统一输出 `scan_state/skip_reason`。
+    - 已完成：`Dirty` 包跳过并记录 `scan_state=skipped_locked_or_dirty skip_reason=package_dirty`。
+    - 已完成：只读包跳过并记录 `scan_state=skipped_locked_or_dirty skip_reason=package_read_only`。
+    - 已完成：摘要新增 `skipped_locked_or_dirty` 计数。
+    - 已完成：用户手测确认 `Pass`。
+  - 当前切片：`Stage B-SliceB7`（数据驱动预览体与拖入场景可视化验证）。
+  - 下一切片：`Stage B-SliceB8`（预览体自动同步：PostEditChangeProperty/Reimport 刷新）。
   - D 段收尾后续主线：`Stage E`（安全执行：Dry-Run/Confirm/Transaction/SC）-> `Stage F`（NL->Plan->Executor）。
   - B3 最新状态：
     - 已完成：新增 `HCIAbilityKit.AuditScanAsync [batch_size] [log_top_n]`，按分片执行 `AssetRegistry + FAssetData` 扫描，避免单帧全量阻塞。

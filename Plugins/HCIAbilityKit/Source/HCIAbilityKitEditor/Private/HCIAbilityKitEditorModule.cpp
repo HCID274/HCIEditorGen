@@ -1,5 +1,6 @@
 #include "HCIAbilityKitEditorModule.h"
 
+#include "AssetRegistry/IAssetRegistry.h"
 #include "AssetRegistry/AssetRegistryModule.h"
 #include "Audit/HCIAbilityKitAuditScanAsyncController.h"
 #include "Audit/HCIAbilityKitAuditTagNames.h"
@@ -17,6 +18,7 @@
 #include "Misc/DelayedAutoRegister.h"
 #include "Misc/FileHelper.h"
 #include "Misc/Guid.h"
+#include "Misc/PackageName.h"
 #include "Misc/Paths.h"
 #include "Modules/ModuleManager.h"
 #include "Search/HCIAbilityKitSearchIndexService.h"
@@ -26,6 +28,9 @@
 #include "Services/HCIAbilityKitParserService.h"
 #include "Styling/AppStyle.h"
 #include "ToolMenus.h"
+#include "UObject/Package.h"
+#include "UObject/SoftObjectPath.h"
+#include "UObject/UObjectGlobals.h"
 
 DEFINE_LOG_CATEGORY_STATIC(LogHCIAbilityKitSearchQuery, Log, All);
 DEFINE_LOG_CATEGORY_STATIC(LogHCIAbilityKitAuditScan, Log, All);
@@ -80,7 +85,102 @@ static void HCI_DeleteTempFile(const FString& Filename)
 	}
 }
 
-static void HCI_ParseAuditRowFromAssetData(const FAssetData& AssetData, FHCIAbilityKitAuditAssetRow& OutRow)
+static bool HCI_TryMarkScanSkippedByState(const FAssetData& AssetData, FHCIAbilityKitAuditAssetRow& OutRow)
+{
+	const FString PackageName = AssetData.PackageName.ToString();
+
+	if (UPackage* LoadedPackage = FindPackage(nullptr, *PackageName))
+	{
+		if (LoadedPackage->IsDirty())
+		{
+			OutRow.ScanState = TEXT("skipped_locked_or_dirty");
+			OutRow.SkipReason = TEXT("package_dirty");
+			OutRow.TriangleSource = TEXT("unavailable");
+			return true;
+		}
+	}
+
+	const FString PackageFilename = FPackageName::LongPackageNameToFilename(
+		PackageName,
+		FPackageName::GetAssetPackageExtension());
+	if (!PackageFilename.IsEmpty() && IFileManager::Get().FileExists(*PackageFilename) && IFileManager::Get().IsReadOnly(*PackageFilename))
+	{
+		OutRow.ScanState = TEXT("skipped_locked_or_dirty");
+		OutRow.SkipReason = TEXT("package_read_only");
+		OutRow.TriangleSource = TEXT("unavailable");
+		return true;
+	}
+
+	OutRow.ScanState = TEXT("ok");
+	OutRow.SkipReason = TEXT("");
+	return false;
+}
+
+static void HCI_TryFillTriangleFromTagCached(
+	const FAssetData& AssetData,
+	IAssetRegistry* AssetRegistry,
+	FHCIAbilityKitAuditAssetRow& OutRow)
+{
+	if (AssetRegistry == nullptr)
+	{
+		OutRow.TriangleSource = TEXT("unavailable");
+		return;
+	}
+
+	FName SourceTagKey;
+	if (HCIAbilityKitAuditTagNames::TryResolveTriangleCountFromTags(
+			[&AssetData](const FName& TagName, FString& OutValue)
+			{
+				return AssetData.GetTagValue(TagName, OutValue);
+			},
+			OutRow.TriangleCountLod0Actual,
+			SourceTagKey))
+	{
+		OutRow.TriangleSource = TEXT("tag_cached");
+		OutRow.TriangleSourceTagKey = SourceTagKey.ToString();
+		return;
+	}
+
+	if (OutRow.RepresentingMeshPath.IsEmpty())
+	{
+		OutRow.TriangleSource = TEXT("unavailable");
+		return;
+	}
+
+	const FSoftObjectPath RepresentingMeshObjectPath(OutRow.RepresentingMeshPath);
+	if (!RepresentingMeshObjectPath.IsValid())
+	{
+		OutRow.TriangleSource = TEXT("unavailable");
+		return;
+	}
+
+	const FAssetData MeshAssetData = AssetRegistry->GetAssetByObjectPath(RepresentingMeshObjectPath);
+	if (!MeshAssetData.IsValid())
+	{
+		OutRow.TriangleSource = TEXT("unavailable");
+		return;
+	}
+
+	if (HCIAbilityKitAuditTagNames::TryResolveTriangleCountFromTags(
+			[&MeshAssetData](const FName& TagName, FString& OutValue)
+			{
+				return MeshAssetData.GetTagValue(TagName, OutValue);
+			},
+			OutRow.TriangleCountLod0Actual,
+			SourceTagKey))
+	{
+		OutRow.TriangleSource = TEXT("tag_cached");
+		OutRow.TriangleSourceTagKey = SourceTagKey.ToString();
+		return;
+	}
+
+	OutRow.TriangleSource = TEXT("unavailable");
+}
+
+static void HCI_ParseAuditRowFromAssetData(
+	const FAssetData& AssetData,
+	IAssetRegistry* AssetRegistry,
+	FHCIAbilityKitAuditAssetRow& OutRow)
 {
 	OutRow.AssetPath = AssetData.GetObjectPathString();
 	OutRow.AssetName = AssetData.AssetName.ToString();
@@ -94,6 +194,13 @@ static void HCI_ParseAuditRowFromAssetData(const FAssetData& AssetData, FHCIAbil
 	{
 		LexTryParseString(OutRow.Damage, *DamageText);
 	}
+
+	if (HCI_TryMarkScanSkippedByState(AssetData, OutRow))
+	{
+		return;
+	}
+
+	HCI_TryFillTriangleFromTagCached(AssetData, AssetRegistry, OutRow);
 }
 
 static void HCI_AccumulateAuditCoverage(const FHCIAbilityKitAuditAssetRow& Row, FHCIAbilityKitAuditScanStats& InOutStats)
@@ -110,6 +217,14 @@ static void HCI_AccumulateAuditCoverage(const FHCIAbilityKitAuditAssetRow& Row, 
 	{
 		++InOutStats.RepresentingMeshCoveredCount;
 	}
+	if (Row.TriangleSource == TEXT("tag_cached") && Row.TriangleCountLod0Actual >= 0)
+	{
+		++InOutStats.TriangleTagCoveredCount;
+	}
+	if (Row.ScanState == TEXT("skipped_locked_or_dirty"))
+	{
+		++InOutStats.SkippedLockedOrDirtyCount;
+	}
 }
 
 static void HCI_LogAuditRows(const TCHAR* Prefix, const TArray<FHCIAbilityKitAuditAssetRow>& Rows, const int32 LogTopN)
@@ -121,14 +236,19 @@ static void HCI_LogAuditRows(const TCHAR* Prefix, const TArray<FHCIAbilityKitAud
 		UE_LOG(
 			LogHCIAbilityKitAuditScan,
 			Display,
-			TEXT("%s row=%d asset=%s id=%s display_name=%s damage=%.2f representing_mesh=%s"),
+			TEXT("%s row=%d asset=%s id=%s display_name=%s damage=%.2f representing_mesh=%s triangle_count_lod0=%d triangle_source=%s triangle_source_tag=%s scan_state=%s skip_reason=%s"),
 			Prefix,
 			Index,
 			*Row.AssetPath,
 			*Row.Id,
 			*Row.DisplayName,
 			Row.Damage,
-			*Row.RepresentingMeshPath);
+			*Row.RepresentingMeshPath,
+			Row.TriangleCountLod0Actual,
+			*Row.TriangleSource,
+			*Row.TriangleSourceTagKey,
+			*Row.ScanState,
+			*Row.SkipReason);
 	}
 }
 
@@ -240,6 +360,8 @@ static bool HCI_TickAbilityKitAuditScanAsync(float DeltaSeconds)
 	}
 
 	const TArray<FAssetData>& AssetDatas = State.Controller.GetAssetDatas();
+	FAssetRegistryModule& AssetRegistryModule = FModuleManager::LoadModuleChecked<FAssetRegistryModule>(TEXT("AssetRegistry"));
+	IAssetRegistry* AssetRegistry = &AssetRegistryModule.Get();
 	for (int32 Index = Batch.StartIndex; Index < Batch.EndIndex; ++Index)
 	{
 		if (!AssetDatas.IsValidIndex(Index))
@@ -249,7 +371,7 @@ static bool HCI_TickAbilityKitAuditScanAsync(float DeltaSeconds)
 		}
 
 		FHCIAbilityKitAuditAssetRow& Row = State.Snapshot.Rows.Emplace_GetRef();
-		HCI_ParseAuditRowFromAssetData(AssetDatas[Index], Row);
+		HCI_ParseAuditRowFromAssetData(AssetDatas[Index], AssetRegistry, Row);
 		HCI_AccumulateAuditCoverage(Row, State.Snapshot.Stats);
 	}
 

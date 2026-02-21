@@ -2,7 +2,7 @@
 
 > 状态：冻结（M0-V3）
 > 版本：v3
-> 更新时间：2026-02-15
+> 更新时间：2026-02-21
 
 ## 1. 数据输入契约（SourceData）
 
@@ -112,6 +112,18 @@
 - `E2001`：Skill 未命中或命中冲突
 - `E2002`：敏感操作未获授权
 - `E3001`：审计未通过（高风险）
+- `E4001`：Plan JSON 缺失必填字段
+- `E4002`：Plan JSON 工具不在白名单
+- `E4003`：Tool 参数校验失败
+- `E4004`：超出批量修改阈值
+- `E4005`：用户未确认执行写操作
+- `E4006`：SourceControl Checkout 失败（Fail-Fast）
+- `E4007`：事务执行失败并已整单回滚
+- `E4008`：本地权限校验失败（Mock RBAC）
+- `E4009`：工具参数超出边界或枚举非法
+- `E4010`：LOD 工具目标资产类型不支持或 Nanite 已启用
+- `E4011`：关卡风险扫描目标非法（非 Actor 范围或参数不合法）
+- `E4012`：命名溯源信息缺失且无法生成安全命名提案
 
 ## 6. 测试样例（固定）
 
@@ -121,6 +133,19 @@
 - `TC_FAIL_03`：源文件失效（期望 `E1005`）
 - `TC_FAIL_04`：敏感操作拒绝授权（期望 `E2002`）
 - `TC_FAIL_05`：`representing_mesh` 路径不存在（期望 `E1006`）
+- `TC_AGENT_FAIL_01`：Plan 缺少 `tool_name`（期望 `E4001`）
+- `TC_AGENT_FAIL_02`：Tool 不在白名单（期望 `E4002`）
+- `TC_AGENT_FAIL_03`：变更资产数 `>50`（期望 `E4004`）
+- `TC_AGENT_FAIL_04`：未确认执行写操作（期望 `E4005`）
+- `TC_AGENT_FAIL_05`：`Checkout` 失败（期望 `E4006`）
+- `TC_AGENT_FAIL_06`：步骤失败触发全单回滚（期望 `E4007`）
+- `TC_AGENT_OK_02`：SourceControl 未启用（期望 Warning + 离线本地模式放行）
+- `TC_AGENT_FAIL_07`：未命中用户名执行写操作（期望 `E4008`，Guest 只读）
+- `TC_AGENT_FAIL_08`：`SetMeshLODGroup` 作用于 Nanite 或非 StaticMesh（期望 `E4010`）
+- `TC_AGENT_OK_03`：`ScanLevelMeshRisks` 扫描选中/全量 Actor，输出 `missing_collision/default_material` 证据并可定位
+- `TC_AGENT_FAIL_09`：`ScanLevelMeshRisks` 传入非法 `scope/checks`（期望 `E4011`）
+- `TC_AGENT_OK_04`：`NormalizeAssetNamingByMetadata` 可读取 `UAssetImportData/AssetUserData` 生成前缀命名与 Move 计划（Dry-Run）
+- `TC_AGENT_FAIL_10`：命名归档工具元数据不足且无法安全推断（期望 `E4012`）
 
 ## 7. 检索文档契约（Step3-Slice1，历史基线）
 
@@ -206,6 +231,12 @@ public:
   - `NamingRule`
   - `PathConventionRule`
   - `TriangleBudgetRule`
+  - `TextureNPOTRule`
+  - `HighPolyAutoLODRule`
+  - `MissingCollisionRule`
+  - `DefaultMaterialRule`
+  - `MetadataNamingRule`
+  - `ArchiveMoveRule`
   - `TriangleExpectedMismatchRule`（actual vs expected）
   - `PathComplexityMismatchRule`
 
@@ -249,6 +280,14 @@ public:
   - `triangle_count_lod0_actual`（可缺省）
   - `triangle_count_lod0_expected_json`（可缺省）
   - `triangle_source`（`tag_cached/batch_loaded/unavailable`）
+  - `actor_path`（关卡风险规则可填）
+  - `missing_collision`（`true/false`，关卡风险规则可填）
+  - `uses_default_material`（`true/false`，关卡风险规则可填）
+  - `metadata_source`（`UAssetImportData/AssetUserData/auto`，命名溯源规则可填）
+  - `importer`（可缺省）
+  - `import_timestamp`（可缺省）
+  - `proposed_name`（可缺省）
+  - `proposed_target_path`（可缺省）
   - `virtual_path`（可缺省）
   - `scan_state`（`ok/skipped_locked_or_dirty/skipped_unavailable`）
 
@@ -288,3 +327,186 @@ public:
 - 空结果要求：
   - 禁止静默失败；
   - 必须输出 `suggestion=...` 的可执行建议。
+
+## 14. Agent 执行契约（Stage E/F 冻结）
+
+### 14.1 Plan JSON 契约（必须做）
+
+- 最小结构：
+```json
+{
+  "plan_version": 1,
+  "request_id": "req_20260221_0001",
+  "intent": "batch_fix_assets",
+  "steps": [
+    {
+      "step_id": "s1",
+      "tool_name": "SetTextureMaxSize",
+      "args": {
+        "asset_paths": [
+          "/Game/Art/Trees/T_Tree_01_D.T_Tree_01_D"
+        ],
+        "max_size": 1024
+      },
+      "risk_level": "write",
+      "requires_confirm": true,
+      "rollback_strategy": "all_or_nothing",
+      "expected_evidence": [
+        "asset_path",
+        "before",
+        "after"
+      ]
+    }
+  ]
+}
+```
+- 必填字段：
+  - 顶层：`plan_version/request_id/intent/steps`
+  - 步骤：`step_id/tool_name/args/risk_level/requires_confirm/rollback_strategy`
+- 约束：
+  - `risk_level` 仅允许：`read_only/write/destructive`；
+  - `requires_confirm=true` 的步骤，未确认前禁止执行；
+  - `tool_name` 必须命中 Tool Registry 白名单。
+
+### 14.2 Tool Registry 能力声明契约（必须做）
+
+- 最小结构：
+```json
+{
+  "tool_name": "SetTextureMaxSize",
+  "args_schema": {
+    "asset_paths": "string[]",
+    "max_size": "int"
+  },
+  "capability": "write",
+  "supports_dry_run": true,
+  "supports_undo": true,
+  "destructive": false
+}
+```
+- 必填字段：
+  - `tool_name/args_schema/capability/supports_dry_run/supports_undo/destructive`
+- 约束：
+  - `capability` 仅允许：`read_only/write/destructive`；
+  - `destructive=true` 的工具必须走二次确认；
+  - 未声明能力的工具不得被 Executor 调用。
+- 一期首批工具白名单（冻结）：
+  - `ScanAssets`（`read_only`）
+  - `SetTextureMaxSize`（`write`）
+  - `SetMeshLODGroup`（`write`）
+  - `ScanLevelMeshRisks`（`read_only`）
+  - `NormalizeAssetNamingByMetadata`（`write`）
+  - `RenameAsset`（`write`）
+  - `MoveAsset`（`write`）
+- 一期工具 `args_schema` 冻结（严格枚举与边界）：
+  - `SetTextureMaxSize`
+    - `asset_paths`: `string[]`（长度 `1..50`）
+    - `max_size`: `int`（仅允许枚举：`256/512/1024/2048/4096/8192`）
+  - `SetMeshLODGroup`
+    - `asset_paths`: `string[]`（长度 `1..50`）
+    - `lod_group`: `string`（仅允许枚举：`LevelArchitecture/SmallProp/LargeProp/Foliage/Character`）
+  - `ScanLevelMeshRisks`
+    - `scope`: `string`（仅允许枚举：`selected/all`）
+    - `checks`: `string[]`（仅允许枚举子集：`missing_collision/default_material`）
+    - `max_actor_count`: `int`（范围 `1..5000`）
+  - `NormalizeAssetNamingByMetadata`
+    - `asset_paths`: `string[]`（长度 `1..50`）
+    - `metadata_source`: `string`（仅允许枚举：`auto/UAssetImportData/AssetUserData`）
+    - `prefix_mode`: `string`（仅允许枚举：`auto_by_asset_class`，静态网格强制 `SM_`、贴图强制 `T_`）
+    - `target_root`: `string`（必须以 `/Game/` 开头）
+  - `RenameAsset`
+    - `asset_path`: `string`
+    - `new_name`: `string`（正则：`^[A-Za-z0-9_]+$`，长度 `1..64`）
+  - `MoveAsset`
+    - `asset_path`: `string`
+    - `target_path`: `string`（必须以 `/Game/` 开头）
+- 参数策略：
+  - 任何不在枚举或超出边界的参数，直接返回 `E4009`；
+  - `ScanLevelMeshRisks` 的 `scope/checks` 非法直接返回 `E4011`；
+  - `NormalizeAssetNamingByMetadata` 无法从元数据生成安全提案时返回 `E4012`；
+  - 大模型不得绕过 `args_schema` 直接注入未声明字段。
+
+### 14.3 Dry-Run Diff 契约（必须做）
+
+- 最小结构：
+```json
+{
+  "request_id": "req_20260221_0001",
+  "summary": {
+    "total_candidates": 12,
+    "modifiable": 10,
+    "skipped": 2
+  },
+  "diff_items": [
+    {
+      "asset_path": "/Game/Art/Trees/T_Tree_01_D.T_Tree_01_D",
+      "field": "max_texture_size",
+      "before": 4096,
+      "after": 1024,
+      "tool_name": "SetTextureMaxSize",
+      "risk": "write",
+      "skip_reason": ""
+    }
+  ]
+}
+```
+- 必填字段：`asset_path/field/before/after/tool_name/risk`
+- 扩展字段（一期建议）：`object_type(asset/actor)`、`locate_strategy(camera_focus/sync_browser)`、`evidence_key`。
+- UE 交互要求：
+  - Diff 列表项必须支持定位资产；
+  - 场景中可定位的 Actor：触发 `Camera Focus`；
+  - 纯资产（`Texture2D/DataAsset` 等）：调用 `GEditor->SyncBrowserToObjects` 在 Content Browser 高亮。
+
+### 14.4 安全执行策略契约（极简冻结）
+
+- Blast Radius：
+  - 固定常量：`MAX_ASSET_MODIFY_LIMIT = 50`；
+  - 超阈值直接拦截并返回 `E4004`。
+- 事务策略：
+  - 固定 `All-or-Nothing`；
+  - 任一步骤失败整单回滚并返回 `E4007`。
+- SourceControl：
+  - 当 `ISourceControlModule::Get().IsEnabled()==false`：进入“离线本地模式”，输出 Warning 并放行本地写操作；
+  - 当 SourceControl 已启用：固定 `Fail-Fast`，`Checkout` 任一步失败立即终止并返回 `E4006`；
+  - 一期不做自动重试与强制解锁。
+
+### 14.5 本地 Mock 权限与日志契约（极简冻结）
+
+- 权限来源：本地用户名 + 本地角色映射文件（JSON）。
+- 角色映射文件路径（一期固定）：`SourceData/AbilityKits/Config/agent_rbac_mock.json`
+- 最小权限结构：
+```json
+{
+  "user": "artist_a",
+  "allowed_capabilities": [
+    "read_only",
+    "write"
+  ]
+}
+```
+- 默认策略（冻结）：
+  - 未命中白名单用户默认映射为 `Guest`；
+  - `Guest` 仅允许 `read_only`，阻断所有 `write/destructive`（返回 `E4008`）；
+  - `Guest` 允许执行扫描与报告导出。
+- 审计日志落地：本地 `json/txt` 文件。
+- 审计日志路径（一期固定）：`Saved/HCIAbilityKit/Audit/agent_exec_log.jsonl`
+- 日志最小字段：`timestamp/user/request_id/tool_name/asset_count/result/error_code`。
+
+### 14.6 一期禁止实现（延期到 Phase 3）
+
+- 记忆门禁与 TTL 细则（Session TTL/SOP 自动提炼触发策略）。
+- 线上 KPI 监控体系（时延成本等运营指标）。
+
+### 14.7 LOD 工具安全边界（必须做）
+
+- `SetMeshLODGroup` 执行前必须 `Cast<UStaticMesh>` 成功，否则返回 `E4010`。
+- 若目标网格 `NaniteSettings.bEnabled == true`，必须拦截并返回 `E4010`（禁止修改 LODGroup）。
+- 仅当目标为 `UStaticMesh` 且 `Nanite` 关闭时，允许执行 LOD 相关写操作。
+
+### 14.8 关卡排雷与命名溯源工具边界（必须做）
+
+- `ScanLevelMeshRisks` 仅允许扫描 `StaticMeshActor`；`scope` 仅允许 `selected/all`，`checks` 仅允许 `missing_collision/default_material`，非法参数返回 `E4011`。
+- 关卡风险扫描结果必须带 `actor_path` 与检测证据，并支持定位策略 `camera_focus`。
+- `NormalizeAssetNamingByMetadata` 必须先读取 `UAssetImportData/AssetUserData` 再生成提案；无法获取足够元数据时返回 `E4012`，禁止盲改。
+- 命名提案必须满足前缀约束：`UStaticMesh -> SM_`，`UTexture* -> T_`；归档目标路径必须以 `/Game/` 开头。
+- 命名与归档写操作必须先产出 Dry-Run Diff，未确认不得执行。

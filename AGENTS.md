@@ -6,9 +6,16 @@ Scope: whole repo.
 
 - 聚焦单一模块：`HCIAbilityKit`。
 - 解决三个核心痛点：资产规范执行难、性能风险发现慢、数据校验累。
-- 核心理念：AI 不是目的，AI 只服务于编辑器工具效率与数据质量。
+- 核心理念：工具能力服务于编辑器效率与数据质量。
 - 功能规划必须对齐真实开发场景（优先资产审计与跨部门协同），禁止仅为演示而做“玩具化功能”。
-- 当前交付收束：先做“资产审计主链路”专精模块，AI 视觉为后置加分项；不做自动改写资产与审批/审阅 UI。
+- 当前交付收束：仅做“资产审计主链路”专精模块；不做无确认自动改写资产与审批/审阅 UI。
+- 路线衔接：`B4->D3` 收尾后，进入 `Stage E（Agent安全执行）` 与 `Stage F（指令解析与编排）`。
+- 增强项（储备池）允许文档保留，但不得阻塞当前切片门禁。
+- 一期冻结决议（2026-02-21）：
+  - 深做：`Plan JSON 契约`、`Tool Registry 能力声明`、`Dry-Run Diff + Camera Focus`，并强制覆盖三维业务闭环：`资产规范合规（面数阈值+自动LOD、Texture NPOT+分辨率降级）`、`关卡场景排雷（StaticMeshActor 缺失 Collision/Default Material 检测与定位）`、`命名溯源整理（基于 UAssetImportData/AssetUserData 的自动前缀命名与批量 Move 归档）`。
+  - 极简：`MAX_ASSET_MODIFY_LIMIT=50`、`All-or-Nothing`、`SourceControl Fail-Fast`、本地 Mock 鉴权与日志。
+  - 延期：记忆门禁/TTL 与线上 KPI（Phase 3，不进入一期代码）。
+  - 细则：`args_schema` 必须冻结枚举边界；Actor 用 `Camera Focus`，纯资产用 `SyncBrowserToObjects`；SourceControl 未启用时进入离线本地模式；未命中用户默认 `Guest(read_only)`；LOD 工具必须拦截 Nanite 资产。
 
 ## 2. 架构基线（冻结）
 
@@ -31,7 +38,7 @@ Scope: whole repo.
 
 - 每个切片开发完成后必须停下，等待用户在 UE 手测。
 - 用户未明确 Pass，不得进入下一个切片。
-- 重构优先级：先结构迁移，再服务抽离，再 AI 注入，再 UI 升级。
+- 重构优先级：先结构迁移，再服务抽离，再审计主链路完善，再 UI 升级。
 
 ## 5. 测试与数据留存
 
@@ -55,7 +62,7 @@ Scope: whole repo.
 - 错误信息必须可定位（文件/字段/原因/建议）。
 - 未通过验证的结论不得标记为“完成”。
 
-## 8. 当前进度快照（2026-02-19）
+## 8. 当前进度快照（2026-02-21）
 
 - Step 1（结构迁移）已关闭：
   - Slice1：插件双模块骨架落地并通过。
@@ -96,6 +103,7 @@ Scope: whole repo.
     - 已完成：UE 手测通过（`assets=2`，其中 1 个历史资产字段为空导致覆盖率 `50%`，符合预期；用户反馈 `Pass`）。
   - 当前切片：`Stage B-SliceB4`（任务中断/重试与失败收敛）。
   - 下一切片：`Stage B-SliceB5`（采集 `triangle_count` 相关 Tags）。
+  - D 段收尾后续主线：`Stage E`（安全执行：Dry-Run/Confirm/Transaction/SC）-> `Stage F`（NL->Plan->Executor）。
   - B3 最新状态：
     - 已完成：新增 `HCIAbilityKit.AuditScanAsync [batch_size] [log_top_n]`，按分片执行 `AssetRegistry + FAssetData` 扫描，避免单帧全量阻塞。
     - 已完成：新增 `HCIAbilityKit.AuditScanProgress`，可在扫描期间查询进度。

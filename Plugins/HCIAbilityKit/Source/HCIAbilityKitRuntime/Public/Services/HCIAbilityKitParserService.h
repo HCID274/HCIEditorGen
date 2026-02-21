@@ -1,6 +1,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "HCIAbilityKitErrorCodes.h"
 #include "Templates/Function.h"
 
 /**

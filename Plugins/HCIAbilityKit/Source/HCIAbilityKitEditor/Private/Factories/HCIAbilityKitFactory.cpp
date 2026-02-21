@@ -1,6 +1,7 @@
 #include "Factories/HCIAbilityKitFactory.h"
 
 #include "HCIAbilityKitAsset.h"
+#include "HCIAbilityKitErrorCodes.h"
 #include "Services/HCIAbilityKitParserService.h"
 
 #include "AssetRegistry/AssetRegistryModule.h"
@@ -68,7 +69,7 @@ bool ValidateRepresentingMeshPath(
 
 	if (!FPackageName::IsValidObjectPath(RepresentingMeshPath))
 	{
-		OutError.Code = TEXT("E1006");
+		OutError.Code = HCIAbilityKitErrorCodes::InvalidObjectPath;
 		OutError.File = SourceFilename;
 		OutError.Field = TEXT("representing_mesh");
 		OutError.Reason = TEXT("Invalid UE object path format");
@@ -81,7 +82,7 @@ bool ValidateRepresentingMeshPath(
 	const FAssetData AssetData = AssetRegistryModule.Get().GetAssetByObjectPath(FSoftObjectPath(RepresentingMeshPath));
 	if (!AssetData.IsValid())
 	{
-		OutError.Code = TEXT("E1006");
+		OutError.Code = HCIAbilityKitErrorCodes::InvalidObjectPath;
 		OutError.File = SourceFilename;
 		OutError.Field = TEXT("representing_mesh");
 		OutError.Reason = TEXT("Target asset does not exist");
@@ -92,7 +93,7 @@ bool ValidateRepresentingMeshPath(
 
 	if (AssetData.AssetClassPath != UStaticMesh::StaticClass()->GetClassPathName())
 	{
-		OutError.Code = TEXT("E1006");
+		OutError.Code = HCIAbilityKitErrorCodes::InvalidObjectPath;
 		OutError.File = SourceFilename;
 		OutError.Field = TEXT("representing_mesh");
 		OutError.Reason = TEXT("Target asset is not UStaticMesh");
@@ -271,7 +272,7 @@ EReimportResult::Type UHCIAbilityKitFactory::Reimport(UObject* Obj)
 	if (!FPaths::FileExists(FilenameToLoad))
 	{
 		FHCIAbilityKitParseError ParseError;
-		ParseError.Code = TEXT("E1005");
+		ParseError.Code = HCIAbilityKitErrorCodes::FileReadError;
 		ParseError.File = FilenameToLoad;
 		ParseError.Field = TEXT("file");
 		ParseError.Reason = TEXT("Source file not found");

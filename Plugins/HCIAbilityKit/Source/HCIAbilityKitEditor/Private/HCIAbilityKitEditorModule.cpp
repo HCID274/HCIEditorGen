@@ -12,6 +12,7 @@
 #include "HAL/FileManager.h"
 #include "HAL/PlatformProcess.h"
 #include "HCIAbilityKitAsset.h"
+#include "HCIAbilityKitErrorCodes.h"
 #include "IPythonScriptPlugin.h"
 #include "Misc/DelayedAutoRegister.h"
 #include "Misc/FileHelper.h"
@@ -585,7 +586,7 @@ static bool HCI_ParsePythonResponse(
 	FString ResponseContent;
 	if (!FFileHelper::LoadFileToString(ResponseContent, *ResponseFilename))
 	{
-		OutError.Code = TEXT("E3001");
+		OutError.Code = HCIAbilityKitErrorCodes::PythonError;
 		OutError.File = ScriptPath;
 		OutError.Field = TEXT("python_response");
 		OutError.Reason = TEXT("Python hook response file is missing");
@@ -600,7 +601,7 @@ static bool HCI_ParsePythonResponse(
 	const TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(ResponseContent);
 	if (!FJsonSerializer::Deserialize(Reader, RootObject) || !RootObject.IsValid())
 	{
-		OutError.Code = TEXT("E3001");
+		OutError.Code = HCIAbilityKitErrorCodes::PythonError;
 		OutError.File = ScriptPath;
 		OutError.Field = TEXT("python_response");
 		OutError.Reason = TEXT("Python hook response is not valid JSON");
@@ -612,7 +613,7 @@ static bool HCI_ParsePythonResponse(
 	bool bPythonOk = false;
 	if (!RootObject->TryGetBoolField(TEXT("ok"), bPythonOk))
 	{
-		OutError.Code = TEXT("E3001");
+		OutError.Code = HCIAbilityKitErrorCodes::PythonError;
 		OutError.File = ScriptPath;
 		OutError.Field = TEXT("python_response.ok");
 		OutError.Reason = TEXT("Python hook response missing required bool field: ok");
@@ -625,7 +626,7 @@ static bool HCI_ParsePythonResponse(
 		const TSharedPtr<FJsonObject>* ErrorObject = nullptr;
 		if (RootObject->TryGetObjectField(TEXT("error"), ErrorObject) && ErrorObject && ErrorObject->IsValid())
 		{
-			OutError.Code = HCI_GetJsonStringOrDefault(*ErrorObject, TEXT("code"), TEXT("E3001"));
+			OutError.Code = HCI_GetJsonStringOrDefault(*ErrorObject, TEXT("code"), HCIAbilityKitErrorCodes::PythonError);
 			OutError.File = SourceFilename;
 			OutError.Field = HCI_GetJsonStringOrDefault(*ErrorObject, TEXT("field"), TEXT("python_hook"));
 			OutError.Reason = HCI_GetJsonStringOrDefault(*ErrorObject, TEXT("reason"), TEXT("Python hook returned failure"));
@@ -634,7 +635,7 @@ static bool HCI_ParsePythonResponse(
 		}
 		else
 		{
-			OutError.Code = TEXT("E3001");
+			OutError.Code = HCIAbilityKitErrorCodes::PythonError;
 			OutError.File = SourceFilename;
 			OutError.Field = TEXT("python_hook");
 			OutError.Reason = TEXT("Python hook returned failure without error payload");
@@ -668,7 +669,7 @@ static bool HCI_RunPythonHook(const FString& SourceFilename, FHCIAbilityKitParse
 	const FString ScriptPath = FPaths::ConvertRelativePathToFull(FPaths::ProjectDir(), GHCIAbilityKitPythonScriptPath);
 	if (!FPaths::FileExists(ScriptPath))
 	{
-		OutError.Code = TEXT("E3002");
+		OutError.Code = HCIAbilityKitErrorCodes::PythonScriptMissing;
 		OutError.File = ScriptPath;
 		OutError.Field = TEXT("python_hook");
 		OutError.Reason = TEXT("Python hook script not found");
@@ -679,7 +680,7 @@ static bool HCI_RunPythonHook(const FString& SourceFilename, FHCIAbilityKitParse
 	IPythonScriptPlugin* PythonPlugin = IPythonScriptPlugin::Get();
 	if (!PythonPlugin || !PythonPlugin->IsPythonAvailable())
 	{
-		OutError.Code = TEXT("E3003");
+		OutError.Code = HCIAbilityKitErrorCodes::PythonPluginDisabled;
 		OutError.File = ScriptPath;
 		OutError.Field = TEXT("python_plugin");
 		OutError.Reason = TEXT("PythonScriptPlugin is unavailable");
@@ -709,7 +710,7 @@ static bool HCI_RunPythonHook(const FString& SourceFilename, FHCIAbilityKitParse
 	const bool bExecOk = PythonPlugin->ExecPythonCommandEx(Command);
 	if (!bExecOk)
 	{
-		OutError.Code = TEXT("E3001");
+		OutError.Code = HCIAbilityKitErrorCodes::PythonError;
 		OutError.File = ScriptPath;
 		OutError.Field = TEXT("python_execution");
 		OutError.Reason = Command.CommandResult.IsEmpty() ? TEXT("Python hook execution failed") : Command.CommandResult;

@@ -41,7 +41,7 @@ bool FHCIAbilityKitParseError::IsValid() const
 FString FHCIAbilityKitParseError::ToContractString() const
 {
 	// 按照项目定义的错误契约格式生成标准错误字符串
-	const FString SafeCode = Code.IsEmpty() ? TEXT("E0000") : Code;
+	const FString SafeCode = Code.IsEmpty() ? HCIAbilityKitErrorCodes::Unknown : Code;
 	const FString SafeFile = File.IsEmpty() ? TEXT("<unknown>") : File;
 	const FString SafeField = Field.IsEmpty() ? TEXT("<unknown>") : Field;
 	const FString SafeReason = Reason.IsEmpty() ? TEXT("Unknown error") : Reason;
@@ -78,7 +78,7 @@ bool FHCIAbilityKitParserService::TryParseKitFile(
 	if (!FFileHelper::LoadFileToString(FileContent, *FullFilename))
 	{
 		OutError = MakeParseError(
-			TEXT("E1005"),
+			HCIAbilityKitErrorCodes::FileReadError,
 			FullFilename,
 			TEXT("file"),
 			TEXT("Source file is missing or unreadable"),
@@ -92,7 +92,7 @@ bool FHCIAbilityKitParserService::TryParseKitFile(
 	if (!FJsonSerializer::Deserialize(Reader, RootObject) || !RootObject.IsValid())
 	{
 		OutError = MakeParseError(
-			TEXT("E1001"),
+			HCIAbilityKitErrorCodes::InvalidJson,
 			FullFilename,
 			TEXT("root"),
 			TEXT("Invalid JSON format"),
@@ -104,7 +104,7 @@ bool FHCIAbilityKitParserService::TryParseKitFile(
 	if (!RootObject->HasField(TEXT("schema_version")))
 	{
 		OutError = MakeParseError(
-			TEXT("E1002"),
+			HCIAbilityKitErrorCodes::MissingField,
 			FullFilename,
 			TEXT("schema_version"),
 			TEXT("Missing required field"),
@@ -116,7 +116,7 @@ bool FHCIAbilityKitParserService::TryParseKitFile(
 	if (!RootObject->TryGetNumberField(TEXT("schema_version"), SchemaVersionTmp))
 	{
 		OutError = MakeParseError(
-			TEXT("E1003"),
+			HCIAbilityKitErrorCodes::InvalidFieldType,
 			FullFilename,
 			TEXT("schema_version"),
 			TEXT("Invalid field type"),
@@ -126,7 +126,7 @@ bool FHCIAbilityKitParserService::TryParseKitFile(
 	if (SchemaVersionTmp != 1)
 	{
 		OutError = MakeParseError(
-			TEXT("E1004"),
+			HCIAbilityKitErrorCodes::InvalidFieldValue,
 			FullFilename,
 			TEXT("schema_version"),
 			FString::Printf(TEXT("Unsupported schema_version: %d"), SchemaVersionTmp),
@@ -139,7 +139,7 @@ bool FHCIAbilityKitParserService::TryParseKitFile(
 	if (!RootObject->HasField(TEXT("id")))
 	{
 		OutError = MakeParseError(
-			TEXT("E1002"),
+			HCIAbilityKitErrorCodes::MissingField,
 			FullFilename,
 			TEXT("id"),
 			TEXT("Missing required field"),
@@ -151,7 +151,7 @@ bool FHCIAbilityKitParserService::TryParseKitFile(
 	if (!RootObject->TryGetStringField(TEXT("id"), IdTmp))
 	{
 		OutError = MakeParseError(
-			TEXT("E1003"),
+			HCIAbilityKitErrorCodes::InvalidFieldType,
 			FullFilename,
 			TEXT("id"),
 			TEXT("Invalid field type"),
@@ -161,7 +161,7 @@ bool FHCIAbilityKitParserService::TryParseKitFile(
 	if (IdTmp.IsEmpty())
 	{
 		OutError = MakeParseError(
-			TEXT("E1004"),
+			HCIAbilityKitErrorCodes::InvalidFieldValue,
 			FullFilename,
 			TEXT("id"),
 			TEXT("Invalid field value"),
@@ -174,7 +174,7 @@ bool FHCIAbilityKitParserService::TryParseKitFile(
 	if (!RootObject->HasField(TEXT("display_name")))
 	{
 		OutError = MakeParseError(
-			TEXT("E1002"),
+			HCIAbilityKitErrorCodes::MissingField,
 			FullFilename,
 			TEXT("display_name"),
 			TEXT("Missing required field"),
@@ -186,7 +186,7 @@ bool FHCIAbilityKitParserService::TryParseKitFile(
 	if (!RootObject->TryGetStringField(TEXT("display_name"), DisplayNameTmp))
 	{
 		OutError = MakeParseError(
-			TEXT("E1003"),
+			HCIAbilityKitErrorCodes::InvalidFieldType,
 			FullFilename,
 			TEXT("display_name"),
 			TEXT("Invalid field type"),
@@ -202,7 +202,7 @@ bool FHCIAbilityKitParserService::TryParseKitFile(
 		if (!RootObject->TryGetStringField(TEXT("representing_mesh"), RepresentingMeshPathTmp))
 		{
 			OutError = MakeParseError(
-				TEXT("E1003"),
+				HCIAbilityKitErrorCodes::InvalidFieldType,
 				FullFilename,
 				TEXT("representing_mesh"),
 				TEXT("Invalid field type"),
@@ -220,7 +220,7 @@ bool FHCIAbilityKitParserService::TryParseKitFile(
 	if (!RootObject->HasField(TEXT("params")))
 	{
 		OutError = MakeParseError(
-			TEXT("E1002"),
+			HCIAbilityKitErrorCodes::MissingField,
 			FullFilename,
 			TEXT("params"),
 			TEXT("Missing required field"),
@@ -232,7 +232,7 @@ bool FHCIAbilityKitParserService::TryParseKitFile(
 	if (!RootObject->TryGetObjectField(TEXT("params"), ParamsObj) || !ParamsObj || !ParamsObj->IsValid())
 	{
 		OutError = MakeParseError(
-			TEXT("E1003"),
+			HCIAbilityKitErrorCodes::InvalidFieldType,
 			FullFilename,
 			TEXT("params"),
 			TEXT("Invalid field type"),
@@ -242,7 +242,7 @@ bool FHCIAbilityKitParserService::TryParseKitFile(
 	if (!(*ParamsObj)->HasField(TEXT("damage")))
 	{
 		OutError = MakeParseError(
-			TEXT("E1002"),
+			HCIAbilityKitErrorCodes::MissingField,
 			FullFilename,
 			TEXT("params.damage"),
 			TEXT("Missing required field"),
@@ -255,7 +255,7 @@ bool FHCIAbilityKitParserService::TryParseKitFile(
 	if (!(*ParamsObj)->TryGetNumberField(TEXT("damage"), DamageTmp))
 	{
 		OutError = MakeParseError(
-			TEXT("E1003"),
+			HCIAbilityKitErrorCodes::InvalidFieldType,
 			FullFilename,
 			TEXT("params.damage"),
 			TEXT("Invalid field type"),
@@ -273,7 +273,7 @@ bool FHCIAbilityKitParserService::TryParseKitFile(
 			if (!OutError.IsValid())
 			{
 				OutError = MakeParseError(
-					TEXT("E3001"),
+					HCIAbilityKitErrorCodes::PythonError,
 					FullFilename,
 					TEXT("python_hook"),
 					TEXT("Python processing failed"),

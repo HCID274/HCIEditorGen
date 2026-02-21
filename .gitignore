@@ -46,3 +46,5 @@ Content/__ExternalObjects__/
 # Default untitled map (editor auto-created)
 Content/Untitled.umap
 Content/Untitled_HLOD0_Instancing.uasset
+
+Content/HCI/B1cases/*

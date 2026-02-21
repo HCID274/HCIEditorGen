@@ -1,6 +1,7 @@
 #include "HCIAbilityKitEditorModule.h"
 
 #include "AssetRegistry/AssetRegistryModule.h"
+#include "Audit/HCIAbilityKitAuditScanAsyncController.h"
 #include "Audit/HCIAbilityKitAuditTagNames.h"
 #include "ContentBrowserMenuContexts.h"
 #include "Dom/JsonObject.h"
@@ -33,17 +34,15 @@ static TUniquePtr<FAutoConsoleCommand> GHCIAbilityKitSearchCommand;
 static TUniquePtr<FAutoConsoleCommand> GHCIAbilityKitAuditScanCommand;
 static TUniquePtr<FAutoConsoleCommand> GHCIAbilityKitAuditScanAsyncCommand;
 static TUniquePtr<FAutoConsoleCommand> GHCIAbilityKitAuditScanProgressCommand;
+static TUniquePtr<FAutoConsoleCommand> GHCIAbilityKitAuditScanStopCommand;
+static TUniquePtr<FAutoConsoleCommand> GHCIAbilityKitAuditScanRetryCommand;
 static const TCHAR* GHCIAbilityKitPythonScriptPath = TEXT("SourceData/AbilityKits/Python/hci_abilitykit_hook.py");
 
 struct FHCIAbilityKitAuditScanAsyncState
 {
-	bool bRunning = false;
-	int32 BatchSize = 256;
-	int32 LogTopN = 10;
-	int32 NextIndex = 0;
+	FHCIAbilityKitAuditScanAsyncController Controller;
 	int32 LastLogPercentBucket = -1;
 	double StartTimeSeconds = 0.0;
-	TArray<FAssetData> AssetDatas;
 	FHCIAbilityKitAuditScanSnapshot Snapshot;
 	FTSTicker::FDelegateHandle TickHandle;
 };
@@ -132,59 +131,84 @@ static void HCI_LogAuditRows(const TCHAR* Prefix, const TArray<FHCIAbilityKitAud
 	}
 }
 
-static void HCI_ResetAuditScanAsyncState()
-{
-	GHCIAbilityKitAuditScanAsyncState.bRunning = false;
-	GHCIAbilityKitAuditScanAsyncState.BatchSize = 256;
-	GHCIAbilityKitAuditScanAsyncState.LogTopN = 10;
-	GHCIAbilityKitAuditScanAsyncState.NextIndex = 0;
-	GHCIAbilityKitAuditScanAsyncState.LastLogPercentBucket = -1;
-	GHCIAbilityKitAuditScanAsyncState.StartTimeSeconds = 0.0;
-	GHCIAbilityKitAuditScanAsyncState.AssetDatas.Reset();
-	GHCIAbilityKitAuditScanAsyncState.Snapshot = FHCIAbilityKitAuditScanSnapshot();
-	GHCIAbilityKitAuditScanAsyncState.TickHandle.Reset();
-}
-
-static bool HCI_TickAbilityKitAuditScanAsync(float DeltaSeconds)
+static void HCI_StopAuditScanAsyncTicker()
 {
 	FHCIAbilityKitAuditScanAsyncState& State = GHCIAbilityKitAuditScanAsyncState;
-	if (!State.bRunning)
+	if (State.TickHandle.IsValid())
 	{
-		return false;
+		FTSTicker::GetCoreTicker().RemoveTicker(State.TickHandle);
+		State.TickHandle.Reset();
+	}
+}
+
+static void HCI_ResetAuditScanAsyncState(const bool bClearRetryContext)
+{
+	HCI_StopAuditScanAsyncTicker();
+	GHCIAbilityKitAuditScanAsyncState.Controller.Reset(bClearRetryContext);
+	GHCIAbilityKitAuditScanAsyncState.LastLogPercentBucket = -1;
+	GHCIAbilityKitAuditScanAsyncState.StartTimeSeconds = 0.0;
+	GHCIAbilityKitAuditScanAsyncState.Snapshot = FHCIAbilityKitAuditScanSnapshot();
+}
+
+static bool HCI_ParseAuditScanAsyncArgs(
+	const TArray<FString>& Args,
+	int32& OutBatchSize,
+	int32& OutLogTopN,
+	FString& OutError)
+{
+	OutBatchSize = 256;
+	OutLogTopN = 10;
+
+	if (Args.Num() >= 1)
+	{
+		int32 ParsedBatchSize = 0;
+		if (!LexTryParseString(ParsedBatchSize, *Args[0]) || ParsedBatchSize <= 0)
+		{
+			OutError = TEXT("batch_size must be an integer >= 1");
+			return false;
+		}
+		OutBatchSize = ParsedBatchSize;
 	}
 
-	const int32 TotalCount = State.AssetDatas.Num();
-	const int32 StartIndex = State.NextIndex;
-	const int32 EndIndex = FMath::Min(StartIndex + State.BatchSize, TotalCount);
-	for (int32 Index = StartIndex; Index < EndIndex; ++Index)
+	if (Args.Num() >= 2)
 	{
-		FHCIAbilityKitAuditAssetRow& Row = State.Snapshot.Rows.Emplace_GetRef();
-		HCI_ParseAuditRowFromAssetData(State.AssetDatas[Index], Row);
-		HCI_AccumulateAuditCoverage(Row, State.Snapshot.Stats);
-	}
-	State.NextIndex = EndIndex;
-
-	const int32 ProgressPercent = TotalCount > 0
-		? FMath::FloorToInt((static_cast<double>(State.NextIndex) / static_cast<double>(TotalCount)) * 100.0)
-		: 100;
-	const int32 ProgressBucket = ProgressPercent / 10;
-	if (ProgressBucket > State.LastLogPercentBucket || State.NextIndex >= TotalCount)
-	{
-		State.LastLogPercentBucket = ProgressBucket;
-		UE_LOG(
-			LogHCIAbilityKitAuditScan,
-			Display,
-			TEXT("[HCIAbilityKit][AuditScanAsync] progress=%d%% processed=%d/%d"),
-			ProgressPercent,
-			State.NextIndex,
-			TotalCount);
+		int32 ParsedTopN = 0;
+		if (!LexTryParseString(ParsedTopN, *Args[1]) || ParsedTopN < 0)
+		{
+			OutError = TEXT("log_top_n must be an integer >= 0");
+			return false;
+		}
+		OutLogTopN = ParsedTopN;
 	}
 
-	if (State.NextIndex < TotalCount)
-	{
-		return true;
-	}
+	return true;
+}
 
+static void HCI_ConvergeAuditScanAsyncFailure(const FString& Reason)
+{
+	FHCIAbilityKitAuditScanAsyncState& State = GHCIAbilityKitAuditScanAsyncState;
+	State.Controller.Fail(Reason);
+	State.Snapshot.Stats.AssetCount = State.Snapshot.Rows.Num();
+	State.Snapshot.Stats.UpdatedUtc = FDateTime::UtcNow();
+	State.Snapshot.Stats.DurationMs = (FPlatformTime::Seconds() - State.StartTimeSeconds) * 1000.0;
+
+	UE_LOG(
+		LogHCIAbilityKitAuditScan,
+		Error,
+		TEXT("[HCIAbilityKit][AuditScanAsync] failed reason=%s processed=%d/%d"),
+		*State.Controller.GetLastFailureReason(),
+		State.Controller.GetNextIndex(),
+		State.Controller.GetTotalCount());
+	UE_LOG(
+		LogHCIAbilityKitAuditScan,
+		Warning,
+		TEXT("[HCIAbilityKit][AuditScanAsync] suggestion=运行 HCIAbilityKit.AuditScanAsyncRetry 可按上次参数重试"));
+}
+
+static void HCI_FinalizeAuditScanAsyncSuccess()
+{
+	FHCIAbilityKitAuditScanAsyncState& State = GHCIAbilityKitAuditScanAsyncState;
+	State.Controller.Complete();
 	State.Snapshot.Stats.AssetCount = State.Snapshot.Rows.Num();
 	State.Snapshot.Stats.UpdatedUtc = FDateTime::UtcNow();
 	State.Snapshot.Stats.DurationMs = (FPlatformTime::Seconds() - State.StartTimeSeconds) * 1000.0;
@@ -193,9 +217,61 @@ static bool HCI_TickAbilityKitAuditScanAsync(float DeltaSeconds)
 		Display,
 		TEXT("[HCIAbilityKit][AuditScanAsync] %s"),
 		*State.Snapshot.Stats.ToSummaryString());
-	HCI_LogAuditRows(TEXT("[HCIAbilityKit][AuditScanAsync]"), State.Snapshot.Rows, State.LogTopN);
+	HCI_LogAuditRows(TEXT("[HCIAbilityKit][AuditScanAsync]"), State.Snapshot.Rows, State.Controller.GetLogTopN());
 
-	HCI_ResetAuditScanAsyncState();
+	HCI_ResetAuditScanAsyncState(true);
+}
+
+static bool HCI_TickAbilityKitAuditScanAsync(float DeltaSeconds)
+{
+	FHCIAbilityKitAuditScanAsyncState& State = GHCIAbilityKitAuditScanAsyncState;
+	if (!State.Controller.IsRunning())
+	{
+		return false;
+	}
+
+	const FHCIAbilityKitAuditScanBatch Batch = State.Controller.DequeueBatch();
+	const int32 TotalCount = State.Controller.GetTotalCount();
+	if (!Batch.bValid)
+	{
+		HCI_FinalizeAuditScanAsyncSuccess();
+		return false;
+	}
+
+	const TArray<FAssetData>& AssetDatas = State.Controller.GetAssetDatas();
+	for (int32 Index = Batch.StartIndex; Index < Batch.EndIndex; ++Index)
+	{
+		if (!AssetDatas.IsValidIndex(Index))
+		{
+			HCI_ConvergeAuditScanAsyncFailure(TEXT("asset index out of range during scan tick"));
+			return false;
+		}
+
+		FHCIAbilityKitAuditAssetRow& Row = State.Snapshot.Rows.Emplace_GetRef();
+		HCI_ParseAuditRowFromAssetData(AssetDatas[Index], Row);
+		HCI_AccumulateAuditCoverage(Row, State.Snapshot.Stats);
+	}
+
+	const int32 ProgressPercent = State.Controller.GetProgressPercent();
+	const int32 ProgressBucket = ProgressPercent / 10;
+	if (ProgressBucket > State.LastLogPercentBucket || State.Controller.GetNextIndex() >= TotalCount)
+	{
+		State.LastLogPercentBucket = ProgressBucket;
+		UE_LOG(
+			LogHCIAbilityKitAuditScan,
+			Display,
+			TEXT("[HCIAbilityKit][AuditScanAsync] progress=%d%% processed=%d/%d"),
+			ProgressPercent,
+			State.Controller.GetNextIndex(),
+			TotalCount);
+	}
+
+	if (State.Controller.GetNextIndex() < TotalCount)
+	{
+		return true;
+	}
+
+	HCI_FinalizeAuditScanAsyncSuccess();
 	return false;
 }
 
@@ -304,7 +380,8 @@ static void HCI_RunAbilityKitAuditScanCommand(const TArray<FString>& Args)
 
 static void HCI_RunAbilityKitAuditScanAsyncCommand(const TArray<FString>& Args)
 {
-	if (GHCIAbilityKitAuditScanAsyncState.bRunning)
+	FHCIAbilityKitAuditScanAsyncState& State = GHCIAbilityKitAuditScanAsyncState;
+	if (State.Controller.IsRunning())
 	{
 		UE_LOG(LogHCIAbilityKitAuditScan, Warning, TEXT("[HCIAbilityKit][AuditScanAsync] scan is already running"));
 		return;
@@ -312,21 +389,15 @@ static void HCI_RunAbilityKitAuditScanAsyncCommand(const TArray<FString>& Args)
 
 	int32 BatchSize = 256;
 	int32 LogTopN = 10;
-	if (Args.Num() >= 1)
+	FString ParseError;
+	if (!HCI_ParseAuditScanAsyncArgs(Args, BatchSize, LogTopN, ParseError))
 	{
-		int32 ParsedBatchSize = 0;
-		if (LexTryParseString(ParsedBatchSize, *Args[0]))
-		{
-			BatchSize = FMath::Max(1, ParsedBatchSize);
-		}
-	}
-	if (Args.Num() >= 2)
-	{
-		int32 ParsedTopN = 0;
-		if (LexTryParseString(ParsedTopN, *Args[1]))
-		{
-			LogTopN = FMath::Max(0, ParsedTopN);
-		}
+		UE_LOG(
+			LogHCIAbilityKitAuditScan,
+			Error,
+			TEXT("[HCIAbilityKit][AuditScanAsync] invalid_args reason=%s usage=HCIAbilityKit.AuditScanAsync [batch_size>=1] [log_top_n>=0]"),
+			*ParseError);
+		return;
 	}
 
 	FAssetRegistryModule& AssetRegistryModule = FModuleManager::LoadModuleChecked<FAssetRegistryModule>(TEXT("AssetRegistry"));
@@ -337,59 +408,163 @@ static void HCI_RunAbilityKitAuditScanAsyncCommand(const TArray<FString>& Args)
 	TArray<FAssetData> AssetDatas;
 	AssetRegistryModule.Get().GetAssets(Filter, AssetDatas);
 
-	GHCIAbilityKitAuditScanAsyncState.bRunning = true;
-	GHCIAbilityKitAuditScanAsyncState.BatchSize = BatchSize;
-	GHCIAbilityKitAuditScanAsyncState.LogTopN = LogTopN;
-	GHCIAbilityKitAuditScanAsyncState.NextIndex = 0;
-	GHCIAbilityKitAuditScanAsyncState.LastLogPercentBucket = -1;
-	GHCIAbilityKitAuditScanAsyncState.StartTimeSeconds = FPlatformTime::Seconds();
-	GHCIAbilityKitAuditScanAsyncState.AssetDatas = MoveTemp(AssetDatas);
-	GHCIAbilityKitAuditScanAsyncState.Snapshot = FHCIAbilityKitAuditScanSnapshot();
-	GHCIAbilityKitAuditScanAsyncState.Snapshot.Stats.Source = TEXT("asset_registry_fassetdata_sliced");
-	GHCIAbilityKitAuditScanAsyncState.Snapshot.Rows.Reserve(GHCIAbilityKitAuditScanAsyncState.AssetDatas.Num());
+	FString StartError;
+	if (!State.Controller.Start(MoveTemp(AssetDatas), BatchSize, LogTopN, StartError))
+	{
+		UE_LOG(
+			LogHCIAbilityKitAuditScan,
+			Error,
+			TEXT("[HCIAbilityKit][AuditScanAsync] start_failed reason=%s"),
+			*StartError);
+		return;
+	}
+
+	State.LastLogPercentBucket = -1;
+	State.StartTimeSeconds = FPlatformTime::Seconds();
+	State.Snapshot = FHCIAbilityKitAuditScanSnapshot();
+	State.Snapshot.Stats.Source = TEXT("asset_registry_fassetdata_sliced");
+	State.Snapshot.Rows.Reserve(State.Controller.GetTotalCount());
 
 	UE_LOG(
 		LogHCIAbilityKitAuditScan,
 		Display,
 		TEXT("[HCIAbilityKit][AuditScanAsync] start total=%d batch_size=%d"),
-		GHCIAbilityKitAuditScanAsyncState.AssetDatas.Num(),
-		GHCIAbilityKitAuditScanAsyncState.BatchSize);
+		State.Controller.GetTotalCount(),
+		State.Controller.GetBatchSize());
 
-	if (GHCIAbilityKitAuditScanAsyncState.AssetDatas.Num() == 0)
+	if (State.Controller.GetTotalCount() == 0)
 	{
 		UE_LOG(
 			LogHCIAbilityKitAuditScan,
 			Warning,
 			TEXT("[HCIAbilityKit][AuditScanAsync] suggestion=当前未发现 AbilityKit 资产，请先导入至少一个 .hciabilitykit 文件"));
-		HCI_ResetAuditScanAsyncState();
+		HCI_ResetAuditScanAsyncState(true);
 		return;
 	}
 
-	GHCIAbilityKitAuditScanAsyncState.TickHandle = FTSTicker::GetCoreTicker().AddTicker(
+	State.TickHandle = FTSTicker::GetCoreTicker().AddTicker(
 		FTickerDelegate::CreateStatic(&HCI_TickAbilityKitAuditScanAsync),
 		0.0f);
+	if (!State.TickHandle.IsValid())
+	{
+		HCI_ConvergeAuditScanAsyncFailure(TEXT("failed to register ticker delegate"));
+	}
+}
+
+static void HCI_RunAbilityKitAuditScanStopCommand(const TArray<FString>& Args)
+{
+	FHCIAbilityKitAuditScanAsyncState& State = GHCIAbilityKitAuditScanAsyncState;
+	if (!State.Controller.IsRunning())
+	{
+		UE_LOG(LogHCIAbilityKitAuditScan, Display, TEXT("[HCIAbilityKit][AuditScanAsync] stop=ignored reason=not_running"));
+		return;
+	}
+
+	FString CancelError;
+	if (!State.Controller.Cancel(CancelError))
+	{
+		UE_LOG(
+			LogHCIAbilityKitAuditScan,
+			Warning,
+			TEXT("[HCIAbilityKit][AuditScanAsync] stop=failed reason=%s"),
+			*CancelError);
+		return;
+	}
+
+	HCI_StopAuditScanAsyncTicker();
+	State.Snapshot.Stats.AssetCount = State.Snapshot.Rows.Num();
+	State.Snapshot.Stats.UpdatedUtc = FDateTime::UtcNow();
+	State.Snapshot.Stats.DurationMs = (FPlatformTime::Seconds() - State.StartTimeSeconds) * 1000.0;
+	UE_LOG(
+		LogHCIAbilityKitAuditScan,
+		Display,
+		TEXT("[HCIAbilityKit][AuditScanAsync] interrupted processed=%d/%d can_retry=true"),
+		State.Controller.GetNextIndex(),
+		State.Controller.GetTotalCount());
+}
+
+static void HCI_RunAbilityKitAuditScanRetryCommand(const TArray<FString>& Args)
+{
+	FHCIAbilityKitAuditScanAsyncState& State = GHCIAbilityKitAuditScanAsyncState;
+	if (State.Controller.IsRunning())
+	{
+		UE_LOG(LogHCIAbilityKitAuditScan, Warning, TEXT("[HCIAbilityKit][AuditScanAsync] retry=blocked reason=scan_is_running"));
+		return;
+	}
+
+	FString RetryError;
+	if (!State.Controller.Retry(RetryError))
+	{
+		UE_LOG(
+			LogHCIAbilityKitAuditScan,
+			Warning,
+			TEXT("[HCIAbilityKit][AuditScanAsync] retry=unavailable reason=%s"),
+			*RetryError);
+		return;
+	}
+
+	State.LastLogPercentBucket = -1;
+	State.StartTimeSeconds = FPlatformTime::Seconds();
+	State.Snapshot = FHCIAbilityKitAuditScanSnapshot();
+	State.Snapshot.Stats.Source = TEXT("asset_registry_fassetdata_sliced_retry");
+	State.Snapshot.Rows.Reserve(State.Controller.GetTotalCount());
+
+	UE_LOG(
+		LogHCIAbilityKitAuditScan,
+		Display,
+		TEXT("[HCIAbilityKit][AuditScanAsync] retry start total=%d batch_size=%d"),
+		State.Controller.GetTotalCount(),
+		State.Controller.GetBatchSize());
+
+	State.TickHandle = FTSTicker::GetCoreTicker().AddTicker(
+		FTickerDelegate::CreateStatic(&HCI_TickAbilityKitAuditScanAsync),
+		0.0f);
+	if (!State.TickHandle.IsValid())
+	{
+		HCI_ConvergeAuditScanAsyncFailure(TEXT("failed to register ticker delegate in retry"));
+	}
 }
 
 static void HCI_RunAbilityKitAuditScanProgressCommand(const TArray<FString>& Args)
 {
-	if (!GHCIAbilityKitAuditScanAsyncState.bRunning)
+	const FHCIAbilityKitAuditScanAsyncState& State = GHCIAbilityKitAuditScanAsyncState;
+	if (State.Controller.IsRunning())
 	{
-		UE_LOG(LogHCIAbilityKitAuditScan, Display, TEXT("[HCIAbilityKit][AuditScanAsync] progress=idle"));
+		UE_LOG(
+			LogHCIAbilityKitAuditScan,
+			Display,
+			TEXT("[HCIAbilityKit][AuditScanAsync] progress=%d%% processed=%d/%d"),
+			State.Controller.GetProgressPercent(),
+			State.Controller.GetNextIndex(),
+			State.Controller.GetTotalCount());
 		return;
 	}
 
-	const int32 TotalCount = GHCIAbilityKitAuditScanAsyncState.AssetDatas.Num();
-	const int32 NextIndex = GHCIAbilityKitAuditScanAsyncState.NextIndex;
-	const int32 ProgressPercent = TotalCount > 0
-		? FMath::FloorToInt((static_cast<double>(NextIndex) / static_cast<double>(TotalCount)) * 100.0)
-		: 100;
-	UE_LOG(
-		LogHCIAbilityKitAuditScan,
-		Display,
-		TEXT("[HCIAbilityKit][AuditScanAsync] progress=%d%% processed=%d/%d"),
-		ProgressPercent,
-		NextIndex,
-		TotalCount);
+	switch (State.Controller.GetPhase())
+	{
+	case EHCIAbilityKitAuditScanAsyncPhase::Cancelled:
+		UE_LOG(
+			LogHCIAbilityKitAuditScan,
+			Display,
+			TEXT("[HCIAbilityKit][AuditScanAsync] progress=cancelled processed=%d/%d can_retry=%s"),
+			State.Controller.GetNextIndex(),
+			State.Controller.GetTotalCount(),
+			State.Controller.CanRetry() ? TEXT("true") : TEXT("false"));
+		return;
+	case EHCIAbilityKitAuditScanAsyncPhase::Failed:
+		UE_LOG(
+			LogHCIAbilityKitAuditScan,
+			Error,
+			TEXT("[HCIAbilityKit][AuditScanAsync] progress=failed processed=%d/%d reason=%s can_retry=%s"),
+			State.Controller.GetNextIndex(),
+			State.Controller.GetTotalCount(),
+			*State.Controller.GetLastFailureReason(),
+			State.Controller.CanRetry() ? TEXT("true") : TEXT("false"));
+		return;
+	default:
+		UE_LOG(LogHCIAbilityKitAuditScan, Display, TEXT("[HCIAbilityKit][AuditScanAsync] progress=idle"));
+		return;
+	}
 }
 
 static bool HCI_ParsePythonResponse(
@@ -637,6 +812,22 @@ void FHCIAbilityKitEditorModule::StartupModule()
 			TEXT("Print current progress of HCIAbilityKit.AuditScanAsync."),
 			FConsoleCommandWithArgsDelegate::CreateStatic(&HCI_RunAbilityKitAuditScanProgressCommand));
 	}
+
+	if (!GHCIAbilityKitAuditScanStopCommand.IsValid())
+	{
+		GHCIAbilityKitAuditScanStopCommand = MakeUnique<FAutoConsoleCommand>(
+			TEXT("HCIAbilityKit.AuditScanAsyncStop"),
+			TEXT("Interrupt currently running HCIAbilityKit.AuditScanAsync and keep retry context."),
+			FConsoleCommandWithArgsDelegate::CreateStatic(&HCI_RunAbilityKitAuditScanStopCommand));
+	}
+
+	if (!GHCIAbilityKitAuditScanRetryCommand.IsValid())
+	{
+		GHCIAbilityKitAuditScanRetryCommand = MakeUnique<FAutoConsoleCommand>(
+			TEXT("HCIAbilityKit.AuditScanAsyncRetry"),
+			TEXT("Retry last interrupted/failed HCIAbilityKit.AuditScanAsync with previous args."),
+			FConsoleCommandWithArgsDelegate::CreateStatic(&HCI_RunAbilityKitAuditScanRetryCommand));
+	}
 }
 
 void FHCIAbilityKitEditorModule::ShutdownModule()
@@ -649,16 +840,21 @@ void FHCIAbilityKitEditorModule::ShutdownModule()
 		GHCIAbilityKitFactory = nullptr;
 	}
 
-	if (GHCIAbilityKitAuditScanAsyncState.bRunning)
+	if (GHCIAbilityKitAuditScanAsyncState.Controller.IsRunning())
 	{
-		FTSTicker::GetCoreTicker().RemoveTicker(GHCIAbilityKitAuditScanAsyncState.TickHandle);
-		HCI_ResetAuditScanAsyncState();
+		HCI_ResetAuditScanAsyncState(true);
+	}
+	else
+	{
+		HCI_StopAuditScanAsyncTicker();
 	}
 
 	GHCIAbilityKitSearchCommand.Reset();
 	GHCIAbilityKitAuditScanCommand.Reset();
 	GHCIAbilityKitAuditScanAsyncCommand.Reset();
 	GHCIAbilityKitAuditScanProgressCommand.Reset();
+	GHCIAbilityKitAuditScanStopCommand.Reset();
+	GHCIAbilityKitAuditScanRetryCommand.Reset();
 }
 
 IMPLEMENT_MODULE(FHCIAbilityKitEditorModule, HCIAbilityKitEditor)

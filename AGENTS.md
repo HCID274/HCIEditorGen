@@ -101,8 +101,14 @@ Scope: whole repo.
     - 已完成：Editor 新增控制台命令 `HCIAbilityKit.AuditScan [log_top_n]`，输出扫描统计与样本行。
     - 已完成：UE 编译通过（`Build.bat HCIEditorGenEditor Win64 Development ...`）。
     - 已完成：UE 手测通过（`assets=2`，其中 1 个历史资产字段为空导致覆盖率 `50%`，符合预期；用户反馈 `Pass`）。
-  - 当前切片：`Stage B-SliceB4`（任务中断/重试与失败收敛）。
-  - 下一切片：`Stage B-SliceB5`（采集 `triangle_count` 相关 Tags）。
+  - `Stage B-SliceB4` 已通过：任务中断/重试与失败收敛。
+  - B4 最新状态：
+    - 已完成：异步扫描状态机抽离（支持 `Running/Cancelled/Failed`）。
+    - 已完成：新增控制台命令 `HCIAbilityKit.AuditScanAsyncStop` 与 `HCIAbilityKit.AuditScanAsyncRetry`。
+    - 已完成：`HCIAbilityKit.AuditScanProgress` 增强，支持 `cancelled/failed/idle/running` 状态输出。
+    - 已完成：UE 手测通过（用户日志命中 `interrupted ... can_retry=true` 与 `retry start ...`，反馈 `OK`）。
+  - 当前切片：`Stage B-SliceB5`（采集 `triangle_count` 相关 Tags）。
+  - 下一切片：`Stage B-SliceB6`（状态过滤：Locked/Dirty 资产跳过与留痕）。
   - D 段收尾后续主线：`Stage E`（安全执行：Dry-Run/Confirm/Transaction/SC）-> `Stage F`（NL->Plan->Executor）。
   - B3 最新状态：
     - 已完成：新增 `HCIAbilityKit.AuditScanAsync [batch_size] [log_top_n]`，按分片执行 `AssetRegistry + FAssetData` 扫描，避免单帧全量阻塞。

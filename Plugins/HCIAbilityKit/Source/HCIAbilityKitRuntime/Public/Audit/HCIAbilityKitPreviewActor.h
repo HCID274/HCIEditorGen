@@ -17,13 +17,13 @@ public:
 
 	virtual void OnConstruction(const FTransform& Transform) override;
 
-	UFUNCTION(CallInEditor, Category = "HCI|Audit")
+	UFUNCTION(CallInEditor, Category = "HCIAudit")
 	void RefreshPreview();
 
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "HCI|Audit")
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "HCIAudit")
 	TObjectPtr<UHCIAbilityKitAsset> AbilityAsset;
 
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "HCI|Audit")
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "HCIAudit")
 	TObjectPtr<UStaticMeshComponent> PreviewMeshComponent;
 
 private:

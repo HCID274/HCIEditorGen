@@ -583,6 +583,35 @@ public:
   - `HCIAbilityKit.AgentBlastRadiusDemo [tool_name] [target_modify_count>=0]`
     - 用于单案例验证 `E4004` 与边界值 `50`
 
+#### 14.4.3 StageE-SliceE5 落地（All-or-Nothing 全单事务骨架）
+
+- Runtime 在 `FHCIAbilityKitAgentExecutionGate` 中新增 All-or-Nothing 事务判定：
+  - 输入：`request_id + steps[]`（每步含 `step_id/tool_name/should_succeed`，用于最小执行骨架模拟）
+  - 输出：`committed/rolled_back/error_code/reason/transaction_mode/total_steps/executed_steps/committed_steps/rolled_back_steps/failed_step_*`
+  - 固定 `transaction_mode=all_or_nothing`
+- 判定口径（一期最小实现）：
+  - 预检阶段（执行前）：
+    - 任一步 `tool_name` 不在 Tool Registry 白名单：返回 `E4002`，`reason=tool_not_whitelisted`
+    - 预检失败时 `executed_steps=0`，不得产生部分提交
+  - 执行阶段（模拟最小骨架）：
+    - 全部步骤成功：`committed=true`，`rolled_back=false`
+    - 任一步失败：立即终止后续步骤，整单回滚并返回 `E4007`（`reason=step_failed_all_or_nothing_rollback`）
+    - 失败时 `committed_steps=0`（无部分提交残留）
+- Editor UE 手测入口（控制台）：
+  - `HCIAbilityKit.AgentTransactionDemo`
+    - 默认输出三案例：`all_success_commit / fail_step2_rollback / fail_step1_rollback`
+    - 输出摘要：`summary total_cases=... committed=... rolled_back=... transaction_mode=all_or_nothing expected_failed_code=E4007 validation=ok`
+  - `HCIAbilityKit.AgentTransactionDemo [total_steps>=1] [fail_step_index>=0]`
+    - `fail_step_index=0` 表示全成功；`1..N` 表示第 N 步失败（1-based）
+    - 用于单案例验证 `E4007` 与“无部分提交”日志口径
+  - 案例日志最小字段：
+    - `request_id`
+    - `transaction_mode`
+    - `total_steps/executed_steps/committed_steps/rolled_back_steps`
+    - `committed/rolled_back`
+    - `failed_step_index/failed_step_id/failed_tool_name`
+    - `error_code/reason`
+
 ### 14.5 本地 Mock 权限与日志契约（极简冻结）
 
 - 权限来源：本地用户名 + 本地角色映射文件（JSON）。

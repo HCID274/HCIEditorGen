@@ -192,8 +192,14 @@ Scope: whole repo.
     - 已完成：Editor 新增 `HCIAbilityKit.AgentBlastRadiusDemo` 控制台命令（默认三案例 + 自定义参数）用于 UE 手测日志验证。
     - 已完成：自动化测试 `HCIAbilityKit.Editor.AgentExec` 扩展至 6/6（新增 `BlastRadiusBlocksOverLimit/AllowsAtLimit/SkipsReadOnlyTool`），本地通过；`AgentTools`（3/3）与 `AgentDryRun`（2/2）回归通过。
     - 已完成：用户 UE 手测通过（无参命令摘要命中 `total_cases=3 max_limit=50 expected_blocked_code=E4004 validation=ok`；`RenameAsset 51` 命中 `E4004/modify_limit_exceeded`；`SetTextureMaxSize 50` 边界值放行；`ScanAssets 999` 只读不受限）。
-  - 当前切片：`Stage E-SliceE5`（事务策略 All-or-Nothing）。
-  - 下一切片：`Stage E-SliceE6`（SourceControl Fail-Fast + 离线本地模式）。
+  - `Stage E-SliceE5` 已通过：事务策略 All-or-Nothing（最小可撤销执行骨架）。
+    - 已完成：在 `FHCIAbilityKitAgentExecutionGate` 中新增 `EvaluateAllOrNothingTransaction`，固定 `transaction_mode=all_or_nothing`，支持预检白名单拦截（`E4002`）与步骤失败整单回滚（`E4007`）。
+    - 已完成：失败收敛口径：`reason=step_failed_all_or_nothing_rollback`；失败时 `committed_steps=0`，无部分提交残留。
+    - 已完成：Editor 新增 `HCIAbilityKit.AgentTransactionDemo` 控制台命令（默认三案例 + 自定义 `total_steps/fail_step_index`）用于 UE 手测日志验证。
+    - 已完成：自动化测试 `HCIAbilityKit.Editor.AgentExec` 扩展至 9/9（新增 `TransactionCommitsAllStepsOnSuccess/TransactionRollsBackOnFailure/TransactionRejectsUnknownToolBeforeExecution`），本地通过；`AgentTools`（3/3）与 `AgentDryRun`（2/2）回归通过。
+    - 已完成：用户 UE 手测通过（无参命令摘要命中 `total_cases=3 committed=1 rolled_back=2 transaction_mode=all_or_nothing expected_failed_code=E4007 validation=ok`；`AgentTransactionDemo 3 0` 命中全提交；`AgentTransactionDemo 3 2` 命中 `E4007/step_failed_all_or_nothing_rollback` 且 `committed_steps=0`）。
+  - 当前切片：`Stage E-SliceE6`（SourceControl Fail-Fast + 离线本地模式）。
+  - 下一切片：`Stage E-SliceE7`（本地 Mock 鉴权与本地审计日志）。
   - D 段收尾后续主线：`Stage E`（安全执行：Dry-Run/Confirm/Transaction/SC）-> `Stage F`（NL->Plan->Executor）。
   - B3 最新状态：
     - 已完成：新增 `HCIAbilityKit.AuditScanAsync [batch_size] [log_top_n]`，按分片执行 `AssetRegistry + FAssetData` 扫描，避免单帧全量阻塞。

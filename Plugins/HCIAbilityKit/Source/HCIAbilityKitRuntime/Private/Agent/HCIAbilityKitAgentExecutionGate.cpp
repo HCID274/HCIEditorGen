@@ -5,6 +5,7 @@ namespace
 static const TCHAR* const HCI_Error_ToolNotWhitelisted = TEXT("E4002");
 static const TCHAR* const HCI_Error_BlastRadiusExceeded = TEXT("E4004");
 static const TCHAR* const HCI_Error_WriteNotConfirmed = TEXT("E4005");
+static const TCHAR* const HCI_Error_TransactionRolledBack = TEXT("E4007");
 }
 
 bool FHCIAbilityKitAgentExecutionGate::IsWriteLikeCapability(const EHCIAbilityKitToolCapability Capability)
@@ -98,5 +99,60 @@ FHCIAbilityKitAgentBlastRadiusDecision FHCIAbilityKitAgentExecutionGate::Evaluat
 	}
 
 	Decision.bAllowed = true;
+	return Decision;
+}
+
+FHCIAbilityKitAgentTransactionExecutionDecision FHCIAbilityKitAgentExecutionGate::EvaluateAllOrNothingTransaction(
+	const FHCIAbilityKitAgentTransactionExecutionInput& Input,
+	const FHCIAbilityKitToolRegistry& Registry)
+{
+	FHCIAbilityKitAgentTransactionExecutionDecision Decision;
+	Decision.RequestId = Input.RequestId;
+	Decision.TransactionMode = TEXT("all_or_nothing");
+	Decision.TotalSteps = Input.Steps.Num();
+
+	// Preflight whitelist validation happens before any write is attempted.
+	for (int32 Index = 0; Index < Input.Steps.Num(); ++Index)
+	{
+		const FHCIAbilityKitAgentTransactionStepSimulation& Step = Input.Steps[Index];
+		if (Registry.FindTool(Step.ToolName) == nullptr)
+		{
+			Decision.ErrorCode = HCI_Error_ToolNotWhitelisted;
+			Decision.Reason = TEXT("tool_not_whitelisted");
+			Decision.FailedStepIndex = Index + 1; // 1-based for logs/UI readability
+			Decision.FailedStepId = Step.StepId;
+			Decision.FailedToolName = Step.ToolName.ToString();
+			return Decision;
+		}
+	}
+
+	int32 SuccessfulExecutedSteps = 0;
+	for (int32 Index = 0; Index < Input.Steps.Num(); ++Index)
+	{
+		const FHCIAbilityKitAgentTransactionStepSimulation& Step = Input.Steps[Index];
+		Decision.ExecutedSteps = Index + 1;
+
+		if (!Step.bShouldSucceed)
+		{
+			Decision.bCommitted = false;
+			Decision.bRolledBack = true;
+			Decision.ErrorCode = HCI_Error_TransactionRolledBack;
+			Decision.Reason = TEXT("step_failed_all_or_nothing_rollback");
+			Decision.CommittedSteps = 0;
+			Decision.RolledBackSteps = SuccessfulExecutedSteps;
+			Decision.FailedStepIndex = Index + 1; // 1-based for logs/UI readability
+			Decision.FailedStepId = Step.StepId;
+			Decision.FailedToolName = Step.ToolName.ToString();
+			return Decision;
+		}
+
+		++SuccessfulExecutedSteps;
+	}
+
+	Decision.bCommitted = true;
+	Decision.bRolledBack = false;
+	Decision.CommittedSteps = SuccessfulExecutedSteps;
+	Decision.RolledBackSteps = 0;
+	Decision.FailedStepIndex = -1;
 	return Decision;
 }

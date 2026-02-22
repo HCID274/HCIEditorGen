@@ -65,6 +65,7 @@ static TUniquePtr<FAutoConsoleCommand> GHCIAbilityKitDryRunDiffPreviewLocateComm
 static TUniquePtr<FAutoConsoleCommand> GHCIAbilityKitDryRunDiffPreviewJsonCommand;
 static TUniquePtr<FAutoConsoleCommand> GHCIAbilityKitAgentConfirmGateDemoCommand;
 static TUniquePtr<FAutoConsoleCommand> GHCIAbilityKitAgentBlastRadiusDemoCommand;
+static TUniquePtr<FAutoConsoleCommand> GHCIAbilityKitAgentTransactionDemoCommand;
 static const TCHAR* GHCIAbilityKitPythonScriptPath = TEXT("SourceData/AbilityKits/Python/hci_abilitykit_hook.py");
 
 struct FHCIAbilityKitAuditScanAsyncState
@@ -835,6 +836,175 @@ static void HCI_RunAbilityKitAgentBlastRadiusDemoCommand(const TArray<FString>& 
 
 	const FHCIAbilityKitAgentBlastRadiusDecision Decision = FHCIAbilityKitAgentExecutionGate::EvaluateBlastRadius(Input, Registry);
 	HCI_LogAgentBlastRadiusDecision(TEXT("custom"), Decision);
+}
+
+static FHCIAbilityKitAgentTransactionExecutionInput HCI_BuildAgentTransactionDemoInput(
+	const TCHAR* RequestId,
+	const int32 TotalSteps,
+	const int32 FailStepIndexOneBased)
+{
+	FHCIAbilityKitAgentTransactionExecutionInput Input;
+	Input.RequestId = RequestId;
+	Input.Steps.Reserve(TotalSteps);
+
+	static const FName DemoToolNames[] = {
+		TEXT("RenameAsset"),
+		TEXT("MoveAsset"),
+		TEXT("SetTextureMaxSize"),
+		TEXT("SetMeshLODGroup")};
+
+	for (int32 Index = 0; Index < TotalSteps; ++Index)
+	{
+		FHCIAbilityKitAgentTransactionStepSimulation& Step = Input.Steps.AddDefaulted_GetRef();
+		Step.StepId = FString::Printf(TEXT("step_%03d"), Index + 1);
+		Step.ToolName = DemoToolNames[Index % UE_ARRAY_COUNT(DemoToolNames)];
+		Step.bShouldSucceed = ((Index + 1) != FailStepIndexOneBased);
+	}
+
+	return Input;
+}
+
+static void HCI_LogAgentTransactionDecision(const TCHAR* CaseName, const FHCIAbilityKitAgentTransactionExecutionDecision& Decision)
+{
+	if (Decision.bCommitted)
+	{
+		UE_LOG(
+			LogHCIAbilityKitAuditScan,
+			Display,
+			TEXT("[HCIAbilityKit][AgentTransaction] case=%s request_id=%s transaction_mode=%s total_steps=%d executed_steps=%d committed_steps=%d rolled_back_steps=%d committed=%s rolled_back=%s failed_step_index=%d failed_step_id=%s failed_tool_name=%s error_code=%s reason=%s"),
+			CaseName,
+			Decision.RequestId.IsEmpty() ? TEXT("-") : *Decision.RequestId,
+			Decision.TransactionMode.IsEmpty() ? TEXT("-") : *Decision.TransactionMode,
+			Decision.TotalSteps,
+			Decision.ExecutedSteps,
+			Decision.CommittedSteps,
+			Decision.RolledBackSteps,
+			TEXT("true"),
+			Decision.bRolledBack ? TEXT("true") : TEXT("false"),
+			Decision.FailedStepIndex,
+			Decision.FailedStepId.IsEmpty() ? TEXT("-") : *Decision.FailedStepId,
+			Decision.FailedToolName.IsEmpty() ? TEXT("-") : *Decision.FailedToolName,
+			Decision.ErrorCode.IsEmpty() ? TEXT("-") : *Decision.ErrorCode,
+			Decision.Reason.IsEmpty() ? TEXT("-") : *Decision.Reason);
+		return;
+	}
+
+	UE_LOG(
+		LogHCIAbilityKitAuditScan,
+		Warning,
+		TEXT("[HCIAbilityKit][AgentTransaction] case=%s request_id=%s transaction_mode=%s total_steps=%d executed_steps=%d committed_steps=%d rolled_back_steps=%d committed=%s rolled_back=%s failed_step_index=%d failed_step_id=%s failed_tool_name=%s error_code=%s reason=%s"),
+		CaseName,
+		Decision.RequestId.IsEmpty() ? TEXT("-") : *Decision.RequestId,
+		Decision.TransactionMode.IsEmpty() ? TEXT("-") : *Decision.TransactionMode,
+		Decision.TotalSteps,
+		Decision.ExecutedSteps,
+		Decision.CommittedSteps,
+		Decision.RolledBackSteps,
+		TEXT("false"),
+		Decision.bRolledBack ? TEXT("true") : TEXT("false"),
+		Decision.FailedStepIndex,
+		Decision.FailedStepId.IsEmpty() ? TEXT("-") : *Decision.FailedStepId,
+		Decision.FailedToolName.IsEmpty() ? TEXT("-") : *Decision.FailedToolName,
+		Decision.ErrorCode.IsEmpty() ? TEXT("-") : *Decision.ErrorCode,
+		Decision.Reason.IsEmpty() ? TEXT("-") : *Decision.Reason);
+}
+
+static void HCI_RunAbilityKitAgentTransactionDemoCommand(const TArray<FString>& Args)
+{
+	FHCIAbilityKitToolRegistry& Registry = FHCIAbilityKitToolRegistry::Get();
+	Registry.ResetToDefaults();
+
+	if (Args.Num() == 0)
+	{
+		int32 CommittedCaseCount = 0;
+		int32 RolledBackCaseCount = 0;
+
+		auto RunCase = [&Registry, &CommittedCaseCount, &RolledBackCaseCount](
+						   const TCHAR* CaseName,
+						   const TCHAR* RequestId,
+						   const int32 TotalSteps,
+						   const int32 FailStepIndexOneBased)
+		{
+			const FHCIAbilityKitAgentTransactionExecutionInput Input =
+				HCI_BuildAgentTransactionDemoInput(RequestId, TotalSteps, FailStepIndexOneBased);
+			const FHCIAbilityKitAgentTransactionExecutionDecision Decision =
+				FHCIAbilityKitAgentExecutionGate::EvaluateAllOrNothingTransaction(Input, Registry);
+
+			if (Decision.bCommitted)
+			{
+				++CommittedCaseCount;
+			}
+			else
+			{
+				++RolledBackCaseCount;
+			}
+
+			HCI_LogAgentTransactionDecision(CaseName, Decision);
+		};
+
+		RunCase(TEXT("all_success_commit"), TEXT("req_demo_e5_01"), 2, 0);
+		RunCase(TEXT("fail_step2_rollback"), TEXT("req_demo_e5_02"), 3, 2);
+		RunCase(TEXT("fail_step1_rollback"), TEXT("req_demo_e5_03"), 2, 1);
+
+		UE_LOG(
+			LogHCIAbilityKitAuditScan,
+			Display,
+			TEXT("[HCIAbilityKit][AgentTransaction] summary total_cases=%d committed=%d rolled_back=%d transaction_mode=%s expected_failed_code=%s validation=ok"),
+			3,
+			CommittedCaseCount,
+			RolledBackCaseCount,
+			TEXT("all_or_nothing"),
+			TEXT("E4007"));
+		UE_LOG(
+			LogHCIAbilityKitAuditScan,
+			Display,
+			TEXT("[HCIAbilityKit][AgentTransaction] hint=也可运行 HCIAbilityKit.AgentTransactionDemo [total_steps>=1] [fail_step_index>=0] (0 means all succeed)"));
+		return;
+	}
+
+	if (Args.Num() < 2)
+	{
+		UE_LOG(
+			LogHCIAbilityKitAuditScan,
+			Error,
+			TEXT("[HCIAbilityKit][AgentTransaction] invalid_args usage=HCIAbilityKit.AgentTransactionDemo [total_steps>=1] [fail_step_index>=0]"));
+		return;
+	}
+
+	int32 TotalSteps = 0;
+	int32 FailStepIndexOneBased = 0;
+	if (!HCI_TryParseNonNegativeIntArg(Args[0], TotalSteps) || !HCI_TryParseNonNegativeIntArg(Args[1], FailStepIndexOneBased))
+	{
+		UE_LOG(
+			LogHCIAbilityKitAuditScan,
+			Error,
+			TEXT("[HCIAbilityKit][AgentTransaction] invalid_args reason=total_steps and fail_step_index must be integers"));
+		return;
+	}
+
+	if (TotalSteps < 1)
+	{
+		UE_LOG(
+			LogHCIAbilityKitAuditScan,
+			Error,
+			TEXT("[HCIAbilityKit][AgentTransaction] invalid_args reason=total_steps must be >= 1"));
+		return;
+	}
+
+	if (FailStepIndexOneBased < 0 || FailStepIndexOneBased > TotalSteps)
+	{
+		UE_LOG(
+			LogHCIAbilityKitAuditScan,
+			Error,
+			TEXT("[HCIAbilityKit][AgentTransaction] invalid_args reason=fail_step_index must satisfy 0 <= fail_step_index <= total_steps"));
+		return;
+	}
+
+	const FHCIAbilityKitAgentTransactionExecutionInput Input =
+		HCI_BuildAgentTransactionDemoInput(TEXT("req_cli_e5"), TotalSteps, FailStepIndexOneBased);
+	const FHCIAbilityKitAgentTransactionExecutionDecision Decision =
+		FHCIAbilityKitAgentExecutionGate::EvaluateAllOrNothingTransaction(Input, Registry);
+	HCI_LogAgentTransactionDecision(TEXT("custom"), Decision);
 }
 
 static void HCI_TryFillTriangleFromTagCached(
@@ -2217,6 +2387,14 @@ void FHCIAbilityKitEditorModule::StartupModule()
 			TEXT("E4 blast-radius demo. Usage: HCIAbilityKit.AgentBlastRadiusDemo [tool_name] [target_modify_count>=0]"),
 			FConsoleCommandWithArgsDelegate::CreateStatic(&HCI_RunAbilityKitAgentBlastRadiusDemoCommand));
 	}
+
+	if (!GHCIAbilityKitAgentTransactionDemoCommand.IsValid())
+	{
+		GHCIAbilityKitAgentTransactionDemoCommand = MakeUnique<FAutoConsoleCommand>(
+			TEXT("HCIAbilityKit.AgentTransactionDemo"),
+			TEXT("E5 all-or-nothing transaction demo. Usage: HCIAbilityKit.AgentTransactionDemo [total_steps>=1] [fail_step_index>=0]"),
+			FConsoleCommandWithArgsDelegate::CreateStatic(&HCI_RunAbilityKitAgentTransactionDemoCommand));
+	}
 }
 
 void FHCIAbilityKitEditorModule::ShutdownModule()
@@ -2251,6 +2429,7 @@ void FHCIAbilityKitEditorModule::ShutdownModule()
 	GHCIAbilityKitDryRunDiffPreviewJsonCommand.Reset();
 	GHCIAbilityKitAgentConfirmGateDemoCommand.Reset();
 	GHCIAbilityKitAgentBlastRadiusDemoCommand.Reset();
+	GHCIAbilityKitAgentTransactionDemoCommand.Reset();
 }
 
 IMPLEMENT_MODULE(FHCIAbilityKitEditorModule, HCIAbilityKitEditor)

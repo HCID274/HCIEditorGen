@@ -62,7 +62,7 @@ Scope: whole repo.
 - 错误信息必须可定位（文件/字段/原因/建议）。
 - 未通过验证的结论不得标记为“完成”。
 
-## 8. 当前进度快照（2026-02-21）
+## 8. 当前进度快照（2026-02-22）
 
 - Step 1（结构迁移）已关闭：
   - Slice1：插件双模块骨架落地并通过。
@@ -126,8 +126,9 @@ Scope: whole repo.
     - 已完成：支持 `OnConstruction` 与 `RefreshPreview(CallInEditor)` 刷新。
     - 已完成：修复 Details 分类混淆，将分类统一为 `HCIAudit`（去除 `HCI|Audit` 层级分组）。
     - 已完成：用户手测确认 `Pass`。
-  - 当前切片：`Stage B-SliceB8`（预览体自动同步：PostEditChangeProperty/Reimport 刷新）。
-  - 下一切片：`Stage C-SliceC1`（RuleRegistry 框架与规则接口落地）。
+  - `Stage B-SliceB8` 已通过：预览体自动同步（`PostEditChangeProperty` + Reimport 后主动刷新）。
+  - 当前切片：`Stage C-SliceC1`（RuleRegistry 框架与规则接口落地）。
+  - 下一切片：`Stage C-SliceC2`（首批规则：`TextureNPOTRule + HighPolyAutoLODRule`）。
   - D 段收尾后续主线：`Stage E`（安全执行：Dry-Run/Confirm/Transaction/SC）-> `Stage F`（NL->Plan->Executor）。
   - B3 最新状态：
     - 已完成：新增 `HCIAbilityKit.AuditScanAsync [batch_size] [log_top_n]`，按分片执行 `AssetRegistry + FAssetData` 扫描，避免单帧全量阻塞。

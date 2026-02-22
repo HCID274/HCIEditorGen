@@ -1,5 +1,6 @@
 #include "Factories/HCIAbilityKitFactory.h"
 
+#include "Audit/HCIAbilityKitPreviewActor.h"
 #include "HCIAbilityKitAsset.h"
 #include "HCIAbilityKitErrorCodes.h"
 #include "Services/HCIAbilityKitParserService.h"
@@ -7,12 +8,14 @@
 #include "AssetRegistry/AssetRegistryModule.h"
 #include "EditorFramework/AssetImportData.h"
 #include "Engine/StaticMesh.h"
+#include "Engine/World.h"
 #include "Framework/Notifications/NotificationManager.h"
 #include "Misc/FeedbackContext.h"
 #include "Misc/PackageName.h"
 #include "Misc/Paths.h"
 #include "Modules/ModuleManager.h"
 #include "Search/HCIAbilityKitSearchIndexService.h"
+#include "UObject/UObjectIterator.h"
 #include "Widgets/Notifications/SNotificationList.h"
 
 // 静态日志分类定义
@@ -55,6 +58,61 @@ void ShowImportFailureNotification(const FString& Reason)
 void ShowReimportFailureNotification(const UObject* Asset, const FString& Reason)
 {
 	ShowFailureNotification(TEXT("Reimport"), Asset, Reason);
+}
+
+void RefreshPreviewActorsBoundToAsset(const UHCIAbilityKitAsset* ChangedAsset, const FString& Source)
+{
+#if WITH_EDITOR
+	if (!ChangedAsset)
+	{
+		return;
+	}
+
+	int32 RefreshedActorCount = 0;
+	for (TObjectIterator<AHCIAbilityKitPreviewActor> It; It; ++It)
+	{
+		AHCIAbilityKitPreviewActor* PreviewActor = *It;
+		if (!IsValid(PreviewActor) || PreviewActor->HasAnyFlags(RF_ClassDefaultObject))
+		{
+			continue;
+		}
+
+		UWorld* World = PreviewActor->GetWorld();
+		if (!World)
+		{
+			continue;
+		}
+
+		if (World->WorldType != EWorldType::Editor
+			&& World->WorldType != EWorldType::EditorPreview
+			&& World->WorldType != EWorldType::PIE)
+		{
+			continue;
+		}
+
+		if (PreviewActor->AbilityAsset != ChangedAsset)
+		{
+			continue;
+		}
+
+		PreviewActor->RefreshPreview();
+		++RefreshedActorCount;
+	}
+
+	if (RefreshedActorCount > 0)
+	{
+		UE_LOG(
+			LogHCIAbilityKitFactory,
+			Display,
+			TEXT("[HCIAbilityKit][PreviewSync] source=%s asset=%s refreshed_actors=%d"),
+			*Source,
+			*ChangedAsset->GetPathName(),
+			RefreshedActorCount);
+	}
+#else
+	(void)ChangedAsset;
+	(void)Source;
+#endif
 }
 
 bool ValidateRepresentingMeshPath(
@@ -198,6 +256,7 @@ UObject* UHCIAbilityKitFactory::FactoryCreateFile(
 
 	NewAsset->MarkPackageDirty();
 	FHCIAbilityKitSearchIndexService::Get().RefreshAsset(NewAsset);
+	RefreshPreviewActorsBoundToAsset(NewAsset, TEXT("import"));
 	return NewAsset;
 }
 
@@ -319,6 +378,7 @@ EReimportResult::Type UHCIAbilityKitFactory::Reimport(UObject* Obj)
 	// 通知编辑器资产已完成更改
 	Asset->PostEditChange();
 	FHCIAbilityKitSearchIndexService::Get().RefreshAsset(Asset);
+	RefreshPreviewActorsBoundToAsset(Asset, TEXT("reimport"));
 	return EReimportResult::Succeeded;
 #else
 	return EReimportResult::Failed;

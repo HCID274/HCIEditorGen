@@ -312,6 +312,12 @@ public:
   - 当 `deep_mesh_check=1` 时，仅对需要补齐网格信号的行分批同步加载 `RepresentingMesh`；
   - 提取后立即释放 `FStreamableHandle` 强引用（GC 节流由 `StageD-SliceD2` 处理）；
   - 完成日志新增深度统计行：`[HCIAbilityKit][AuditScanAsync][Deep] load_attempts/load_success/handle_releases/...`。
+- StageD-SliceD2 实现口径（2026-02-22，GC 节流）：
+  - `HCIAbilityKit.AuditScanAsync` 新增第 4 参数：`[gc_every_n_batches>=0]`；
+  - 当开启深度模式且未显式传入第 4 参数时，默认 `gc_every_n_batches=16`；
+  - 每处理 `N` 个批次后执行一次 `CollectGarbage`（`N=0` 表示关闭 GC 节流）；
+  - 深度统计新增字段：`batches/gc_every_n_batches/gc_runs/max_batch_ms/max_gc_ms/peak_used_physical_mib`；
+  - `Stop/Retry` 必须保留 `gc_every_n_batches` 配置（通过控制器重试上下文持久化）。
 
 ## 12. 索引统计契约（Step3-Slice2，历史基线）
 

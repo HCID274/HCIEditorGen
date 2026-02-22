@@ -23,6 +23,7 @@ class FHCIAbilityKitAuditScanAsyncController
 public:
 	bool Start(TArray<FAssetData>&& InAssetDatas, int32 InBatchSize, int32 InLogTopN, FString& OutError);
 	bool Start(TArray<FAssetData>&& InAssetDatas, int32 InBatchSize, int32 InLogTopN, bool bInDeepMeshCheckEnabled, FString& OutError);
+	bool Start(TArray<FAssetData>&& InAssetDatas, int32 InBatchSize, int32 InLogTopN, bool bInDeepMeshCheckEnabled, int32 InGcEveryNBatches, FString& OutError);
 	bool Retry(FString& OutError);
 	bool Cancel(FString& OutError);
 
@@ -41,6 +42,7 @@ public:
 	int32 GetNextIndex() const { return NextIndex; }
 	int32 GetProgressPercent() const;
 	bool IsDeepMeshCheckEnabled() const { return bDeepMeshCheckEnabled; }
+	int32 GetGcEveryNBatches() const { return GcEveryNBatches; }
 
 	const TArray<FAssetData>& GetAssetDatas() const { return AssetDatas; }
 	EHCIAbilityKitAuditScanAsyncPhase GetPhase() const { return Phase; }
@@ -55,6 +57,7 @@ private:
 	int32 LogTopN = 10;
 	int32 NextIndex = 0;
 	bool bDeepMeshCheckEnabled = false;
+	int32 GcEveryNBatches = 0;
 	TArray<FAssetData> AssetDatas;
 
 	// Keep the previous payload for explicit retry after cancel/fail.
@@ -62,6 +65,7 @@ private:
 	int32 RetryBatchSize = 256;
 	int32 RetryLogTopN = 10;
 	bool bRetryDeepMeshCheckEnabled = false;
+	int32 RetryGcEveryNBatches = 0;
 
 	FString LastFailureReason;
 };

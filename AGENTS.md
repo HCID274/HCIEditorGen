@@ -156,8 +156,14 @@ Scope: whole repo.
     - 已完成：每次加载后立即释放 `FStreamableHandle` 强引用；完成日志输出 `[AuditScanAsync][Deep]` 聚合统计（`load_attempts/load_success/handle_releases/...`）。
     - 已完成：自动化测试新增 `HCIAbilityKit.Editor.AuditScanAsync.DeepModeRetryPersistence`（中断/重试保留深度模式开关），本地通过。
     - 已完成：用户 UE 手测通过（`deep_mesh_check=true` 在 start/retry 保留；深度统计行输出；样本全 `tag_cached` 时统计为 `0` 符合预期）。
-  - 当前切片：`Stage D-SliceD2`（GC 节流策略）。
-  - 下一切片：`Stage D-SliceD3`（峰值内存与吞吐日志监控）。
+  - `Stage D-SliceD2` 已通过：GC 节流策略。
+    - 已完成：`HCIAbilityKit.AuditScanAsync` 新增第 4 参数 `gc_every_n_batches>=0`（深度模式默认 `16`）。
+    - 已完成：按批次节流调用 `CollectGarbage`（在深度批次处理且释放加载句柄之后执行）。
+    - 已完成：深度统计扩展 `batches/gc_every_n_batches/gc_runs/max_batch_ms/max_gc_ms/peak_used_physical_mib`。
+    - 已完成：自动化测试新增 `HCIAbilityKit.Editor.AuditScanAsync.GcThrottleRetryPersistence`（重试保留 GC 节流配置），本地通过。
+    - 已完成：用户 UE 手测通过（`gc_every_n_batches=1` 高频 GC 命中 `gc_runs=274`；`Stop/Retry` 保留 `gc_every_n_batches=3` 并生效）。
+  - 当前切片：`Stage D-SliceD3`（峰值内存与吞吐日志监控）。
+  - 下一切片：`Stage E-SliceE1`（Tool Registry 能力声明冻结）。
   - D 段收尾后续主线：`Stage E`（安全执行：Dry-Run/Confirm/Transaction/SC）-> `Stage F`（NL->Plan->Executor）。
   - B3 最新状态：
     - 已完成：新增 `HCIAbilityKit.AuditScanAsync [batch_size] [log_top_n]`，按分片执行 `AssetRegistry + FAssetData` 扫描，避免单帧全量阻塞。

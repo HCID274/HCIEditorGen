@@ -82,4 +82,26 @@ bool FHCIAbilityKitAuditScanAsyncDeepModeRetryPersistenceTest::RunTest(const FSt
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FHCIAbilityKitAuditScanAsyncGcThrottleRetryPersistenceTest,
+	"HCIAbilityKit.Editor.AuditScanAsync.GcThrottleRetryPersistence",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FHCIAbilityKitAuditScanAsyncGcThrottleRetryPersistenceTest::RunTest(const FString& Parameters)
+{
+	FHCIAbilityKitAuditScanAsyncController Controller;
+
+	TArray<FAssetData> SeedAssets;
+	SeedAssets.SetNum(6);
+
+	FString Error;
+	TestTrue(TEXT("Start should succeed with deep mode and GC throttle"), Controller.Start(MoveTemp(SeedAssets), 2, 10, true, 3, Error));
+	TestEqual(TEXT("GC throttle interval should be captured"), Controller.GetGcEveryNBatches(), 3);
+
+	TestTrue(TEXT("Cancel should succeed"), Controller.Cancel(Error));
+	TestTrue(TEXT("Retry should succeed"), Controller.Retry(Error));
+	TestEqual(TEXT("GC throttle interval should persist after retry"), Controller.GetGcEveryNBatches(), 3);
+	return true;
+}
+
 #endif

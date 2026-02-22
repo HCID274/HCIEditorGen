@@ -8,7 +8,7 @@ bool FHCIAbilityKitAuditScanAsyncController::Start(
 	const int32 InLogTopN,
 	FString& OutError)
 {
-	return Start(MoveTemp(InAssetDatas), InBatchSize, InLogTopN, false, OutError);
+	return Start(MoveTemp(InAssetDatas), InBatchSize, InLogTopN, false, 0, OutError);
 }
 
 bool FHCIAbilityKitAuditScanAsyncController::Start(
@@ -18,8 +18,24 @@ bool FHCIAbilityKitAuditScanAsyncController::Start(
 	const bool bInDeepMeshCheckEnabled,
 	FString& OutError)
 {
+	return Start(MoveTemp(InAssetDatas), InBatchSize, InLogTopN, bInDeepMeshCheckEnabled, 0, OutError);
+}
+
+bool FHCIAbilityKitAuditScanAsyncController::Start(
+	TArray<FAssetData>&& InAssetDatas,
+	const int32 InBatchSize,
+	const int32 InLogTopN,
+	const bool bInDeepMeshCheckEnabled,
+	const int32 InGcEveryNBatches,
+	FString& OutError)
+{
 	if (!ValidateArgs(InBatchSize, InLogTopN, OutError))
 	{
+		return false;
+	}
+	if (InGcEveryNBatches < 0)
+	{
+		OutError = TEXT("gc_every_n_batches must be >= 0");
 		return false;
 	}
 
@@ -27,6 +43,7 @@ bool FHCIAbilityKitAuditScanAsyncController::Start(
 	LogTopN = InLogTopN;
 	NextIndex = 0;
 	bDeepMeshCheckEnabled = bInDeepMeshCheckEnabled;
+	GcEveryNBatches = InGcEveryNBatches;
 	AssetDatas = MoveTemp(InAssetDatas);
 	Phase = EHCIAbilityKitAuditScanAsyncPhase::Running;
 	LastFailureReason.Reset();
@@ -35,6 +52,7 @@ bool FHCIAbilityKitAuditScanAsyncController::Start(
 	RetryBatchSize = BatchSize;
 	RetryLogTopN = LogTopN;
 	bRetryDeepMeshCheckEnabled = bDeepMeshCheckEnabled;
+	RetryGcEveryNBatches = GcEveryNBatches;
 	return true;
 }
 
@@ -103,6 +121,7 @@ void FHCIAbilityKitAuditScanAsyncController::Reset(const bool bClearRetryContext
 	LogTopN = 10;
 	NextIndex = 0;
 	bDeepMeshCheckEnabled = false;
+	GcEveryNBatches = 0;
 	AssetDatas.Reset();
 	LastFailureReason.Reset();
 
@@ -112,6 +131,7 @@ void FHCIAbilityKitAuditScanAsyncController::Reset(const bool bClearRetryContext
 		RetryBatchSize = 256;
 		RetryLogTopN = 10;
 		bRetryDeepMeshCheckEnabled = false;
+		RetryGcEveryNBatches = 0;
 	}
 }
 
@@ -152,6 +172,7 @@ void FHCIAbilityKitAuditScanAsyncController::StartFromStoredRetryContext()
 	LogTopN = RetryLogTopN;
 	NextIndex = 0;
 	bDeepMeshCheckEnabled = bRetryDeepMeshCheckEnabled;
+	GcEveryNBatches = RetryGcEveryNBatches;
 	AssetDatas = RetryAssetDatas;
 	Phase = EHCIAbilityKitAuditScanAsyncPhase::Running;
 	LastFailureReason.Reset();

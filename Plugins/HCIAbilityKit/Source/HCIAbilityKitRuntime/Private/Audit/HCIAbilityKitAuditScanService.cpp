@@ -1,5 +1,6 @@
 #include "Audit/HCIAbilityKitAuditScanService.h"
 
+#include "Audit/HCIAbilityKitAuditRuleRegistry.h"
 #include "AssetRegistry/AssetRegistryModule.h"
 #include "Audit/HCIAbilityKitAuditTagNames.h"
 #include "HAL/FileManager.h"
@@ -107,6 +108,16 @@ void ReadAssetRowFromTags(const FAssetData& AssetData, IAssetRegistry& AssetRegi
 	AssetData.GetTagValue(HCIAbilityKitAuditTagNames::DisplayName, OutRow.DisplayName);
 	AssetData.GetTagValue(HCIAbilityKitAuditTagNames::RepresentingMesh, OutRow.RepresentingMeshPath);
 
+	FName TriangleExpectedTagKey;
+	HCIAbilityKitAuditTagNames::TryResolveTriangleExpectedFromTags(
+		[&AssetData](const FName& TagName, FString& OutValue)
+		{
+			return AssetData.GetTagValue(TagName, OutValue);
+		},
+		OutRow.TriangleCountLod0ExpectedJson,
+		TriangleExpectedTagKey);
+	(void)TriangleExpectedTagKey;
+
 	FString DamageText;
 	if (AssetData.GetTagValue(HCIAbilityKitAuditTagNames::Damage, DamageText))
 	{
@@ -135,7 +146,7 @@ FString FHCIAbilityKitAuditScanStats::ToSummaryString() const
 	const double TriangleTagCoverage = (static_cast<double>(TriangleTagCoveredCount) / SafeCount) * 100.0;
 
 	return FString::Printf(
-		TEXT("source=%s assets=%d id_coverage=%.1f%% display_name_coverage=%.1f%% representing_mesh_coverage=%.1f%% triangle_tag_coverage=%.1f%% skipped_locked_or_dirty=%d refresh_ms=%.2f updated_utc=%s"),
+		TEXT("source=%s assets=%d id_coverage=%.1f%% display_name_coverage=%.1f%% representing_mesh_coverage=%.1f%% triangle_tag_coverage=%.1f%% skipped_locked_or_dirty=%d issue_assets=%d issue_info=%d issue_warn=%d issue_error=%d refresh_ms=%.2f updated_utc=%s"),
 		*Source,
 		AssetCount,
 		IdCoverage,
@@ -143,6 +154,10 @@ FString FHCIAbilityKitAuditScanStats::ToSummaryString() const
 		RepresentingMeshCoverage,
 		TriangleTagCoverage,
 		SkippedLockedOrDirtyCount,
+		AssetsWithIssuesCount,
+		InfoIssueCount,
+		WarnIssueCount,
+		ErrorIssueCount,
 		DurationMs,
 		*UpdatedUtc.ToIso8601());
 }
@@ -193,6 +208,30 @@ FHCIAbilityKitAuditScanSnapshot FHCIAbilityKitAuditScanService::ScanFromAssetReg
 		if (Row.ScanState == TEXT("skipped_locked_or_dirty"))
 		{
 			++Snapshot.Stats.SkippedLockedOrDirtyCount;
+		}
+
+		FHCIAbilityKitAuditContext Context{Row};
+		FHCIAbilityKitAuditRuleRegistry::Get().Evaluate(Context, Row.AuditIssues);
+		if (Row.AuditIssues.Num() > 0)
+		{
+			++Snapshot.Stats.AssetsWithIssuesCount;
+			for (const FHCIAbilityKitAuditIssue& Issue : Row.AuditIssues)
+			{
+				switch (Issue.Severity)
+				{
+				case EHCIAbilityKitAuditSeverity::Info:
+					++Snapshot.Stats.InfoIssueCount;
+					break;
+				case EHCIAbilityKitAuditSeverity::Warn:
+					++Snapshot.Stats.WarnIssueCount;
+					break;
+				case EHCIAbilityKitAuditSeverity::Error:
+					++Snapshot.Stats.ErrorIssueCount;
+					break;
+				default:
+					break;
+				}
+			}
 		}
 	}
 

@@ -28,6 +28,13 @@ void UHCIAbilityKitAsset::GetAssetRegistryTags(FAssetRegistryTagsContext Context
 		HCIAbilityKitAuditTagNames::RepresentingMesh,
 		RepresentingMesh.ToSoftObjectPath().ToString(),
 		UObject::FAssetRegistryTag::TT_Alphabetical));
+	if (TriangleCountLod0Expected >= 0)
+	{
+		Context.AddTag(UObject::FAssetRegistryTag(
+			HCIAbilityKitAuditTagNames::TriangleExpectedLod0,
+			LexToString(TriangleCountLod0Expected),
+			UObject::FAssetRegistryTag::TT_Numerical));
+	}
 
 	// 将源文件的导入信息添加到资产注册表标签中，使源文件路径在内容浏览器中可见
 	if (AssetImportData)

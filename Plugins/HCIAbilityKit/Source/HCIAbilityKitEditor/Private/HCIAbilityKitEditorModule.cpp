@@ -3,6 +3,7 @@
 #include "AssetRegistry/IAssetRegistry.h"
 #include "AssetRegistry/AssetRegistryModule.h"
 #include "Audit/HCIAbilityKitAuditScanAsyncController.h"
+#include "Audit/HCIAbilityKitAuditRuleRegistry.h"
 #include "Audit/HCIAbilityKitAuditTagNames.h"
 #include "ContentBrowserMenuContexts.h"
 #include "Dom/JsonObject.h"
@@ -189,6 +190,16 @@ static void HCI_ParseAuditRowFromAssetData(
 	AssetData.GetTagValue(HCIAbilityKitAuditTagNames::DisplayName, OutRow.DisplayName);
 	AssetData.GetTagValue(HCIAbilityKitAuditTagNames::RepresentingMesh, OutRow.RepresentingMeshPath);
 
+	FName TriangleExpectedTagKey;
+	HCIAbilityKitAuditTagNames::TryResolveTriangleExpectedFromTags(
+		[&AssetData](const FName& TagName, FString& OutValue)
+		{
+			return AssetData.GetTagValue(TagName, OutValue);
+		},
+		OutRow.TriangleCountLod0ExpectedJson,
+		TriangleExpectedTagKey);
+	(void)TriangleExpectedTagKey;
+
 	FString DamageText;
 	if (AssetData.GetTagValue(HCIAbilityKitAuditTagNames::Damage, DamageText))
 	{
@@ -225,6 +236,27 @@ static void HCI_AccumulateAuditCoverage(const FHCIAbilityKitAuditAssetRow& Row, 
 	{
 		++InOutStats.SkippedLockedOrDirtyCount;
 	}
+	if (Row.AuditIssues.Num() > 0)
+	{
+		++InOutStats.AssetsWithIssuesCount;
+		for (const FHCIAbilityKitAuditIssue& Issue : Row.AuditIssues)
+		{
+			switch (Issue.Severity)
+			{
+			case EHCIAbilityKitAuditSeverity::Info:
+				++InOutStats.InfoIssueCount;
+				break;
+			case EHCIAbilityKitAuditSeverity::Warn:
+				++InOutStats.WarnIssueCount;
+				break;
+			case EHCIAbilityKitAuditSeverity::Error:
+				++InOutStats.ErrorIssueCount;
+				break;
+			default:
+				break;
+			}
+		}
+	}
 }
 
 static void HCI_LogAuditRows(const TCHAR* Prefix, const TArray<FHCIAbilityKitAuditAssetRow>& Rows, const int32 LogTopN)
@@ -233,10 +265,11 @@ static void HCI_LogAuditRows(const TCHAR* Prefix, const TArray<FHCIAbilityKitAud
 	for (int32 Index = 0; Index < CountToLog; ++Index)
 	{
 		const FHCIAbilityKitAuditAssetRow& Row = Rows[Index];
+		const FHCIAbilityKitAuditIssue* FirstIssue = Row.AuditIssues.Num() > 0 ? &Row.AuditIssues[0] : nullptr;
 		UE_LOG(
 			LogHCIAbilityKitAuditScan,
 			Display,
-			TEXT("%s row=%d asset=%s id=%s display_name=%s damage=%.2f representing_mesh=%s triangle_count_lod0=%d triangle_source=%s triangle_source_tag=%s scan_state=%s skip_reason=%s"),
+			TEXT("%s row=%d asset=%s id=%s display_name=%s damage=%.2f representing_mesh=%s triangle_count_lod0=%d triangle_expected_lod0=%d triangle_source=%s triangle_source_tag=%s scan_state=%s skip_reason=%s audit_issue_count=%d first_issue_rule=%s first_issue_severity=%d"),
 			Prefix,
 			Index,
 			*Row.AssetPath,
@@ -245,10 +278,14 @@ static void HCI_LogAuditRows(const TCHAR* Prefix, const TArray<FHCIAbilityKitAud
 			Row.Damage,
 			*Row.RepresentingMeshPath,
 			Row.TriangleCountLod0Actual,
+			Row.TriangleCountLod0ExpectedJson,
 			*Row.TriangleSource,
 			*Row.TriangleSourceTagKey,
 			*Row.ScanState,
-			*Row.SkipReason);
+			*Row.SkipReason,
+			Row.AuditIssues.Num(),
+			FirstIssue ? *FirstIssue->RuleId.ToString() : TEXT(""),
+			FirstIssue ? static_cast<int32>(FirstIssue->Severity) : -1);
 	}
 }
 
@@ -372,6 +409,8 @@ static bool HCI_TickAbilityKitAuditScanAsync(float DeltaSeconds)
 
 		FHCIAbilityKitAuditAssetRow& Row = State.Snapshot.Rows.Emplace_GetRef();
 		HCI_ParseAuditRowFromAssetData(AssetDatas[Index], AssetRegistry, Row);
+		const FHCIAbilityKitAuditContext Context{Row};
+		FHCIAbilityKitAuditRuleRegistry::Get().Evaluate(Context, Row.AuditIssues);
 		HCI_AccumulateAuditCoverage(Row, State.Snapshot.Stats);
 	}
 

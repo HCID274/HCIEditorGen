@@ -127,8 +127,15 @@ Scope: whole repo.
     - 已完成：修复 Details 分类混淆，将分类统一为 `HCIAudit`（去除 `HCI|Audit` 层级分组）。
     - 已完成：用户手测确认 `Pass`。
   - `Stage B-SliceB8` 已通过：预览体自动同步（`PostEditChangeProperty` + Reimport 后主动刷新）。
-  - 当前切片：`Stage C-SliceC1`（RuleRegistry 框架与规则接口落地）。
-  - 下一切片：`Stage C-SliceC2`（首批规则：`TextureNPOTRule + HighPolyAutoLODRule`）。
+  - `Stage C-SliceC1` 已通过：RuleRegistry 框架与规则接口落地。
+    - 已完成：Runtime 新增 `IHCIAbilityAuditRule` 契约与 `FHCIAbilityKitAuditRuleRegistry` 注册中心。
+    - 已完成：默认规则 `TriangleExpectedMismatchRule`（`actual vs expected`）接入扫描链路。
+    - 已完成：导入解析支持可选 `params.triangle_count_lod0`，并写入资产标签 `hci_triangle_expected_lod0`。
+    - 已完成：`AuditScan/AuditScanAsync` 增加规则 issue 统计字段（`issue_assets/info/warn/error`）与行级 issue 输出。
+    - 已完成：自动化测试 `HCIAbilityKit.Editor.AuditRules.TriangleExpectedMismatchWarn` 与 `...TriangleExpectedMissingShouldNotWarn`。
+    - 已完成：用户 UE 手测通过（同步/异步扫描无异常，C1 新增摘要/行字段完整且 expected 缺失时不误报）。
+  - 当前切片：`Stage C-SliceC2`（首批规则：`TextureNPOTRule + HighPolyAutoLODRule`）。
+  - 下一切片：`Stage C-SliceC3`（统一审计结果结构与严重级别）。
   - D 段收尾后续主线：`Stage E`（安全执行：Dry-Run/Confirm/Transaction/SC）-> `Stage F`（NL->Plan->Executor）。
   - B3 最新状态：
     - 已完成：新增 `HCIAbilityKit.AuditScanAsync [batch_size] [log_top_n]`，按分片执行 `AssetRegistry + FAssetData` 扫描，避免单帧全量阻塞。

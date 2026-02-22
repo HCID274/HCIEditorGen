@@ -195,6 +195,9 @@
   - `triangle_source`（`tag_cached/batch_loaded/unavailable`）
   - `lod_index`（默认 `0`）
   - `source_tag_key`（当来源为 Tag 时必填）
+- 资产标签落地（Stage C1 实装）：
+  - 导入时若 JSON 存在 `params.triangle_count_lod0`，写入 AssetRegistry Tag：`hci_triangle_expected_lod0`；
+  - 扫描时读取该 Tag 作为 `triangle_count_lod0_expected_json` 的默认来源。
 - 性能约束：
   - Stage B 元数据扫描禁止默认 `LoadObject`，仅验证 `representing_mesh_path` 可解析与可索引；
   - Stage D 深度提取必须批次化并记录峰值内存。

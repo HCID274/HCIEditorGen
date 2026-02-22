@@ -40,6 +40,10 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "HCI|Audit")
 	TSoftObjectPtr<UStaticMesh> RepresentingMesh;
 
+	/** JSON 中定义的 LOD0 三角面预期值（可选，供 mismatch 规则比对） */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "HCI|Audit")
+	int32 TriangleCountLod0Expected = INDEX_NONE;
+
 #if WITH_EDITORONLY_DATA
 	/** 资产导入数据，记录了源文件的路径、哈希值等信息，用于实现重导入（Reimport）功能 */
 	UPROPERTY(VisibleAnywhere, Instanced, Category = "HCI|Import")

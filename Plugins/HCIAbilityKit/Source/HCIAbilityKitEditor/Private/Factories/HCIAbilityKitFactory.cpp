@@ -400,4 +400,5 @@ void UHCIAbilityKitFactory::ApplyParsedToAsset(UHCIAbilityKitAsset* Asset, const
 	Asset->RepresentingMesh = Parsed.RepresentingMeshPath.IsEmpty()
 		? TSoftObjectPtr<UStaticMesh>()
 		: TSoftObjectPtr<UStaticMesh>(FSoftObjectPath(Parsed.RepresentingMeshPath));
+	Asset->TriangleCountLod0Expected = Parsed.TriangleCountLod0Expected;
 }

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "Audit/HCIAbilityKitAuditRule.h"
 
 struct HCIABILITYKITRUNTIME_API FHCIAbilityKitAuditAssetRow
 {
@@ -11,10 +12,12 @@ struct HCIABILITYKITRUNTIME_API FHCIAbilityKitAuditAssetRow
 	float Damage = 0.0f;
 	FString RepresentingMeshPath;
 	int32 TriangleCountLod0Actual = INDEX_NONE;
+	int32 TriangleCountLod0ExpectedJson = INDEX_NONE;
 	FString TriangleSource;
 	FString TriangleSourceTagKey;
 	FString ScanState = TEXT("ok");
 	FString SkipReason;
+	TArray<FHCIAbilityKitAuditIssue> AuditIssues;
 };
 
 struct HCIABILITYKITRUNTIME_API FHCIAbilityKitAuditScanStats
@@ -25,6 +28,10 @@ struct HCIABILITYKITRUNTIME_API FHCIAbilityKitAuditScanStats
 	int32 RepresentingMeshCoveredCount = 0;
 	int32 TriangleTagCoveredCount = 0;
 	int32 SkippedLockedOrDirtyCount = 0;
+	int32 AssetsWithIssuesCount = 0;
+	int32 InfoIssueCount = 0;
+	int32 WarnIssueCount = 0;
+	int32 ErrorIssueCount = 0;
 	FDateTime UpdatedUtc;
 	double DurationMs = 0.0;
 	FString Source;

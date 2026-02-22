@@ -9,6 +9,7 @@ namespace HCIAbilityKitAuditTagNames
 	inline const FName Damage = FName(TEXT("hci_damage"));
 	inline const FName RepresentingMesh = FName(TEXT("hci_representing_mesh"));
 	inline const FName TrianglesLod0 = FName(TEXT("hci_triangles_lod0"));
+	inline const FName TriangleExpectedLod0 = FName(TEXT("hci_triangle_expected_lod0"));
 
 	inline const TArray<FName>& GetTriangleCountTagCandidates()
 	{
@@ -19,6 +20,16 @@ namespace HCIAbilityKitAuditTagNames
 			FName(TEXT("lod0_triangles")),
 			FName(TEXT("Triangles")),
 			FName(TEXT("NumTriangles"))};
+		return CandidateTags;
+	}
+
+	inline const TArray<FName>& GetTriangleExpectedTagCandidates()
+	{
+		static const TArray<FName> CandidateTags = {
+			TriangleExpectedLod0,
+			FName(TEXT("triangle_count_lod0_expected")),
+			FName(TEXT("triangle_expected_lod0")),
+			FName(TEXT("hci_triangle_count_lod0_expected"))};
 		return CandidateTags;
 	}
 
@@ -94,6 +105,30 @@ namespace HCIAbilityKitAuditTagNames
 				return true;
 			}
 		}
+		return false;
+	}
+
+	template <typename TagGetterFuncType>
+	bool TryResolveTriangleExpectedFromTags(
+		TagGetterFuncType&& TryGetTagValue,
+		int32& OutTriangleCountExpected,
+		FName& OutSourceTagKey)
+	{
+		for (const FName& CandidateTag : GetTriangleExpectedTagCandidates())
+		{
+			FString RawValue;
+			if (!TryGetTagValue(CandidateTag, RawValue))
+			{
+				continue;
+			}
+
+			if (TryParseTriangleCountTagValue(RawValue, OutTriangleCountExpected))
+			{
+				OutSourceTagKey = CandidateTag;
+				return true;
+			}
+		}
+
 		return false;
 	}
 }

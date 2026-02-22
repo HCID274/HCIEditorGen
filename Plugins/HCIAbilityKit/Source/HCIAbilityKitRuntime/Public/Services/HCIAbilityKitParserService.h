@@ -21,6 +21,8 @@ struct HCIABILITYKITRUNTIME_API FHCIAbilityKitParsedData
 	float Damage = 0.0f;
 	/** 代表性网格的 UE 长对象路径（可选） */
 	FString RepresentingMeshPath;
+	/** JSON 中的 params.triangle_count_lod0 预期值（可选） */
+	int32 TriangleCountLod0Expected = INDEX_NONE;
 };
 
 /**

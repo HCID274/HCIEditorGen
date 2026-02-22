@@ -1,6 +1,7 @@
 #include "Services/HCIAbilityKitParserService.h"
 
 #include "Dom/JsonObject.h"
+#include "Math/UnrealMathUtility.h"
 #include "Misc/FileHelper.h"
 #include "Serialization/JsonReader.h"
 #include "Serialization/JsonSerializer.h"
@@ -263,6 +264,35 @@ bool FHCIAbilityKitParserService::TryParseKitFile(
 		return false;
 	}
 	OutParsed.Damage = static_cast<float>(DamageTmp);
+
+	// 8.1 解析可选三角面预期值 (params.triangle_count_lod0)
+	if ((*ParamsObj)->HasField(TEXT("triangle_count_lod0")))
+	{
+		double TriangleExpectedTmp = 0.0;
+		if (!(*ParamsObj)->TryGetNumberField(TEXT("triangle_count_lod0"), TriangleExpectedTmp))
+		{
+			OutError = MakeParseError(
+				HCIAbilityKitErrorCodes::InvalidFieldType,
+				FullFilename,
+				TEXT("params.triangle_count_lod0"),
+				TEXT("Invalid field type"),
+				TEXT("params.triangle_count_lod0 must be a number"));
+			return false;
+		}
+
+		if (TriangleExpectedTmp < 0.0 || TriangleExpectedTmp > static_cast<double>(MAX_int32))
+		{
+			OutError = MakeParseError(
+				HCIAbilityKitErrorCodes::InvalidFieldValue,
+				FullFilename,
+				TEXT("params.triangle_count_lod0"),
+				TEXT("Invalid field value"),
+				TEXT("params.triangle_count_lod0 must be >= 0 and <= 2147483647"));
+			return false;
+		}
+
+		OutParsed.TriangleCountLod0Expected = FMath::RoundToInt(TriangleExpectedTmp);
+	}
 
 	// 9. 调用 Python 钩子脚本进行深度处理或校验
 	if (GPythonHook)

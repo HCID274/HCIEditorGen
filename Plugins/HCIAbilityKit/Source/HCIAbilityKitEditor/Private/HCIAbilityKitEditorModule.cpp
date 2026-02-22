@@ -2,6 +2,7 @@
 
 #include "AssetRegistry/IAssetRegistry.h"
 #include "AssetRegistry/AssetRegistryModule.h"
+#include "Audit/HCIAbilityKitAuditPerfMetrics.h"
 #include "Audit/HCIAbilityKitAuditScanAsyncController.h"
 #include "Audit/HCIAbilityKitAuditReport.h"
 #include "Audit/HCIAbilityKitAuditReportJsonSerializer.h"
@@ -68,9 +69,13 @@ struct FHCIAbilityKitAuditScanAsyncState
 	int32 DeepMeshSignalsResolvedCount = 0;
 	double LastBatchDurationMs = 0.0;
 	double MaxBatchDurationMs = 0.0;
+	double MaxBatchThroughputAssetsPerSec = 0.0;
 	double LastGcDurationMs = 0.0;
 	double MaxGcDurationMs = 0.0;
+	double LastPerfLogTimeSeconds = 0.0;
+	int32 LastPerfLogProcessedCount = 0;
 	uint64 PeakUsedPhysicalBytes = 0;
+	TArray<double> BatchThroughputSamplesAssetsPerSec;
 	FHCIAbilityKitAuditScanSnapshot Snapshot;
 	FTSTicker::FDelegateHandle TickHandle;
 };
@@ -541,9 +546,13 @@ static void HCI_ResetAuditScanAsyncState(const bool bClearRetryContext)
 	GHCIAbilityKitAuditScanAsyncState.DeepMeshSignalsResolvedCount = 0;
 	GHCIAbilityKitAuditScanAsyncState.LastBatchDurationMs = 0.0;
 	GHCIAbilityKitAuditScanAsyncState.MaxBatchDurationMs = 0.0;
+	GHCIAbilityKitAuditScanAsyncState.MaxBatchThroughputAssetsPerSec = 0.0;
 	GHCIAbilityKitAuditScanAsyncState.LastGcDurationMs = 0.0;
 	GHCIAbilityKitAuditScanAsyncState.MaxGcDurationMs = 0.0;
+	GHCIAbilityKitAuditScanAsyncState.LastPerfLogTimeSeconds = 0.0;
+	GHCIAbilityKitAuditScanAsyncState.LastPerfLogProcessedCount = 0;
 	GHCIAbilityKitAuditScanAsyncState.PeakUsedPhysicalBytes = 0;
+	GHCIAbilityKitAuditScanAsyncState.BatchThroughputSamplesAssetsPerSec.Reset();
 	GHCIAbilityKitAuditScanAsyncState.Snapshot = FHCIAbilityKitAuditScanSnapshot();
 }
 
@@ -640,6 +649,75 @@ static void HCI_ConvergeAuditScanAsyncFailure(const FString& Reason)
 		TEXT("[HCIAbilityKit][AuditScanAsync] suggestion=运行 HCIAbilityKit.AuditScanAsyncRetry 可按上次参数重试"));
 }
 
+static void HCI_LogAuditScanAsyncPerfProgress(const int32 ProgressPercent)
+{
+	FHCIAbilityKitAuditScanAsyncState& State = GHCIAbilityKitAuditScanAsyncState;
+	const int32 TotalCount = State.Controller.GetTotalCount();
+	const int32 ProcessedCount = State.Controller.GetNextIndex();
+	const double NowSeconds = FPlatformTime::Seconds();
+	const double ElapsedMs = (NowSeconds - State.StartTimeSeconds) * 1000.0;
+	const double AvgAssetsPerSec = FHCIAbilityKitAuditPerfMetrics::AssetsPerSecond(ProcessedCount, ElapsedMs);
+
+	double WindowAssetsPerSec = AvgAssetsPerSec;
+	if (State.LastPerfLogTimeSeconds > 0.0)
+	{
+		const double WindowMs = (NowSeconds - State.LastPerfLogTimeSeconds) * 1000.0;
+		const int32 WindowProcessed = FMath::Max(0, ProcessedCount - State.LastPerfLogProcessedCount);
+		WindowAssetsPerSec = FHCIAbilityKitAuditPerfMetrics::AssetsPerSecond(WindowProcessed, WindowMs);
+	}
+
+	const int32 RemainingCount = FMath::Max(0, TotalCount - ProcessedCount);
+	const double EtaSeconds = AvgAssetsPerSec > UE_SMALL_NUMBER
+		? (static_cast<double>(RemainingCount) / AvgAssetsPerSec)
+		: -1.0;
+
+	const FPlatformMemoryStats MemoryStats = FPlatformMemory::GetStats();
+	const double UsedPhysicalMiB = static_cast<double>(MemoryStats.UsedPhysical) / (1024.0 * 1024.0);
+	const double PeakUsedPhysicalMiB = static_cast<double>(State.PeakUsedPhysicalBytes) / (1024.0 * 1024.0);
+
+	UE_LOG(
+		LogHCIAbilityKitAuditScan,
+		Display,
+		TEXT("[HCIAbilityKit][AuditScanAsync][Perf] progress=%d%% processed=%d/%d elapsed_ms=%.2f avg_assets_per_sec=%.2f window_assets_per_sec=%.2f eta_s=%.2f used_physical_mib=%.1f peak_used_physical_mib=%.1f gc_runs=%d"),
+		ProgressPercent,
+		ProcessedCount,
+		TotalCount,
+		ElapsedMs,
+		AvgAssetsPerSec,
+		WindowAssetsPerSec,
+		EtaSeconds,
+		UsedPhysicalMiB,
+		PeakUsedPhysicalMiB,
+		State.GcRunCount);
+
+	State.LastPerfLogTimeSeconds = NowSeconds;
+	State.LastPerfLogProcessedCount = ProcessedCount;
+}
+
+static void HCI_LogAuditScanAsyncPerfFinalSummary()
+{
+	FHCIAbilityKitAuditScanAsyncState& State = GHCIAbilityKitAuditScanAsyncState;
+	const int32 AssetCount = State.Snapshot.Rows.Num();
+	const double DurationMs = State.Snapshot.Stats.DurationMs;
+	const double AvgAssetsPerSec = FHCIAbilityKitAuditPerfMetrics::AssetsPerSecond(AssetCount, DurationMs);
+	const double P50BatchAssetsPerSec = FHCIAbilityKitAuditPerfMetrics::PercentileNearestRank(State.BatchThroughputSamplesAssetsPerSec, 50.0);
+	const double P95BatchAssetsPerSec = FHCIAbilityKitAuditPerfMetrics::PercentileNearestRank(State.BatchThroughputSamplesAssetsPerSec, 95.0);
+	const double PeakUsedPhysicalMiB = static_cast<double>(State.PeakUsedPhysicalBytes) / (1024.0 * 1024.0);
+
+	UE_LOG(
+		LogHCIAbilityKitAuditScan,
+		Display,
+		TEXT("[HCIAbilityKit][AuditScanAsync][PerfSummary] assets=%d batches=%d duration_ms=%.2f avg_assets_per_sec=%.2f p50_batch_assets_per_sec=%.2f p95_batch_assets_per_sec=%.2f max_batch_assets_per_sec=%.2f peak_used_physical_mib=%.1f"),
+		AssetCount,
+		State.ProcessedBatchCount,
+		DurationMs,
+		AvgAssetsPerSec,
+		P50BatchAssetsPerSec,
+		P95BatchAssetsPerSec,
+		State.MaxBatchThroughputAssetsPerSec,
+		PeakUsedPhysicalMiB);
+}
+
 static void HCI_FinalizeAuditScanAsyncSuccess()
 {
 	FHCIAbilityKitAuditScanAsyncState& State = GHCIAbilityKitAuditScanAsyncState;
@@ -652,6 +730,7 @@ static void HCI_FinalizeAuditScanAsyncSuccess()
 		Display,
 		TEXT("[HCIAbilityKit][AuditScanAsync] %s"),
 		*State.Snapshot.Stats.ToSummaryString());
+	HCI_LogAuditScanAsyncPerfFinalSummary();
 	if (State.bDeepMeshCheckEnabled)
 	{
 		const double PeakUsedPhysicalMiB = static_cast<double>(State.PeakUsedPhysicalBytes) / (1024.0 * 1024.0);
@@ -725,8 +804,15 @@ static bool HCI_TickAbilityKitAuditScanAsync(float DeltaSeconds)
 	}
 
 	State.ProcessedBatchCount += 1;
+	const int32 BatchAssetCount = Batch.EndIndex - Batch.StartIndex;
 	State.LastBatchDurationMs = (FPlatformTime::Seconds() - BatchStartSeconds) * 1000.0;
 	State.MaxBatchDurationMs = FMath::Max(State.MaxBatchDurationMs, State.LastBatchDurationMs);
+	const double BatchAssetsPerSec = FHCIAbilityKitAuditPerfMetrics::AssetsPerSecond(BatchAssetCount, State.LastBatchDurationMs);
+	if (BatchAssetsPerSec > 0.0)
+	{
+		State.BatchThroughputSamplesAssetsPerSec.Add(BatchAssetsPerSec);
+		State.MaxBatchThroughputAssetsPerSec = FMath::Max(State.MaxBatchThroughputAssetsPerSec, BatchAssetsPerSec);
+	}
 
 	const FPlatformMemoryStats BatchMemoryStats = FPlatformMemory::GetStats();
 	State.PeakUsedPhysicalBytes = FMath::Max<uint64>(State.PeakUsedPhysicalBytes, static_cast<uint64>(BatchMemoryStats.UsedPhysical));
@@ -757,6 +843,7 @@ static bool HCI_TickAbilityKitAuditScanAsync(float DeltaSeconds)
 			ProgressPercent,
 			State.Controller.GetNextIndex(),
 			TotalCount);
+		HCI_LogAuditScanAsyncPerfProgress(ProgressPercent);
 	}
 
 	if (State.Controller.GetNextIndex() < TotalCount)
@@ -983,14 +1070,19 @@ static void HCI_RunAbilityKitAuditScanAsyncCommand(const TArray<FString>& Args)
 	State.DeepMeshSignalsResolvedCount = 0;
 	State.LastBatchDurationMs = 0.0;
 	State.MaxBatchDurationMs = 0.0;
+	State.MaxBatchThroughputAssetsPerSec = 0.0;
 	State.LastGcDurationMs = 0.0;
 	State.MaxGcDurationMs = 0.0;
+	State.LastPerfLogTimeSeconds = 0.0;
+	State.LastPerfLogProcessedCount = 0;
 	State.PeakUsedPhysicalBytes = 0;
+	State.BatchThroughputSamplesAssetsPerSec.Reset();
 	State.Snapshot = FHCIAbilityKitAuditScanSnapshot();
 	State.Snapshot.Stats.Source = bDeepMeshCheckEnabled
 		? (GcEveryNBatches > 0 ? TEXT("asset_registry_fassetdata_sliced_deepmesh_gc") : TEXT("asset_registry_fassetdata_sliced_deepmesh"))
 		: TEXT("asset_registry_fassetdata_sliced");
 	State.Snapshot.Rows.Reserve(State.Controller.GetTotalCount());
+	State.BatchThroughputSamplesAssetsPerSec.Reserve(FMath::Max(16, State.Controller.GetTotalCount() / FMath::Max(1, State.Controller.GetBatchSize()) + 1));
 
 	UE_LOG(
 		LogHCIAbilityKitAuditScan,
@@ -1085,14 +1177,19 @@ static void HCI_RunAbilityKitAuditScanRetryCommand(const TArray<FString>& Args)
 	State.DeepMeshSignalsResolvedCount = 0;
 	State.LastBatchDurationMs = 0.0;
 	State.MaxBatchDurationMs = 0.0;
+	State.MaxBatchThroughputAssetsPerSec = 0.0;
 	State.LastGcDurationMs = 0.0;
 	State.MaxGcDurationMs = 0.0;
+	State.LastPerfLogTimeSeconds = 0.0;
+	State.LastPerfLogProcessedCount = 0;
 	State.PeakUsedPhysicalBytes = 0;
+	State.BatchThroughputSamplesAssetsPerSec.Reset();
 	State.Snapshot = FHCIAbilityKitAuditScanSnapshot();
 	State.Snapshot.Stats.Source = State.bDeepMeshCheckEnabled
 		? (State.GcEveryNBatches > 0 ? TEXT("asset_registry_fassetdata_sliced_deepmesh_gc_retry") : TEXT("asset_registry_fassetdata_sliced_deepmesh_retry"))
 		: TEXT("asset_registry_fassetdata_sliced_retry");
 	State.Snapshot.Rows.Reserve(State.Controller.GetTotalCount());
+	State.BatchThroughputSamplesAssetsPerSec.Reserve(FMath::Max(16, State.Controller.GetTotalCount() / FMath::Max(1, State.Controller.GetBatchSize()) + 1));
 
 	UE_LOG(
 		LogHCIAbilityKitAuditScan,

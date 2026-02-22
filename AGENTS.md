@@ -162,8 +162,14 @@ Scope: whole repo.
     - 已完成：深度统计扩展 `batches/gc_every_n_batches/gc_runs/max_batch_ms/max_gc_ms/peak_used_physical_mib`。
     - 已完成：自动化测试新增 `HCIAbilityKit.Editor.AuditScanAsync.GcThrottleRetryPersistence`（重试保留 GC 节流配置），本地通过。
     - 已完成：用户 UE 手测通过（`gc_every_n_batches=1` 高频 GC 命中 `gc_runs=274`；`Stop/Retry` 保留 `gc_every_n_batches=3` 并生效）。
-  - 当前切片：`Stage D-SliceD3`（峰值内存与吞吐日志监控）。
-  - 下一切片：`Stage E-SliceE1`（Tool Registry 能力声明冻结）。
+  - `Stage D-SliceD3` 已通过：峰值内存与吞吐日志监控。
+    - 已完成：新增运行中性能监控日志 `[HCIAbilityKit][AuditScanAsync][Perf]`，在进度点输出 `avg_assets_per_sec/window_assets_per_sec/eta_s/used_physical_mib/peak_used_physical_mib/gc_runs`。
+    - 已完成：新增完成态性能汇总日志 `[HCIAbilityKit][AuditScanAsync][PerfSummary]`，输出 `avg/p50/p95/max_batch_assets_per_sec` 与峰值内存。
+    - 已完成：新增性能统计辅助 `FHCIAbilityKitAuditPerfMetrics`（吞吐率换算 + nearest-rank 分位数）。
+    - 已完成：自动化测试新增 `HCIAbilityKit.Editor.AuditScanAsync.PerfMetricsHelper`，本地通过（`AuditScanAsync` 5/5，`AuditResults` 回归 3/3）。
+    - 已完成：用户 UE 手测通过（`AuditScanAsync 1 20 1 3` 无 Error；运行中 `[Perf]` 日志字段完整；完成态 `[PerfSummary]` 输出 `p50/p95/max batch throughput + peak_used_physical_mib`；原有 `[Deep]` 日志仍存在，无回归）。
+  - 当前切片：`Stage E-SliceE1`（Tool Registry 能力声明冻结）。
+  - 下一切片：`Stage E-SliceE2`（Dry-Run Diff 契约与 UE 面板展示）。
   - D 段收尾后续主线：`Stage E`（安全执行：Dry-Run/Confirm/Transaction/SC）-> `Stage F`（NL->Plan->Executor）。
   - B3 最新状态：
     - 已完成：新增 `HCIAbilityKit.AuditScanAsync [batch_size] [log_top_n]`，按分片执行 `AssetRegistry + FAssetData` 扫描，避免单帧全量阻塞。

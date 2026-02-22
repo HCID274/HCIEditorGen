@@ -318,6 +318,12 @@ public:
   - 每处理 `N` 个批次后执行一次 `CollectGarbage`（`N=0` 表示关闭 GC 节流）；
   - 深度统计新增字段：`batches/gc_every_n_batches/gc_runs/max_batch_ms/max_gc_ms/peak_used_physical_mib`；
   - `Stop/Retry` 必须保留 `gc_every_n_batches` 配置（通过控制器重试上下文持久化）。
+- StageD-SliceD3 实现口径（2026-02-22，峰值内存与吞吐监控）：
+  - 异步扫描在进度日志点额外输出运行中性能监控行：`[HCIAbilityKit][AuditScanAsync][Perf] ...`；
+  - 运行中监控最小字段：`avg_assets_per_sec/window_assets_per_sec/eta_s/used_physical_mib/peak_used_physical_mib/gc_runs`；
+  - 完成后额外输出性能汇总行：`[HCIAbilityKit][AuditScanAsync][PerfSummary] ...`；
+  - 汇总最小字段：`avg_assets_per_sec/p50_batch_assets_per_sec/p95_batch_assets_per_sec/max_batch_assets_per_sec/peak_used_physical_mib`；
+  - 批次吞吐统计使用 nearest-rank 分位数（P50/P95），用于面试演示口径与后续 KPI 基线采样。
 
 ## 12. 索引统计契约（Step3-Slice2，历史基线）
 

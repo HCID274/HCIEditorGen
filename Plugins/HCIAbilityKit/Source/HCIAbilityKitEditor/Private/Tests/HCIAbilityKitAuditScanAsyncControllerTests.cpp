@@ -1,5 +1,6 @@
 #if WITH_DEV_AUTOMATION_TESTS
 
+#include "Audit/HCIAbilityKitAuditPerfMetrics.h"
 #include "Audit/HCIAbilityKitAuditScanAsyncController.h"
 #include "Misc/AutomationTest.h"
 
@@ -101,6 +102,38 @@ bool FHCIAbilityKitAuditScanAsyncGcThrottleRetryPersistenceTest::RunTest(const F
 	TestTrue(TEXT("Cancel should succeed"), Controller.Cancel(Error));
 	TestTrue(TEXT("Retry should succeed"), Controller.Retry(Error));
 	TestEqual(TEXT("GC throttle interval should persist after retry"), Controller.GetGcEveryNBatches(), 3);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FHCIAbilityKitAuditScanAsyncPerfMetricsHelperTest,
+	"HCIAbilityKit.Editor.AuditScanAsync.PerfMetricsHelper",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FHCIAbilityKitAuditScanAsyncPerfMetricsHelperTest::RunTest(const FString& Parameters)
+{
+	TestEqual(
+		TEXT("AssetsPerSecond should convert ms to per-second throughput"),
+		FHCIAbilityKitAuditPerfMetrics::AssetsPerSecond(10, 200.0),
+		50.0);
+	TestEqual(
+		TEXT("AssetsPerSecond should return 0 for zero duration"),
+		FHCIAbilityKitAuditPerfMetrics::AssetsPerSecond(10, 0.0),
+		0.0);
+
+	TArray<double> Samples{50.0, 10.0, 30.0, 20.0, 40.0};
+	TestEqual(
+		TEXT("P50 should use nearest-rank on sorted samples"),
+		FHCIAbilityKitAuditPerfMetrics::PercentileNearestRank(Samples, 50.0),
+		30.0);
+	TestEqual(
+		TEXT("P95 should clamp to the max sample"),
+		FHCIAbilityKitAuditPerfMetrics::PercentileNearestRank(Samples, 95.0),
+		50.0);
+	TestEqual(
+		TEXT("Empty samples should return 0"),
+		FHCIAbilityKitAuditPerfMetrics::PercentileNearestRank(TArray<double>{}, 50.0),
+		0.0);
 	return true;
 }
 

@@ -60,4 +60,26 @@ bool FHCIAbilityKitAuditScanAsyncFailureConvergenceTest::RunTest(const FString& 
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FHCIAbilityKitAuditScanAsyncDeepModeRetryPersistenceTest,
+	"HCIAbilityKit.Editor.AuditScanAsync.DeepModeRetryPersistence",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FHCIAbilityKitAuditScanAsyncDeepModeRetryPersistenceTest::RunTest(const FString& Parameters)
+{
+	FHCIAbilityKitAuditScanAsyncController Controller;
+
+	TArray<FAssetData> SeedAssets;
+	SeedAssets.SetNum(4);
+
+	FString Error;
+	TestTrue(TEXT("Start should succeed with deep mode enabled"), Controller.Start(MoveTemp(SeedAssets), 2, 10, true, Error));
+	TestTrue(TEXT("Deep mode should be enabled after start"), Controller.IsDeepMeshCheckEnabled());
+
+	TestTrue(TEXT("Cancel should succeed"), Controller.Cancel(Error));
+	TestTrue(TEXT("Retry should succeed"), Controller.Retry(Error));
+	TestTrue(TEXT("Deep mode should persist after retry"), Controller.IsDeepMeshCheckEnabled());
+	return true;
+}
+
 #endif

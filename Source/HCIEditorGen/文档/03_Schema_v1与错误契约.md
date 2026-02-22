@@ -181,7 +181,7 @@
 - 目标：明确 `Triangle Count` 获取路径，避免扫描阶段误判。
 - 提取优先级（固定）：
   1. `tag_cached`：优先读取 `RepresentingMesh` 对应 `AssetRegistry Tags`（示例键：`hci_triangles_lod0`）。
-  2. `batch_loaded`：Tag 缺失时，在 Stage D 分批加载 `RepresentingMesh` 对应 `UStaticMesh` 并提取 `LOD0` 三角面数（`GetNumTriangles(0)`）。
+  2. `mesh_loaded`：Tag 缺失或网格信号不完整时，在 Stage D 分批加载 `RepresentingMesh` 对应 `UStaticMesh` 并提取 `LOD0` 三角面数（`GetNumTriangles(0)`）与网格信号（`LOD/Nanite`）。
   3. `unavailable`：无法提取时标记未知，不得伪造数值。
 - 口径优先级（固定）：
   1. `triangle_count_lod0_actual`（来自真实 `RepresentingMesh`）为最终审计依据；
@@ -192,7 +192,7 @@
   - `triangle_count_lod0_actual`
   - `triangle_count_lod0_expected_json`（可缺省）
   - `triangle_mismatch_delta`（可缺省）
-  - `triangle_source`（`tag_cached/batch_loaded/unavailable`）
+  - `triangle_source`（`tag_cached/mesh_loaded/unavailable`）
   - `lod_index`（默认 `0`）
   - `source_tag_key`（当来源为 Tag 时必填）
 - 资产标签落地（Stage C1 实装）：
@@ -285,7 +285,7 @@ public:
   - `representing_mesh_path`（可缺省）
   - `triangle_count_lod0_actual`（可缺省）
   - `triangle_count_lod0_expected_json`（可缺省）
-  - `triangle_source`（`tag_cached/batch_loaded/unavailable`）
+  - `triangle_source`（`tag_cached/mesh_loaded/unavailable`）
   - `actor_path`（关卡风险规则可填）
   - `missing_collision`（`true/false`，关卡风险规则可填）
   - `uses_default_material`（`true/false`，关卡风险规则可填）
@@ -307,6 +307,11 @@ public:
   - 默认导出目录：`Saved/HCIAbilityKit/AuditReports/`；
   - 输出结果项包含顶层 `triangle_source` 与 `evidence` 对象（保留规则证据键值对）；
   - `ExecCmds` 场景兼容：导出命令会清洗路径参数尾部分号 `;`，避免生成错误文件名。
+- StageD-SliceD1 实现口径（2026-02-22，异步深度检查）：
+  - `HCIAbilityKit.AuditScanAsync` 新增可选参数：`[deep_mesh_check=0|1]`（默认 `0`）；
+  - 当 `deep_mesh_check=1` 时，仅对需要补齐网格信号的行分批同步加载 `RepresentingMesh`；
+  - 提取后立即释放 `FStreamableHandle` 强引用（GC 节流由 `StageD-SliceD2` 处理）；
+  - 完成日志新增深度统计行：`[HCIAbilityKit][AuditScanAsync][Deep] load_attempts/load_success/handle_releases/...`。
 
 ## 12. 索引统计契约（Step3-Slice2，历史基线）
 

@@ -12,6 +12,8 @@
 #include "Audit/HCIAbilityKitAuditScanService.h"
 #include "Containers/Ticker.h"
 #include "Factories/HCIAbilityKitFactory.h"
+#include "Engine/StaticMesh.h"
+#include "Engine/StreamableManager.h"
 #include "HAL/IConsoleManager.h"
 #include "HAL/FileManager.h"
 #include "HAL/PlatformProcess.h"
@@ -53,6 +55,12 @@ struct FHCIAbilityKitAuditScanAsyncState
 	FHCIAbilityKitAuditScanAsyncController Controller;
 	int32 LastLogPercentBucket = -1;
 	double StartTimeSeconds = 0.0;
+	bool bDeepMeshCheckEnabled = false;
+	int32 DeepMeshLoadAttemptCount = 0;
+	int32 DeepMeshLoadSuccessCount = 0;
+	int32 DeepMeshHandleReleaseCount = 0;
+	int32 DeepTriangleResolvedCount = 0;
+	int32 DeepMeshSignalsResolvedCount = 0;
 	FHCIAbilityKitAuditScanSnapshot Snapshot;
 	FTSTicker::FDelegateHandle TickHandle;
 };
@@ -251,6 +259,120 @@ static void HCI_TryFillTriangleFromTagCached(
 	OutRow.TriangleSource = TEXT("unavailable");
 }
 
+struct FHCIAbilityKitAuditDeepMeshBatchStats
+{
+	int32 LoadAttemptCount = 0;
+	int32 LoadSuccessCount = 0;
+	int32 HandleReleaseCount = 0;
+	int32 TriangleResolvedCount = 0;
+	int32 MeshSignalsResolvedCount = 0;
+};
+
+static bool HCI_ShouldRunDeepMeshCheckForRow(const FHCIAbilityKitAuditAssetRow& Row)
+{
+	if (Row.ScanState != TEXT("ok"))
+	{
+		return false;
+	}
+
+	if (Row.RepresentingMeshPath.IsEmpty())
+	{
+		return false;
+	}
+
+	return Row.TriangleCountLod0Actual < 0 || Row.MeshLodCount < 0 || !Row.bMeshNaniteEnabledKnown;
+}
+
+static bool HCI_TryResolveAuditSignalsFromLoadedStaticMesh(UStaticMesh* StaticMesh, FHCIAbilityKitAuditAssetRow& OutRow)
+{
+	if (StaticMesh == nullptr)
+	{
+		return false;
+	}
+
+	bool bResolvedAny = false;
+	bool bResolvedMeshSignals = false;
+
+	if (OutRow.MeshLodCount < 0)
+	{
+		OutRow.MeshLodCount = StaticMesh->GetNumLODs();
+		bResolvedAny = true;
+		bResolvedMeshSignals = true;
+	}
+
+	if (!OutRow.bMeshNaniteEnabledKnown)
+	{
+		OutRow.bMeshNaniteEnabled = StaticMesh->NaniteSettings.bEnabled;
+		OutRow.bMeshNaniteEnabledKnown = true;
+		bResolvedAny = true;
+		bResolvedMeshSignals = true;
+	}
+
+	if (OutRow.TriangleCountLod0Actual < 0 && OutRow.MeshLodCount > 0)
+	{
+		OutRow.TriangleCountLod0Actual = StaticMesh->GetNumTriangles(0);
+		OutRow.TriangleSource = TEXT("mesh_loaded");
+		OutRow.TriangleSourceTagKey.Reset();
+		bResolvedAny = true;
+	}
+
+	if (bResolvedMeshSignals)
+	{
+		OutRow.MeshLodCountTagKey.Reset();
+		OutRow.MeshNaniteTagKey.Reset();
+	}
+
+	return bResolvedAny;
+}
+
+static void HCI_TryEnrichAuditRowByDeepMeshLoad(
+	FHCIAbilityKitAuditAssetRow& InOutRow,
+	FHCIAbilityKitAuditDeepMeshBatchStats& InOutBatchStats)
+{
+	if (!HCI_ShouldRunDeepMeshCheckForRow(InOutRow))
+	{
+		return;
+	}
+
+	const FSoftObjectPath MeshObjectPath(InOutRow.RepresentingMeshPath);
+	if (!MeshObjectPath.IsValid())
+	{
+		return;
+	}
+
+	++InOutBatchStats.LoadAttemptCount;
+
+	static FStreamableManager GHCIAuditDeepScanStreamableManager;
+	TSharedPtr<FStreamableHandle> LoadHandle = GHCIAuditDeepScanStreamableManager.RequestSyncLoad(MeshObjectPath, false);
+	UObject* LoadedObject = LoadHandle.IsValid() ? LoadHandle->GetLoadedAsset() : MeshObjectPath.ResolveObject();
+
+	if (UStaticMesh* StaticMesh = Cast<UStaticMesh>(LoadedObject))
+	{
+		const bool bTriangleBeforeResolved = InOutRow.TriangleCountLod0Actual >= 0;
+		const bool bMeshSignalsBeforeResolved = (InOutRow.MeshLodCount >= 0) && InOutRow.bMeshNaniteEnabledKnown;
+		const bool bResolvedAny = HCI_TryResolveAuditSignalsFromLoadedStaticMesh(StaticMesh, InOutRow);
+		if (bResolvedAny)
+		{
+			++InOutBatchStats.LoadSuccessCount;
+			if (!bTriangleBeforeResolved && InOutRow.TriangleCountLod0Actual >= 0 && InOutRow.TriangleSource == TEXT("mesh_loaded"))
+			{
+				++InOutBatchStats.TriangleResolvedCount;
+			}
+			if (!bMeshSignalsBeforeResolved && InOutRow.MeshLodCount >= 0 && InOutRow.bMeshNaniteEnabledKnown)
+			{
+				++InOutBatchStats.MeshSignalsResolvedCount;
+			}
+		}
+	}
+
+	if (LoadHandle.IsValid())
+	{
+		LoadHandle->ReleaseHandle();
+		LoadHandle.Reset();
+		++InOutBatchStats.HandleReleaseCount;
+	}
+}
+
 static void HCI_ParseAuditRowFromAssetData(
 	const FAssetData& AssetData,
 	IAssetRegistry* AssetRegistry,
@@ -398,6 +520,12 @@ static void HCI_ResetAuditScanAsyncState(const bool bClearRetryContext)
 	GHCIAbilityKitAuditScanAsyncState.Controller.Reset(bClearRetryContext);
 	GHCIAbilityKitAuditScanAsyncState.LastLogPercentBucket = -1;
 	GHCIAbilityKitAuditScanAsyncState.StartTimeSeconds = 0.0;
+	GHCIAbilityKitAuditScanAsyncState.bDeepMeshCheckEnabled = false;
+	GHCIAbilityKitAuditScanAsyncState.DeepMeshLoadAttemptCount = 0;
+	GHCIAbilityKitAuditScanAsyncState.DeepMeshLoadSuccessCount = 0;
+	GHCIAbilityKitAuditScanAsyncState.DeepMeshHandleReleaseCount = 0;
+	GHCIAbilityKitAuditScanAsyncState.DeepTriangleResolvedCount = 0;
+	GHCIAbilityKitAuditScanAsyncState.DeepMeshSignalsResolvedCount = 0;
 	GHCIAbilityKitAuditScanAsyncState.Snapshot = FHCIAbilityKitAuditScanSnapshot();
 }
 
@@ -405,10 +533,12 @@ static bool HCI_ParseAuditScanAsyncArgs(
 	const TArray<FString>& Args,
 	int32& OutBatchSize,
 	int32& OutLogTopN,
+	bool& OutDeepMeshCheckEnabled,
 	FString& OutError)
 {
 	OutBatchSize = 256;
 	OutLogTopN = 10;
+	OutDeepMeshCheckEnabled = false;
 
 	if (Args.Num() >= 1)
 	{
@@ -430,6 +560,24 @@ static bool HCI_ParseAuditScanAsyncArgs(
 			return false;
 		}
 		OutLogTopN = ParsedTopN;
+	}
+
+	if (Args.Num() >= 3)
+	{
+		const FString Normalized = Args[2].TrimStartAndEnd();
+		if (Normalized.Equals(TEXT("1")) || Normalized.Equals(TEXT("true"), ESearchCase::IgnoreCase))
+		{
+			OutDeepMeshCheckEnabled = true;
+		}
+		else if (Normalized.Equals(TEXT("0")) || Normalized.Equals(TEXT("false"), ESearchCase::IgnoreCase))
+		{
+			OutDeepMeshCheckEnabled = false;
+		}
+		else
+		{
+			OutError = TEXT("deep_mesh_check must be 0/1/false/true");
+			return false;
+		}
 	}
 
 	return true;
@@ -468,6 +616,18 @@ static void HCI_FinalizeAuditScanAsyncSuccess()
 		Display,
 		TEXT("[HCIAbilityKit][AuditScanAsync] %s"),
 		*State.Snapshot.Stats.ToSummaryString());
+	if (State.bDeepMeshCheckEnabled)
+	{
+		UE_LOG(
+			LogHCIAbilityKitAuditScan,
+			Display,
+			TEXT("[HCIAbilityKit][AuditScanAsync][Deep] load_attempts=%d load_success=%d handle_releases=%d triangle_resolved=%d mesh_signals_resolved=%d"),
+			State.DeepMeshLoadAttemptCount,
+			State.DeepMeshLoadSuccessCount,
+			State.DeepMeshHandleReleaseCount,
+			State.DeepTriangleResolvedCount,
+			State.DeepMeshSignalsResolvedCount);
+	}
 	HCI_LogAuditRows(TEXT("[HCIAbilityKit][AuditScanAsync]"), State.Snapshot.Rows, State.Controller.GetLogTopN());
 
 	HCI_ResetAuditScanAsyncState(true);
@@ -492,6 +652,7 @@ static bool HCI_TickAbilityKitAuditScanAsync(float DeltaSeconds)
 	const TArray<FAssetData>& AssetDatas = State.Controller.GetAssetDatas();
 	FAssetRegistryModule& AssetRegistryModule = FModuleManager::LoadModuleChecked<FAssetRegistryModule>(TEXT("AssetRegistry"));
 	IAssetRegistry* AssetRegistry = &AssetRegistryModule.Get();
+	FHCIAbilityKitAuditDeepMeshBatchStats DeepBatchStats;
 	for (int32 Index = Batch.StartIndex; Index < Batch.EndIndex; ++Index)
 	{
 		if (!AssetDatas.IsValidIndex(Index))
@@ -502,9 +663,21 @@ static bool HCI_TickAbilityKitAuditScanAsync(float DeltaSeconds)
 
 		FHCIAbilityKitAuditAssetRow& Row = State.Snapshot.Rows.Emplace_GetRef();
 		HCI_ParseAuditRowFromAssetData(AssetDatas[Index], AssetRegistry, Row);
+		if (State.bDeepMeshCheckEnabled)
+		{
+			HCI_TryEnrichAuditRowByDeepMeshLoad(Row, DeepBatchStats);
+		}
 		const FHCIAbilityKitAuditContext Context{Row};
 		FHCIAbilityKitAuditRuleRegistry::Get().Evaluate(Context, Row.AuditIssues);
 		HCI_AccumulateAuditCoverage(Row, State.Snapshot.Stats);
+	}
+	if (State.bDeepMeshCheckEnabled)
+	{
+		State.DeepMeshLoadAttemptCount += DeepBatchStats.LoadAttemptCount;
+		State.DeepMeshLoadSuccessCount += DeepBatchStats.LoadSuccessCount;
+		State.DeepMeshHandleReleaseCount += DeepBatchStats.HandleReleaseCount;
+		State.DeepTriangleResolvedCount += DeepBatchStats.TriangleResolvedCount;
+		State.DeepMeshSignalsResolvedCount += DeepBatchStats.MeshSignalsResolvedCount;
 	}
 
 	const int32 ProgressPercent = State.Controller.GetProgressPercent();
@@ -700,13 +873,14 @@ static void HCI_RunAbilityKitAuditScanAsyncCommand(const TArray<FString>& Args)
 
 	int32 BatchSize = 256;
 	int32 LogTopN = 10;
+	bool bDeepMeshCheckEnabled = false;
 	FString ParseError;
-	if (!HCI_ParseAuditScanAsyncArgs(Args, BatchSize, LogTopN, ParseError))
+	if (!HCI_ParseAuditScanAsyncArgs(Args, BatchSize, LogTopN, bDeepMeshCheckEnabled, ParseError))
 	{
 		UE_LOG(
 			LogHCIAbilityKitAuditScan,
 			Error,
-			TEXT("[HCIAbilityKit][AuditScanAsync] invalid_args reason=%s usage=HCIAbilityKit.AuditScanAsync [batch_size>=1] [log_top_n>=0]"),
+			TEXT("[HCIAbilityKit][AuditScanAsync] invalid_args reason=%s usage=HCIAbilityKit.AuditScanAsync [batch_size>=1] [log_top_n>=0] [deep_mesh_check=0|1]"),
 			*ParseError);
 		return;
 	}
@@ -720,7 +894,7 @@ static void HCI_RunAbilityKitAuditScanAsyncCommand(const TArray<FString>& Args)
 	AssetRegistryModule.Get().GetAssets(Filter, AssetDatas);
 
 	FString StartError;
-	if (!State.Controller.Start(MoveTemp(AssetDatas), BatchSize, LogTopN, StartError))
+	if (!State.Controller.Start(MoveTemp(AssetDatas), BatchSize, LogTopN, bDeepMeshCheckEnabled, StartError))
 	{
 		UE_LOG(
 			LogHCIAbilityKitAuditScan,
@@ -732,16 +906,25 @@ static void HCI_RunAbilityKitAuditScanAsyncCommand(const TArray<FString>& Args)
 
 	State.LastLogPercentBucket = -1;
 	State.StartTimeSeconds = FPlatformTime::Seconds();
+	State.bDeepMeshCheckEnabled = bDeepMeshCheckEnabled;
+	State.DeepMeshLoadAttemptCount = 0;
+	State.DeepMeshLoadSuccessCount = 0;
+	State.DeepMeshHandleReleaseCount = 0;
+	State.DeepTriangleResolvedCount = 0;
+	State.DeepMeshSignalsResolvedCount = 0;
 	State.Snapshot = FHCIAbilityKitAuditScanSnapshot();
-	State.Snapshot.Stats.Source = TEXT("asset_registry_fassetdata_sliced");
+	State.Snapshot.Stats.Source = bDeepMeshCheckEnabled
+		? TEXT("asset_registry_fassetdata_sliced_deepmesh")
+		: TEXT("asset_registry_fassetdata_sliced");
 	State.Snapshot.Rows.Reserve(State.Controller.GetTotalCount());
 
 	UE_LOG(
 		LogHCIAbilityKitAuditScan,
 		Display,
-		TEXT("[HCIAbilityKit][AuditScanAsync] start total=%d batch_size=%d"),
+		TEXT("[HCIAbilityKit][AuditScanAsync] start total=%d batch_size=%d deep_mesh_check=%s"),
 		State.Controller.GetTotalCount(),
-		State.Controller.GetBatchSize());
+		State.Controller.GetBatchSize(),
+		State.bDeepMeshCheckEnabled ? TEXT("true") : TEXT("false"));
 
 	if (State.Controller.GetTotalCount() == 0)
 	{
@@ -816,16 +999,25 @@ static void HCI_RunAbilityKitAuditScanRetryCommand(const TArray<FString>& Args)
 
 	State.LastLogPercentBucket = -1;
 	State.StartTimeSeconds = FPlatformTime::Seconds();
+	State.bDeepMeshCheckEnabled = State.Controller.IsDeepMeshCheckEnabled();
+	State.DeepMeshLoadAttemptCount = 0;
+	State.DeepMeshLoadSuccessCount = 0;
+	State.DeepMeshHandleReleaseCount = 0;
+	State.DeepTriangleResolvedCount = 0;
+	State.DeepMeshSignalsResolvedCount = 0;
 	State.Snapshot = FHCIAbilityKitAuditScanSnapshot();
-	State.Snapshot.Stats.Source = TEXT("asset_registry_fassetdata_sliced_retry");
+	State.Snapshot.Stats.Source = State.bDeepMeshCheckEnabled
+		? TEXT("asset_registry_fassetdata_sliced_deepmesh_retry")
+		: TEXT("asset_registry_fassetdata_sliced_retry");
 	State.Snapshot.Rows.Reserve(State.Controller.GetTotalCount());
 
 	UE_LOG(
 		LogHCIAbilityKitAuditScan,
 		Display,
-		TEXT("[HCIAbilityKit][AuditScanAsync] retry start total=%d batch_size=%d"),
+		TEXT("[HCIAbilityKit][AuditScanAsync] retry start total=%d batch_size=%d deep_mesh_check=%s"),
 		State.Controller.GetTotalCount(),
-		State.Controller.GetBatchSize());
+		State.Controller.GetBatchSize(),
+		State.bDeepMeshCheckEnabled ? TEXT("true") : TEXT("false"));
 
 	State.TickHandle = FTSTicker::GetCoreTicker().AddTicker(
 		FTickerDelegate::CreateStatic(&HCI_TickAbilityKitAuditScanAsync),
@@ -1120,7 +1312,7 @@ void FHCIAbilityKitEditorModule::StartupModule()
 	{
 		GHCIAbilityKitAuditScanAsyncCommand = MakeUnique<FAutoConsoleCommand>(
 			TEXT("HCIAbilityKit.AuditScanAsync"),
-			TEXT("Slice-based non-blocking scan. Usage: HCIAbilityKit.AuditScanAsync [batch_size] [log_top_n]"),
+			TEXT("Slice-based non-blocking scan. Usage: HCIAbilityKit.AuditScanAsync [batch_size] [log_top_n] [deep_mesh_check=0|1]"),
 			FConsoleCommandWithArgsDelegate::CreateStatic(&HCI_RunAbilityKitAuditScanAsyncCommand));
 	}
 

@@ -150,8 +150,14 @@ Scope: whole repo.
     - 已完成：Editor 新增命令 `HCIAbilityKit.AuditExportJson [output_json_path]`。
     - 已完成：本地 smoke 验证导出成功并落盘（`c4_local_smoke.json`，含 `triangle_source/evidence`）。
     - 已完成：用户 UE 手测通过（无参数/指定路径导出均成功；日志含 `path/run_id/results`）。
-  - 当前切片：`Stage D-SliceD1`（深度检查批次策略与分批加载释放）。
-  - 下一切片：`Stage D-SliceD2`（GC 节流策略）。
+  - `Stage D-SliceD1` 已通过：深度检查批次策略与分批加载释放。
+    - 已完成：`HCIAbilityKit.AuditScanAsync` 新增可选参数 `deep_mesh_check=0|1`（默认 `0`）。
+    - 已完成：开启深度模式后，按异步批次对 `RepresentingMesh` 执行同步加载，补齐 `triangle_count_lod0/mesh_lods/mesh_nanite` 缺失信号。
+    - 已完成：每次加载后立即释放 `FStreamableHandle` 强引用；完成日志输出 `[AuditScanAsync][Deep]` 聚合统计（`load_attempts/load_success/handle_releases/...`）。
+    - 已完成：自动化测试新增 `HCIAbilityKit.Editor.AuditScanAsync.DeepModeRetryPersistence`（中断/重试保留深度模式开关），本地通过。
+    - 已完成：用户 UE 手测通过（`deep_mesh_check=true` 在 start/retry 保留；深度统计行输出；样本全 `tag_cached` 时统计为 `0` 符合预期）。
+  - 当前切片：`Stage D-SliceD2`（GC 节流策略）。
+  - 下一切片：`Stage D-SliceD3`（峰值内存与吞吐日志监控）。
   - D 段收尾后续主线：`Stage E`（安全执行：Dry-Run/Confirm/Transaction/SC）-> `Stage F`（NL->Plan->Executor）。
   - B3 最新状态：
     - 已完成：新增 `HCIAbilityKit.AuditScanAsync [batch_size] [log_top_n]`，按分片执行 `AssetRegistry + FAssetData` 扫描，避免单帧全量阻塞。

@@ -22,6 +22,7 @@ class FHCIAbilityKitAuditScanAsyncController
 {
 public:
 	bool Start(TArray<FAssetData>&& InAssetDatas, int32 InBatchSize, int32 InLogTopN, FString& OutError);
+	bool Start(TArray<FAssetData>&& InAssetDatas, int32 InBatchSize, int32 InLogTopN, bool bInDeepMeshCheckEnabled, FString& OutError);
 	bool Retry(FString& OutError);
 	bool Cancel(FString& OutError);
 
@@ -39,6 +40,7 @@ public:
 	int32 GetTotalCount() const { return AssetDatas.Num(); }
 	int32 GetNextIndex() const { return NextIndex; }
 	int32 GetProgressPercent() const;
+	bool IsDeepMeshCheckEnabled() const { return bDeepMeshCheckEnabled; }
 
 	const TArray<FAssetData>& GetAssetDatas() const { return AssetDatas; }
 	EHCIAbilityKitAuditScanAsyncPhase GetPhase() const { return Phase; }
@@ -52,12 +54,14 @@ private:
 	int32 BatchSize = 256;
 	int32 LogTopN = 10;
 	int32 NextIndex = 0;
+	bool bDeepMeshCheckEnabled = false;
 	TArray<FAssetData> AssetDatas;
 
 	// Keep the previous payload for explicit retry after cancel/fail.
 	TArray<FAssetData> RetryAssetDatas;
 	int32 RetryBatchSize = 256;
 	int32 RetryLogTopN = 10;
+	bool bRetryDeepMeshCheckEnabled = false;
 
 	FString LastFailureReason;
 };

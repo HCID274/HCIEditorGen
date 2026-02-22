@@ -8,6 +8,16 @@ bool FHCIAbilityKitAuditScanAsyncController::Start(
 	const int32 InLogTopN,
 	FString& OutError)
 {
+	return Start(MoveTemp(InAssetDatas), InBatchSize, InLogTopN, false, OutError);
+}
+
+bool FHCIAbilityKitAuditScanAsyncController::Start(
+	TArray<FAssetData>&& InAssetDatas,
+	const int32 InBatchSize,
+	const int32 InLogTopN,
+	const bool bInDeepMeshCheckEnabled,
+	FString& OutError)
+{
 	if (!ValidateArgs(InBatchSize, InLogTopN, OutError))
 	{
 		return false;
@@ -16,6 +26,7 @@ bool FHCIAbilityKitAuditScanAsyncController::Start(
 	BatchSize = InBatchSize;
 	LogTopN = InLogTopN;
 	NextIndex = 0;
+	bDeepMeshCheckEnabled = bInDeepMeshCheckEnabled;
 	AssetDatas = MoveTemp(InAssetDatas);
 	Phase = EHCIAbilityKitAuditScanAsyncPhase::Running;
 	LastFailureReason.Reset();
@@ -23,6 +34,7 @@ bool FHCIAbilityKitAuditScanAsyncController::Start(
 	RetryAssetDatas = AssetDatas;
 	RetryBatchSize = BatchSize;
 	RetryLogTopN = LogTopN;
+	bRetryDeepMeshCheckEnabled = bDeepMeshCheckEnabled;
 	return true;
 }
 
@@ -90,6 +102,7 @@ void FHCIAbilityKitAuditScanAsyncController::Reset(const bool bClearRetryContext
 	BatchSize = 256;
 	LogTopN = 10;
 	NextIndex = 0;
+	bDeepMeshCheckEnabled = false;
 	AssetDatas.Reset();
 	LastFailureReason.Reset();
 
@@ -98,6 +111,7 @@ void FHCIAbilityKitAuditScanAsyncController::Reset(const bool bClearRetryContext
 		RetryAssetDatas.Reset();
 		RetryBatchSize = 256;
 		RetryLogTopN = 10;
+		bRetryDeepMeshCheckEnabled = false;
 	}
 }
 
@@ -137,6 +151,7 @@ void FHCIAbilityKitAuditScanAsyncController::StartFromStoredRetryContext()
 	BatchSize = RetryBatchSize;
 	LogTopN = RetryLogTopN;
 	NextIndex = 0;
+	bDeepMeshCheckEnabled = bRetryDeepMeshCheckEnabled;
 	AssetDatas = RetryAssetDatas;
 	Phase = EHCIAbilityKitAuditScanAsyncPhase::Running;
 	LastFailureReason.Reset();

@@ -215,8 +215,14 @@ Scope: whole repo.
     - 已完成：Editor 新增 `HCIAbilityKit.AgentLodSafetyDemo [tool_name] [target_object_class] [nanite_enabled 0|1]`（默认三案例 + 自定义参数）用于 UE 手测日志验证。
     - 已完成：自动化测试 `HCIAbilityKit.Editor.AgentExec` 扩展至 E8（新增 `LodSafetyBlocksNonStaticMeshTarget/LodSafetyBlocksNaniteMesh/LodSafetyAllowsNonNaniteStaticMesh`），本地通过；`AgentTools`（3/3）与 `AgentDryRun`（2/2）回归通过。
     - 已完成：用户 UE 手测通过（无参摘要命中 `total_cases=3 allowed=1 blocked=2 type_blocked=1 nanite_blocked=1 expected_blocked_code=E4010 validation=ok`；`Texture2D` 类型拦截与 `Nanite` 拦截均返回 `E4010`；`UStaticMesh + nanite=false` 放行）。
-  - 当前切片：`Stage F-SliceF1`（自然语言 -> Plan JSON 契约冻结与最小落地）
-  - 下一切片：`Stage F-SliceF2`（Plan 校验器：参数完整性/权限/风险/阈值）
+  - `Stage F-SliceF1` 已通过：自然语言 -> Plan JSON 契约冻结与最小落地。
+    - 已完成：Runtime 新增 `FHCIAbilityKitAgentPlan/FHCIAbilityKitAgentPlanStep`、`FHCIAbilityKitAgentPlanContract::ValidateMinimalContract`、`FHCIAbilityKitAgentPlanJsonSerializer`。
+    - 已完成：Runtime 新增最小关键词规划器 `FHCIAbilityKitAgentPlanner`，覆盖 `命名溯源整理 / 关卡排雷 / 资产规范合规` 三类一期意图，并支持“整理临时目录资产”命名归档意图路由到 `NormalizeAssetNamingByMetadata`。
+    - 已完成：Editor 新增 `HCIAbilityKit.AgentPlanDemo` 与 `HCIAbilityKit.AgentPlanDemoJson` 控制台命令（默认三案例 + 自定义自然语言输入）用于 UE 手测验证摘要/步骤字段及 JSON 契约输出。
+    - 已完成：新增自动化测试 `HCIAbilityKit.Editor.AgentPlan`（3/3）并本地通过；`AgentTools`（3/3）回归通过。
+    - 已完成：用户 UE 手测通过（无参摘要命中 `total_cases=3 built=3 validation_ok=3 plan_version=1 supports_intents=naming_traceability|level_risk|asset_compliance validation=ok`；命名归档意图命中 `intent=normalize_temp_assets_by_metadata route_reason=naming_traceability_temp_assets tool_name=NormalizeAssetNamingByMetadata risk_level=write`；关卡排雷意图命中 `intent=scan_level_mesh_risks tool_name=ScanLevelMeshRisks risk_level=read_only`；`AgentPlanDemoJson` 输出 JSON 覆盖 `plan_version/request_id/intent/steps/tool_name/args/risk_level/requires_confirm/rollback_strategy/expected_evidence`）。
+  - 当前切片：`Stage F-SliceF2`（Plan 校验器：参数完整性/权限/风险/阈值）
+  - 下一切片：`Stage F-SliceF3`（计划执行骨架与收敛日志）
   - 兼容性说明（时间字符串）：对外日志/JSON 的时间值已统一改为北京时间 `+08:00` 输出；字段名（如 `updated_utc/generated_utc/timestamp_utc`）暂保持不变以兼容既有门禁与测试。
   - D 段收尾后续主线：`Stage E`（安全执行：Dry-Run/Confirm/Transaction/SC）-> `Stage F`（NL->Plan->Executor）。
   - B3 最新状态：

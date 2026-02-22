@@ -3,6 +3,9 @@
 #include "AssetRegistry/IAssetRegistry.h"
 #include "AssetRegistry/AssetRegistryModule.h"
 #include "Agent/HCIAbilityKitAgentExecutionGate.h"
+#include "Agent/HCIAbilityKitAgentPlan.h"
+#include "Agent/HCIAbilityKitAgentPlanJsonSerializer.h"
+#include "Agent/HCIAbilityKitAgentPlanner.h"
 #include "Agent/HCIAbilityKitDryRunDiff.h"
 #include "Agent/HCIAbilityKitDryRunDiffJsonSerializer.h"
 #include "Agent/HCIAbilityKitToolRegistry.h"
@@ -39,6 +42,7 @@
 #include "Modules/ModuleManager.h"
 #include "Search/HCIAbilityKitSearchIndexService.h"
 #include "Search/HCIAbilityKitSearchQueryService.h"
+#include "Policies/CondensedJsonPrintPolicy.h"
 #include "Serialization/JsonReader.h"
 #include "Serialization/JsonSerializer.h"
 #include "Serialization/JsonWriter.h"
@@ -71,6 +75,8 @@ static TUniquePtr<FAutoConsoleCommand> GHCIAbilityKitAgentTransactionDemoCommand
 static TUniquePtr<FAutoConsoleCommand> GHCIAbilityKitAgentSourceControlDemoCommand;
 static TUniquePtr<FAutoConsoleCommand> GHCIAbilityKitAgentRbacDemoCommand;
 static TUniquePtr<FAutoConsoleCommand> GHCIAbilityKitAgentLodSafetyDemoCommand;
+static TUniquePtr<FAutoConsoleCommand> GHCIAbilityKitAgentPlanDemoCommand;
+static TUniquePtr<FAutoConsoleCommand> GHCIAbilityKitAgentPlanDemoJsonCommand;
 static const TCHAR* GHCIAbilityKitPythonScriptPath = TEXT("SourceData/AbilityKits/Python/hci_abilitykit_hook.py");
 
 struct FHCIAbilityKitAuditScanAsyncState
@@ -102,6 +108,7 @@ struct FHCIAbilityKitAuditScanAsyncState
 
 static FHCIAbilityKitAuditScanAsyncState GHCIAbilityKitAuditScanAsyncState;
 static FHCIAbilityKitDryRunDiffReport GHCIAbilityKitDryRunDiffPreviewState;
+static FHCIAbilityKitAgentPlan GHCIAbilityKitAgentPlanPreviewState;
 
 static FString HCI_ToPythonStringLiteral(const FString& Value)
 {
@@ -137,6 +144,35 @@ static FString HCI_GetDefaultAuditReportOutputPath(const FString& RunId)
 {
 	const FString Directory = FPaths::Combine(FPaths::ProjectSavedDir(), TEXT("HCIAbilityKit"), TEXT("AuditReports"));
 	return FPaths::Combine(Directory, FString::Printf(TEXT("%s.json"), *RunId));
+}
+
+static FString HCI_JoinConsoleArgsAsText(const TArray<FString>& Args)
+{
+	FString Joined;
+	for (int32 Index = 0; Index < Args.Num(); ++Index)
+	{
+		if (Index > 0)
+		{
+			Joined += TEXT(" ");
+		}
+		Joined += Args[Index];
+	}
+	Joined.TrimStartAndEndInline();
+	return Joined;
+}
+
+static FString HCI_JsonObjectToCompactString(const TSharedPtr<FJsonObject>& JsonObject)
+{
+	if (!JsonObject.IsValid())
+	{
+		return TEXT("{}");
+	}
+
+	FString OutJson;
+	const TSharedRef<TJsonWriter<TCHAR, TCondensedJsonPrintPolicy<TCHAR>>> Writer =
+		TJsonWriterFactory<TCHAR, TCondensedJsonPrintPolicy<TCHAR>>::Create(&OutJson);
+	FJsonSerializer::Serialize(JsonObject.ToSharedRef(), Writer);
+	return OutJson;
 }
 
 static FString HCI_GetAgentRbacMockConfigPath()
@@ -1755,6 +1791,190 @@ static void HCI_RunAbilityKitAgentLodSafetyDemoCommand(const TArray<FString>& Ar
 	HCI_LogAgentLodSafetyDecision(TEXT("custom"), Decision);
 }
 
+static bool HCI_BuildAgentPlanDemoPlan(
+	const FString& UserText,
+	const FString& RequestId,
+	FHCIAbilityKitAgentPlan& OutPlan,
+	FString& OutRouteReason,
+	FString& OutError)
+{
+	FHCIAbilityKitToolRegistry& ToolRegistry = FHCIAbilityKitToolRegistry::Get();
+	ToolRegistry.ResetToDefaults();
+	return FHCIAbilityKitAgentPlanner::BuildPlanFromNaturalLanguage(
+		UserText,
+		RequestId,
+		ToolRegistry,
+		OutPlan,
+		OutRouteReason,
+		OutError);
+}
+
+static void HCI_LogAgentPlanRows(const TCHAR* CaseName, const FString& UserText, const FString& RouteReason, const FHCIAbilityKitAgentPlan& Plan)
+{
+	for (int32 Index = 0; Index < Plan.Steps.Num(); ++Index)
+	{
+		const FHCIAbilityKitAgentPlanStep& Step = Plan.Steps[Index];
+		UE_LOG(
+			LogHCIAbilityKitAuditScan,
+			Display,
+			TEXT("[HCIAbilityKit][AgentPlan] case=%s row=%d request_id=%s intent=%s input=%s step_id=%s tool_name=%s risk_level=%s requires_confirm=%s rollback_strategy=%s route_reason=%s expected_evidence=%s args=%s"),
+			CaseName,
+			Index,
+			*Plan.RequestId,
+			*Plan.Intent,
+			*UserText,
+			*Step.StepId,
+			*Step.ToolName.ToString(),
+			*FHCIAbilityKitAgentPlanContract::RiskLevelToString(Step.RiskLevel),
+			Step.bRequiresConfirm ? TEXT("true") : TEXT("false"),
+			*Step.RollbackStrategy,
+			*RouteReason,
+			*FString::Join(Step.ExpectedEvidence, TEXT("|")),
+			*HCI_JsonObjectToCompactString(Step.Args));
+	}
+}
+
+static void HCI_RunAbilityKitAgentPlanDemoCommand(const TArray<FString>& Args)
+{
+	if (Args.Num() == 0)
+	{
+		struct FDemoPlanCase
+		{
+			const TCHAR* CaseName;
+			const TCHAR* RequestId;
+			const TCHAR* UserText;
+		};
+
+		const TArray<FDemoPlanCase> Cases{
+			{TEXT("naming_archive_temp_assets"), TEXT("req_demo_f1_01"), TEXT("整理临时目录资产，按规范命名并归档")},
+			{TEXT("level_mesh_risk_scan"), TEXT("req_demo_f1_02"), TEXT("检查当前关卡选中物体的碰撞和默认材质")},
+			{TEXT("asset_compliance_fix"), TEXT("req_demo_f1_03"), TEXT("检查贴图分辨率并处理LOD")}};
+
+		int32 BuiltCount = 0;
+		int32 ValidationOkCount = 0;
+		for (const FDemoPlanCase& DemoCase : Cases)
+		{
+			FHCIAbilityKitAgentPlan Plan;
+			FString RouteReason;
+			FString Error;
+			if (!HCI_BuildAgentPlanDemoPlan(DemoCase.UserText, DemoCase.RequestId, Plan, RouteReason, Error))
+			{
+				UE_LOG(
+					LogHCIAbilityKitAuditScan,
+					Error,
+					TEXT("[HCIAbilityKit][AgentPlan] case=%s build_failed input=%s reason=%s"),
+					DemoCase.CaseName,
+					DemoCase.UserText,
+					*Error);
+				continue;
+			}
+
+			++BuiltCount;
+			FString ContractError;
+			const bool bValid = FHCIAbilityKitAgentPlanContract::ValidateMinimalContract(Plan, ContractError);
+			if (bValid)
+			{
+				++ValidationOkCount;
+			}
+
+			UE_LOG(
+				LogHCIAbilityKitAuditScan,
+				Display,
+				TEXT("[HCIAbilityKit][AgentPlan] case=%s summary request_id=%s intent=%s input=%s plan_version=%d steps=%d route_reason=%s validation=%s"),
+				DemoCase.CaseName,
+				*Plan.RequestId,
+				*Plan.Intent,
+				DemoCase.UserText,
+				Plan.PlanVersion,
+				Plan.Steps.Num(),
+				*RouteReason,
+				bValid ? TEXT("ok") : *FString::Printf(TEXT("fail:%s"), *ContractError));
+
+			HCI_LogAgentPlanRows(DemoCase.CaseName, DemoCase.UserText, RouteReason, Plan);
+			GHCIAbilityKitAgentPlanPreviewState = Plan;
+		}
+
+		UE_LOG(
+			LogHCIAbilityKitAuditScan,
+			Display,
+			TEXT("[HCIAbilityKit][AgentPlan] summary total_cases=%d built=%d validation_ok=%d plan_version=1 supports_intents=naming_traceability|level_risk|asset_compliance validation=ok"),
+			Cases.Num(),
+			BuiltCount,
+			ValidationOkCount);
+		UE_LOG(
+			LogHCIAbilityKitAuditScan,
+			Display,
+			TEXT("[HCIAbilityKit][AgentPlan] hint=也可运行 HCIAbilityKit.AgentPlanDemo [自然语言文本...] 或 HCIAbilityKit.AgentPlanDemoJson [自然语言文本...]"));
+		return;
+	}
+
+	const FString UserText = HCI_JoinConsoleArgsAsText(Args);
+	if (UserText.IsEmpty())
+	{
+		UE_LOG(LogHCIAbilityKitAuditScan, Error, TEXT("[HCIAbilityKit][AgentPlan] invalid_args reason=empty input text"));
+		return;
+	}
+
+	FHCIAbilityKitAgentPlan Plan;
+	FString RouteReason;
+	FString Error;
+	if (!HCI_BuildAgentPlanDemoPlan(UserText, TEXT("req_cli_f1"), Plan, RouteReason, Error))
+	{
+		UE_LOG(LogHCIAbilityKitAuditScan, Error, TEXT("[HCIAbilityKit][AgentPlan] build_failed input=%s reason=%s"), *UserText, *Error);
+		return;
+	}
+
+	FString ContractError;
+	const bool bValid = FHCIAbilityKitAgentPlanContract::ValidateMinimalContract(Plan, ContractError);
+	GHCIAbilityKitAgentPlanPreviewState = Plan;
+
+	UE_LOG(
+		LogHCIAbilityKitAuditScan,
+		Display,
+		TEXT("[HCIAbilityKit][AgentPlan] case=custom summary request_id=%s intent=%s input=%s plan_version=%d steps=%d route_reason=%s validation=%s"),
+		*Plan.RequestId,
+		*Plan.Intent,
+		*UserText,
+		Plan.PlanVersion,
+		Plan.Steps.Num(),
+		*RouteReason,
+		bValid ? TEXT("ok") : *FString::Printf(TEXT("fail:%s"), *ContractError));
+
+	HCI_LogAgentPlanRows(TEXT("custom"), UserText, RouteReason, Plan);
+}
+
+static void HCI_RunAbilityKitAgentPlanDemoJsonCommand(const TArray<FString>& Args)
+{
+	const FString UserText =
+		Args.Num() > 0 ? HCI_JoinConsoleArgsAsText(Args) : FString(TEXT("整理临时目录资产，按规范命名并归档"));
+
+	FHCIAbilityKitAgentPlan Plan;
+	FString RouteReason;
+	FString Error;
+	if (!HCI_BuildAgentPlanDemoPlan(UserText, TEXT("req_cli_f1_json"), Plan, RouteReason, Error))
+	{
+		UE_LOG(LogHCIAbilityKitAuditScan, Error, TEXT("[HCIAbilityKit][AgentPlan] json_build_failed input=%s reason=%s"), *UserText, *Error);
+		return;
+	}
+
+	FString JsonText;
+	if (!FHCIAbilityKitAgentPlanJsonSerializer::SerializeToJsonString(Plan, JsonText))
+	{
+		UE_LOG(LogHCIAbilityKitAuditScan, Error, TEXT("[HCIAbilityKit][AgentPlan] export_json_failed reason=serialize_failed"));
+		return;
+	}
+
+	GHCIAbilityKitAgentPlanPreviewState = Plan;
+	UE_LOG(
+		LogHCIAbilityKitAuditScan,
+		Display,
+		TEXT("[HCIAbilityKit][AgentPlan] json request_id=%s intent=%s route_reason=%s json=%s"),
+		*Plan.RequestId,
+		*Plan.Intent,
+		*RouteReason,
+		*JsonText);
+}
+
 static void HCI_TryFillTriangleFromTagCached(
 	const FAssetData& AssetData,
 	IAssetRegistry* AssetRegistry,
@@ -3167,6 +3387,22 @@ void FHCIAbilityKitEditorModule::StartupModule()
 			TEXT("E8 LOD tool safety boundary demo. Usage: HCIAbilityKit.AgentLodSafetyDemo [tool_name] [target_object_class] [nanite_enabled 0|1]"),
 			FConsoleCommandWithArgsDelegate::CreateStatic(&HCI_RunAbilityKitAgentLodSafetyDemoCommand));
 	}
+
+	if (!GHCIAbilityKitAgentPlanDemoCommand.IsValid())
+	{
+		GHCIAbilityKitAgentPlanDemoCommand = MakeUnique<FAutoConsoleCommand>(
+			TEXT("HCIAbilityKit.AgentPlanDemo"),
+			TEXT("F1 NL->Plan JSON demo (structured plan preview). Usage: HCIAbilityKit.AgentPlanDemo [natural language text...]"),
+			FConsoleCommandWithArgsDelegate::CreateStatic(&HCI_RunAbilityKitAgentPlanDemoCommand));
+	}
+
+	if (!GHCIAbilityKitAgentPlanDemoJsonCommand.IsValid())
+	{
+		GHCIAbilityKitAgentPlanDemoJsonCommand = MakeUnique<FAutoConsoleCommand>(
+			TEXT("HCIAbilityKit.AgentPlanDemoJson"),
+			TEXT("F1 NL->Plan JSON demo (print contract JSON). Usage: HCIAbilityKit.AgentPlanDemoJson [natural language text...]"),
+			FConsoleCommandWithArgsDelegate::CreateStatic(&HCI_RunAbilityKitAgentPlanDemoJsonCommand));
+	}
 }
 
 void FHCIAbilityKitEditorModule::ShutdownModule()
@@ -3205,6 +3441,8 @@ void FHCIAbilityKitEditorModule::ShutdownModule()
 	GHCIAbilityKitAgentSourceControlDemoCommand.Reset();
 	GHCIAbilityKitAgentRbacDemoCommand.Reset();
 	GHCIAbilityKitAgentLodSafetyDemoCommand.Reset();
+	GHCIAbilityKitAgentPlanDemoCommand.Reset();
+	GHCIAbilityKitAgentPlanDemoJsonCommand.Reset();
 }
 
 IMPLEMENT_MODULE(FHCIAbilityKitEditorModule, HCIAbilityKitEditor)

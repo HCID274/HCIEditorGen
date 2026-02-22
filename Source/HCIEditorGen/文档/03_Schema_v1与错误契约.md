@@ -402,6 +402,29 @@ public:
   - `requires_confirm=true` 的步骤，未确认前禁止执行；
   - `tool_name` 必须命中 Tool Registry 白名单。
 
+#### 14.1.1 StageF-SliceF1 落地（最小规划器 + 契约序列化）
+
+- Runtime 新增 `Plan JSON` 契约结构：
+  - `FHCIAbilityKitAgentPlan`
+  - `FHCIAbilityKitAgentPlanStep`
+  - `FHCIAbilityKitAgentPlanContract::ValidateMinimalContract(...)`
+- Runtime 新增 `FHCIAbilityKitAgentPlanJsonSerializer`
+  - 输出字段：`plan_version/request_id/intent/steps[]`
+  - `steps[]` 字段包含：`step_id/tool_name/args/risk_level/requires_confirm/rollback_strategy/expected_evidence`
+- Runtime 新增最小关键词规划器 `FHCIAbilityKitAgentPlanner`
+  - 输入：自然语言文本 + `request_id`
+  - 输出：结构化 `Plan JSON`（仅演示规划，不执行写操作）
+  - 一期最小意图覆盖（F1 门禁）：
+    - 命名溯源整理：支持“整理临时目录资产（命名+归档）” -> `NormalizeAssetNamingByMetadata`
+    - 关卡排雷：碰撞/默认材质检查 -> `ScanLevelMeshRisks`
+    - 资产规范合规：贴图尺寸/LOD 关键词 -> `SetTextureMaxSize` / `SetMeshLODGroup`
+- Editor 控制台命令（F1 手测门禁）：
+  - `HCIAbilityKit.AgentPlanDemo [自然语言文本...]`
+    - 无参：输出三类默认案例（命名归档/关卡排雷/资产合规）摘要与 `row=` 步骤列表
+    - 有参：输出自定义输入的单案例摘要与步骤列表
+  - `HCIAbilityKit.AgentPlanDemoJson [自然语言文本...]`
+    - 输出序列化后的 `Plan JSON` 契约文本（用于手测字段核验）
+
 ### 14.2 Tool Registry 能力声明契约（必须做）
 
 - 最小结构：

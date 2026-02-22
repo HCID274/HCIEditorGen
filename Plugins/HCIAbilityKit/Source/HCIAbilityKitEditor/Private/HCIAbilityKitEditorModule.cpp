@@ -2,6 +2,7 @@
 
 #include "AssetRegistry/IAssetRegistry.h"
 #include "AssetRegistry/AssetRegistryModule.h"
+#include "Agent/HCIAbilityKitToolRegistry.h"
 #include "Audit/HCIAbilityKitAuditPerfMetrics.h"
 #include "Audit/HCIAbilityKitAuditScanAsyncController.h"
 #include "Audit/HCIAbilityKitAuditReport.h"
@@ -51,6 +52,7 @@ static TUniquePtr<FAutoConsoleCommand> GHCIAbilityKitAuditScanAsyncCommand;
 static TUniquePtr<FAutoConsoleCommand> GHCIAbilityKitAuditScanProgressCommand;
 static TUniquePtr<FAutoConsoleCommand> GHCIAbilityKitAuditScanStopCommand;
 static TUniquePtr<FAutoConsoleCommand> GHCIAbilityKitAuditScanRetryCommand;
+static TUniquePtr<FAutoConsoleCommand> GHCIAbilityKitToolRegistryDumpCommand;
 static const TCHAR* GHCIAbilityKitPythonScriptPath = TEXT("SourceData/AbilityKits/Python/hci_abilitykit_hook.py");
 
 struct FHCIAbilityKitAuditScanAsyncState
@@ -186,6 +188,115 @@ static bool HCI_TryMarkScanSkippedByState(const FAssetData& AssetData, FHCIAbili
 	OutRow.ScanState = TEXT("ok");
 	OutRow.SkipReason = TEXT("");
 	return false;
+}
+
+static FString HCI_FormatStringArrayForLog(const TArray<FString>& Values)
+{
+	if (Values.Num() == 0)
+	{
+		return TEXT("-");
+	}
+
+	return FString::Join(Values, TEXT("|"));
+}
+
+static FString HCI_FormatIntArrayForLog(const TArray<int32>& Values)
+{
+	if (Values.Num() == 0)
+	{
+		return TEXT("-");
+	}
+
+	TArray<FString> Parts;
+	Parts.Reserve(Values.Num());
+	for (const int32 Value : Values)
+	{
+		Parts.Add(FString::FromInt(Value));
+	}
+	return FString::Join(Parts, TEXT("|"));
+}
+
+static void HCI_RunAbilityKitToolRegistryDumpCommand(const TArray<FString>& Args)
+{
+	const FString OptionalToolFilter = (Args.Num() >= 1) ? Args[0].TrimStartAndEnd() : FString();
+
+	FHCIAbilityKitToolRegistry& Registry = FHCIAbilityKitToolRegistry::Get();
+	Registry.ResetToDefaults();
+
+	FString ValidationError;
+	if (!Registry.ValidateFrozenDefaults(ValidationError))
+	{
+		UE_LOG(LogHCIAbilityKitAuditScan, Error, TEXT("[HCIAbilityKit][ToolRegistry] invalid reason=%s"), *ValidationError);
+		return;
+	}
+
+	TArray<FHCIAbilityKitToolDescriptor> Tools = Registry.GetAllTools();
+	Tools.Sort([](const FHCIAbilityKitToolDescriptor& A, const FHCIAbilityKitToolDescriptor& B)
+	{
+		return A.ToolName.LexicalLess(B.ToolName);
+	});
+
+	int32 PrintedTools = 0;
+	for (const FHCIAbilityKitToolDescriptor& Tool : Tools)
+	{
+		if (!OptionalToolFilter.IsEmpty() && !Tool.ToolName.ToString().Equals(OptionalToolFilter, ESearchCase::IgnoreCase))
+		{
+			continue;
+		}
+
+		++PrintedTools;
+		UE_LOG(
+			LogHCIAbilityKitAuditScan,
+			Display,
+			TEXT("[HCIAbilityKit][ToolRegistry] tool=%s capability=%s supports_dry_run=%s supports_undo=%s destructive=%s domain=%s arg_count=%d"),
+			*Tool.ToolName.ToString(),
+			*FHCIAbilityKitToolRegistry::CapabilityToString(Tool.Capability),
+			Tool.bSupportsDryRun ? TEXT("true") : TEXT("false"),
+			Tool.bSupportsUndo ? TEXT("true") : TEXT("false"),
+			Tool.bDestructive ? TEXT("true") : TEXT("false"),
+			Tool.Domain.IsEmpty() ? TEXT("-") : *Tool.Domain,
+			Tool.ArgsSchema.Num());
+
+		for (const FHCIAbilityKitToolArgSchema& Arg : Tool.ArgsSchema)
+		{
+			UE_LOG(
+				LogHCIAbilityKitAuditScan,
+				Display,
+				TEXT("[HCIAbilityKit][ToolRegistry] arg tool=%s name=%s type=%s required=%s array_len=%d..%d str_len=%d..%d int_range=%d..%d str_enum=%s int_enum=%s regex=%s game_path=%s subset_enum=%s"),
+				*Tool.ToolName.ToString(),
+				*Arg.ArgName.ToString(),
+				*FHCIAbilityKitToolRegistry::ArgValueTypeToString(Arg.ValueType),
+				Arg.bRequired ? TEXT("true") : TEXT("false"),
+				Arg.MinArrayLength,
+				Arg.MaxArrayLength,
+				Arg.MinStringLength,
+				Arg.MaxStringLength,
+				Arg.MinIntValue,
+				Arg.MaxIntValue,
+				*HCI_FormatStringArrayForLog(Arg.AllowedStringValues),
+				*HCI_FormatIntArrayForLog(Arg.AllowedIntValues),
+				Arg.RegexPattern.IsEmpty() ? TEXT("-") : *Arg.RegexPattern,
+				Arg.bMustStartWithGamePath ? TEXT("true") : TEXT("false"),
+				Arg.bStringArrayAllowsSubsetOfEnum ? TEXT("true") : TEXT("false"));
+		}
+	}
+
+	UE_LOG(
+		LogHCIAbilityKitAuditScan,
+		Display,
+		TEXT("[HCIAbilityKit][ToolRegistry] summary total_registered=%d printed=%d filter=%s validation=ok"),
+		Tools.Num(),
+		PrintedTools,
+		OptionalToolFilter.IsEmpty() ? TEXT("-") : *OptionalToolFilter);
+
+	if (!OptionalToolFilter.IsEmpty() && PrintedTools == 0)
+	{
+		UE_LOG(
+			LogHCIAbilityKitAuditScan,
+			Warning,
+			TEXT("[HCIAbilityKit][ToolRegistry] filter_not_found tool=%s"),
+			*OptionalToolFilter);
+	}
 }
 
 static void HCI_TryFillTriangleFromTagCached(
@@ -1520,6 +1631,14 @@ void FHCIAbilityKitEditorModule::StartupModule()
 			TEXT("Retry last interrupted/failed HCIAbilityKit.AuditScanAsync with previous args."),
 			FConsoleCommandWithArgsDelegate::CreateStatic(&HCI_RunAbilityKitAuditScanRetryCommand));
 	}
+
+	if (!GHCIAbilityKitToolRegistryDumpCommand.IsValid())
+	{
+		GHCIAbilityKitToolRegistryDumpCommand = MakeUnique<FAutoConsoleCommand>(
+			TEXT("HCIAbilityKit.ToolRegistryDump"),
+			TEXT("Dump frozen Tool Registry capability declarations. Usage: HCIAbilityKit.ToolRegistryDump [tool_name]"),
+			FConsoleCommandWithArgsDelegate::CreateStatic(&HCI_RunAbilityKitToolRegistryDumpCommand));
+	}
 }
 
 void FHCIAbilityKitEditorModule::ShutdownModule()
@@ -1548,6 +1667,7 @@ void FHCIAbilityKitEditorModule::ShutdownModule()
 	GHCIAbilityKitAuditScanProgressCommand.Reset();
 	GHCIAbilityKitAuditScanStopCommand.Reset();
 	GHCIAbilityKitAuditScanRetryCommand.Reset();
+	GHCIAbilityKitToolRegistryDumpCommand.Reset();
 }
 
 IMPLEMENT_MODULE(FHCIAbilityKitEditorModule, HCIAbilityKitEditor)

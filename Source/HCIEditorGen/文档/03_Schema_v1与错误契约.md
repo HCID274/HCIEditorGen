@@ -460,6 +460,27 @@ public:
   - `NormalizeAssetNamingByMetadata` 无法从元数据生成安全提案时返回 `E4012`；
   - 大模型不得绕过 `args_schema` 直接注入未声明字段。
 
+#### 14.2.1 StageE-SliceE1 落地（Runtime 冻结声明 + Editor 只读输出）
+
+- Runtime 新增 `FHCIAbilityKitToolRegistry`（`HCIAbilityKitRuntime/Public|Private/Agent/`）：
+  - 默认白名单在 Runtime 冻结，Editor/Executor 只能读取，不得隐式扩展。
+  - 每个 ToolDescriptor 固定字段：
+    - `tool_name`
+    - `args_schema[]`
+    - `capability`（`read_only/write/destructive`）
+    - `supports_dry_run`
+    - `supports_undo`
+    - `destructive`
+    - `domain`（用于覆盖三维业务：`AssetCompliance/LevelRisk/NamingTraceability`）
+- `args_schema` 字段级约束结构（冻结）：
+  - 值类型：`string/string[]/int`
+  - 枚举：`AllowedStringValues/AllowedIntValues`
+  - 边界：`Min/Max`（数组长度、字符串长度、整数范围）
+  - 特殊约束：`RegexPattern`、`bMustStartWithGamePath`、`bStringArrayAllowsSubsetOfEnum`
+- Editor 调试命令（只读）：
+  - `HCIAbilityKit.ToolRegistryDump [tool_name]`
+  - 输出目的：UE 手测核验白名单数量、能力元信息、`args_schema` 枚举与边界是否按冻结口径落地。
+
 ### 14.3 Dry-Run Diff 契约（必须做）
 
 - 最小结构：

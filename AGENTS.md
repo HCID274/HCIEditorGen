@@ -168,8 +168,14 @@ Scope: whole repo.
     - 已完成：新增性能统计辅助 `FHCIAbilityKitAuditPerfMetrics`（吞吐率换算 + nearest-rank 分位数）。
     - 已完成：自动化测试新增 `HCIAbilityKit.Editor.AuditScanAsync.PerfMetricsHelper`，本地通过（`AuditScanAsync` 5/5，`AuditResults` 回归 3/3）。
     - 已完成：用户 UE 手测通过（`AuditScanAsync 1 20 1 3` 无 Error；运行中 `[Perf]` 日志字段完整；完成态 `[PerfSummary]` 输出 `p50/p95/max batch throughput + peak_used_physical_mib`；原有 `[Deep]` 日志仍存在，无回归）。
-  - 当前切片：`Stage E-SliceE1`（Tool Registry 能力声明冻结）。
-  - 下一切片：`Stage E-SliceE2`（Dry-Run Diff 契约与 UE 面板展示）。
+  - `Stage E-SliceE1` 已通过：Tool Registry 能力声明冻结。
+    - 已完成：Runtime 新增 `FHCIAbilityKitToolRegistry`，冻结一期 7 个工具白名单与 `args_schema` 枚举/边界（`SetTextureMaxSize/SetMeshLODGroup/ScanLevelMeshRisks/NormalizeAssetNamingByMetadata/RenameAsset/MoveAsset + ScanAssets`）。
+    - 已完成：能力元信息覆盖 `capability/supports_dry_run/supports_undo/destructive/domain`，并校验三维业务覆盖（`AssetCompliance/LevelRisk/NamingTraceability`）。
+    - 已完成：Editor 新增只读控制台命令 `HCIAbilityKit.ToolRegistryDump [tool_name]`，用于 UE 手测核验 Tool 声明与参数约束日志。
+    - 已完成：自动化测试新增 `HCIAbilityKit.Editor.AgentTools.*`（3/3），且 `AuditScanAsync`（5/5）/`AuditResults`（3/3）回归通过。
+    - 已完成：用户 UE 手测通过（`ToolRegistryDump` 全量/单工具命令均无 Error/Warning；汇总行 `total_registered=7 validation=ok`；白名单 7 工具齐全；`SetMeshLODGroup/SetTextureMaxSize/ScanLevelMeshRisks` 参数枚举与边界日志符合冻结口径）。
+  - 当前切片：`Stage E-SliceE2`（Dry-Run Diff 契约与 UE 面板展示）。
+  - 下一切片：`Stage E-SliceE3`（确认门禁 + 事务/SourceControl 安全前置）。
   - D 段收尾后续主线：`Stage E`（安全执行：Dry-Run/Confirm/Transaction/SC）-> `Stage F`（NL->Plan->Executor）。
   - B3 最新状态：
     - 已完成：新增 `HCIAbilityKit.AuditScanAsync [batch_size] [log_top_n]`，按分片执行 `AssetRegistry + FAssetData` 扫描，避免单帧全量阻塞。

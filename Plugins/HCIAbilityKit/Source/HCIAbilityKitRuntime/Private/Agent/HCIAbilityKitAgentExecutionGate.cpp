@@ -5,6 +5,7 @@ namespace
 static const TCHAR* const HCI_Error_ToolNotWhitelisted = TEXT("E4002");
 static const TCHAR* const HCI_Error_BlastRadiusExceeded = TEXT("E4004");
 static const TCHAR* const HCI_Error_WriteNotConfirmed = TEXT("E4005");
+static const TCHAR* const HCI_Error_SourceControlCheckoutFailed = TEXT("E4006");
 static const TCHAR* const HCI_Error_TransactionRolledBack = TEXT("E4007");
 }
 
@@ -154,5 +155,56 @@ FHCIAbilityKitAgentTransactionExecutionDecision FHCIAbilityKitAgentExecutionGate
 	Decision.CommittedSteps = SuccessfulExecutedSteps;
 	Decision.RolledBackSteps = 0;
 	Decision.FailedStepIndex = -1;
+	return Decision;
+}
+
+FHCIAbilityKitAgentSourceControlDecision FHCIAbilityKitAgentExecutionGate::EvaluateSourceControlFailFast(
+	const FHCIAbilityKitAgentSourceControlCheckInput& Input,
+	const FHCIAbilityKitToolRegistry& Registry)
+{
+	FHCIAbilityKitAgentSourceControlDecision Decision;
+	Decision.RequestId = Input.RequestId;
+	Decision.ToolName = Input.ToolName.ToString();
+	Decision.bSourceControlEnabled = Input.bSourceControlEnabled;
+	Decision.bCheckoutSucceeded = false;
+
+	const FHCIAbilityKitToolDescriptor* Tool = Registry.FindTool(Input.ToolName);
+	if (Tool == nullptr)
+	{
+		Decision.ErrorCode = HCI_Error_ToolNotWhitelisted;
+		Decision.Reason = TEXT("tool_not_whitelisted");
+		Decision.Capability = TEXT("unknown");
+		Decision.bWriteLike = true;
+		return Decision;
+	}
+
+	Decision.Capability = FHCIAbilityKitToolRegistry::CapabilityToString(Tool->Capability);
+	Decision.bWriteLike = IsWriteLikeCapability(Tool->Capability);
+
+	if (!Decision.bWriteLike)
+	{
+		Decision.bAllowed = true;
+		return Decision;
+	}
+
+	if (!Input.bSourceControlEnabled)
+	{
+		Decision.bAllowed = true;
+		Decision.bOfflineLocalMode = true;
+		Decision.Reason = TEXT("source_control_disabled_offline_local_mode");
+		return Decision;
+	}
+
+	Decision.bCheckoutAttempted = true;
+	Decision.bCheckoutSucceeded = Input.bCheckoutSucceeded;
+	if (!Input.bCheckoutSucceeded)
+	{
+		Decision.ErrorCode = HCI_Error_SourceControlCheckoutFailed;
+		Decision.Reason = TEXT("source_control_checkout_failed_fail_fast");
+		return Decision;
+	}
+
+	Decision.bAllowed = true;
+	Decision.Reason = TEXT("checkout_succeeded");
 	return Decision;
 }

@@ -254,4 +254,112 @@ bool FHCIAbilityKitAgentExecutionGateTransactionRejectsUnknownToolBeforeExecutio
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FHCIAbilityKitAgentExecutionGateSourceControlAllowsOfflineLocalModeWhenDisabledTest,
+	"HCIAbilityKit.Editor.AgentExec.SourceControlAllowsOfflineLocalModeWhenDisabled",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FHCIAbilityKitAgentExecutionGateSourceControlAllowsOfflineLocalModeWhenDisabledTest::RunTest(const FString& Parameters)
+{
+	FHCIAbilityKitToolRegistry& Registry = FHCIAbilityKitToolRegistry::Get();
+	Registry.ResetToDefaults();
+
+	FHCIAbilityKitAgentSourceControlCheckInput Input;
+	Input.RequestId = TEXT("req_e6_001");
+	Input.ToolName = TEXT("RenameAsset");
+	Input.bSourceControlEnabled = false;
+	Input.bCheckoutSucceeded = false;
+
+	const FHCIAbilityKitAgentSourceControlDecision Decision =
+		FHCIAbilityKitAgentExecutionGate::EvaluateSourceControlFailFast(Input, Registry);
+
+	TestTrue(TEXT("Offline local mode should allow write when source control is disabled"), Decision.bAllowed);
+	TestTrue(TEXT("Offline local mode flag should be set"), Decision.bOfflineLocalMode);
+	TestFalse(TEXT("Checkout should not be attempted when source control is disabled"), Decision.bCheckoutAttempted);
+	TestEqual(TEXT("Decision should preserve write capability"), Decision.Capability, FString(TEXT("write")));
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FHCIAbilityKitAgentExecutionGateSourceControlBlocksEnabledCheckoutFailureTest,
+	"HCIAbilityKit.Editor.AgentExec.SourceControlBlocksEnabledCheckoutFailure",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FHCIAbilityKitAgentExecutionGateSourceControlBlocksEnabledCheckoutFailureTest::RunTest(const FString& Parameters)
+{
+	FHCIAbilityKitToolRegistry& Registry = FHCIAbilityKitToolRegistry::Get();
+	Registry.ResetToDefaults();
+
+	FHCIAbilityKitAgentSourceControlCheckInput Input;
+	Input.RequestId = TEXT("req_e6_002");
+	Input.ToolName = TEXT("MoveAsset");
+	Input.bSourceControlEnabled = true;
+	Input.bCheckoutSucceeded = false;
+
+	const FHCIAbilityKitAgentSourceControlDecision Decision =
+		FHCIAbilityKitAgentExecutionGate::EvaluateSourceControlFailFast(Input, Registry);
+
+	TestFalse(TEXT("Checkout failure should fail-fast block the write tool"), Decision.bAllowed);
+	TestTrue(TEXT("Checkout should be attempted when source control is enabled"), Decision.bCheckoutAttempted);
+	TestEqual(TEXT("Checkout failure should return E4006"), Decision.ErrorCode, FString(TEXT("E4006")));
+	TestEqual(TEXT("Checkout failure reason should be frozen"), Decision.Reason, FString(TEXT("source_control_checkout_failed_fail_fast")));
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FHCIAbilityKitAgentExecutionGateSourceControlAllowsReadOnlyWithoutCheckoutTest,
+	"HCIAbilityKit.Editor.AgentExec.SourceControlAllowsReadOnlyWithoutCheckout",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FHCIAbilityKitAgentExecutionGateSourceControlAllowsReadOnlyWithoutCheckoutTest::RunTest(const FString& Parameters)
+{
+	FHCIAbilityKitToolRegistry& Registry = FHCIAbilityKitToolRegistry::Get();
+	Registry.ResetToDefaults();
+
+	FHCIAbilityKitAgentSourceControlCheckInput Input;
+	Input.RequestId = TEXT("req_e6_003");
+	Input.ToolName = TEXT("ScanAssets");
+	Input.bSourceControlEnabled = true;
+	Input.bCheckoutSucceeded = false;
+
+	const FHCIAbilityKitAgentSourceControlDecision Decision =
+		FHCIAbilityKitAgentExecutionGate::EvaluateSourceControlFailFast(Input, Registry);
+
+	TestTrue(TEXT("Read-only tool should bypass source control checkout"), Decision.bAllowed);
+	TestEqual(TEXT("Capability should be read_only"), Decision.Capability, FString(TEXT("read_only")));
+	TestFalse(TEXT("Read-only tool should not attempt checkout"), Decision.bCheckoutAttempted);
+	TestFalse(TEXT("Read-only tool should not enter offline local mode"), Decision.bOfflineLocalMode);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FHCIAbilityKitAgentExecutionGateSourceControlAllowsEnabledCheckoutSuccessTest,
+	"HCIAbilityKit.Editor.AgentExec.SourceControlAllowsEnabledCheckoutSuccess",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FHCIAbilityKitAgentExecutionGateSourceControlAllowsEnabledCheckoutSuccessTest::RunTest(const FString& Parameters)
+{
+	FHCIAbilityKitToolRegistry& Registry = FHCIAbilityKitToolRegistry::Get();
+	Registry.ResetToDefaults();
+
+	FHCIAbilityKitAgentSourceControlCheckInput Input;
+	Input.RequestId = TEXT("req_e6_004");
+	Input.ToolName = TEXT("SetTextureMaxSize");
+	Input.bSourceControlEnabled = true;
+	Input.bCheckoutSucceeded = true;
+
+	const FHCIAbilityKitAgentSourceControlDecision Decision =
+		FHCIAbilityKitAgentExecutionGate::EvaluateSourceControlFailFast(Input, Registry);
+
+	TestTrue(TEXT("Checkout success should allow write tool"), Decision.bAllowed);
+	TestTrue(TEXT("Checkout should be attempted when source control is enabled"), Decision.bCheckoutAttempted);
+	TestTrue(TEXT("Checkout success should be recorded"), Decision.bCheckoutSucceeded);
+	TestFalse(TEXT("Enabled source control success should not be offline mode"), Decision.bOfflineLocalMode);
+
+	return true;
+}
+
 #endif

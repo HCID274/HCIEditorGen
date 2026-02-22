@@ -78,6 +78,31 @@ struct HCIABILITYKITRUNTIME_API FHCIAbilityKitAgentTransactionExecutionDecision
 	FString FailedToolName;
 };
 
+struct HCIABILITYKITRUNTIME_API FHCIAbilityKitAgentSourceControlCheckInput
+{
+	FString RequestId;
+	FName ToolName;
+	bool bSourceControlEnabled = false;
+	bool bCheckoutSucceeded = false; // Only consulted when source control is enabled and tool is write-like.
+};
+
+struct HCIABILITYKITRUNTIME_API FHCIAbilityKitAgentSourceControlDecision
+{
+	bool bAllowed = false;
+	FString ErrorCode;
+	FString Reason;
+
+	FString RequestId;
+	FString ToolName;
+	FString Capability;
+	bool bWriteLike = false;
+	bool bSourceControlEnabled = false;
+	bool bFailFastPolicy = true;
+	bool bOfflineLocalMode = false;
+	bool bCheckoutAttempted = false;
+	bool bCheckoutSucceeded = false;
+};
+
 class HCIABILITYKITRUNTIME_API FHCIAbilityKitAgentExecutionGate
 {
 public:
@@ -93,6 +118,10 @@ public:
 
 	static FHCIAbilityKitAgentTransactionExecutionDecision EvaluateAllOrNothingTransaction(
 		const FHCIAbilityKitAgentTransactionExecutionInput& Input,
+		const FHCIAbilityKitToolRegistry& Registry);
+
+	static FHCIAbilityKitAgentSourceControlDecision EvaluateSourceControlFailFast(
+		const FHCIAbilityKitAgentSourceControlCheckInput& Input,
 		const FHCIAbilityKitToolRegistry& Registry);
 
 	static bool IsWriteLikeCapability(EHCIAbilityKitToolCapability Capability);

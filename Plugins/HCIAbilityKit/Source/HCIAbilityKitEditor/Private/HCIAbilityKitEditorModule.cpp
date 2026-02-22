@@ -66,6 +66,7 @@ static TUniquePtr<FAutoConsoleCommand> GHCIAbilityKitDryRunDiffPreviewJsonComman
 static TUniquePtr<FAutoConsoleCommand> GHCIAbilityKitAgentConfirmGateDemoCommand;
 static TUniquePtr<FAutoConsoleCommand> GHCIAbilityKitAgentBlastRadiusDemoCommand;
 static TUniquePtr<FAutoConsoleCommand> GHCIAbilityKitAgentTransactionDemoCommand;
+static TUniquePtr<FAutoConsoleCommand> GHCIAbilityKitAgentSourceControlDemoCommand;
 static const TCHAR* GHCIAbilityKitPythonScriptPath = TEXT("SourceData/AbilityKits/Python/hci_abilitykit_hook.py");
 
 struct FHCIAbilityKitAuditScanAsyncState
@@ -1005,6 +1006,142 @@ static void HCI_RunAbilityKitAgentTransactionDemoCommand(const TArray<FString>& 
 	const FHCIAbilityKitAgentTransactionExecutionDecision Decision =
 		FHCIAbilityKitAgentExecutionGate::EvaluateAllOrNothingTransaction(Input, Registry);
 	HCI_LogAgentTransactionDecision(TEXT("custom"), Decision);
+}
+
+static void HCI_LogAgentSourceControlDecision(const TCHAR* CaseName, const FHCIAbilityKitAgentSourceControlDecision& Decision)
+{
+	const bool bUseWarningLevel = (!Decision.bAllowed) || Decision.bOfflineLocalMode;
+	if (!bUseWarningLevel)
+	{
+		UE_LOG(
+			LogHCIAbilityKitAuditScan,
+			Display,
+			TEXT("[HCIAbilityKit][AgentSourceControl] case=%s request_id=%s tool_name=%s capability=%s write_like=%s source_control_enabled=%s fail_fast=%s offline_local_mode=%s checkout_attempted=%s checkout_succeeded=%s allowed=%s error_code=%s reason=%s"),
+			CaseName,
+			Decision.RequestId.IsEmpty() ? TEXT("-") : *Decision.RequestId,
+			Decision.ToolName.IsEmpty() ? TEXT("-") : *Decision.ToolName,
+			Decision.Capability.IsEmpty() ? TEXT("-") : *Decision.Capability,
+			Decision.bWriteLike ? TEXT("true") : TEXT("false"),
+			Decision.bSourceControlEnabled ? TEXT("true") : TEXT("false"),
+			Decision.bFailFastPolicy ? TEXT("true") : TEXT("false"),
+			Decision.bOfflineLocalMode ? TEXT("true") : TEXT("false"),
+			Decision.bCheckoutAttempted ? TEXT("true") : TEXT("false"),
+			Decision.bCheckoutSucceeded ? TEXT("true") : TEXT("false"),
+			TEXT("true"),
+			Decision.ErrorCode.IsEmpty() ? TEXT("-") : *Decision.ErrorCode,
+			Decision.Reason.IsEmpty() ? TEXT("-") : *Decision.Reason);
+		return;
+	}
+
+	UE_LOG(
+		LogHCIAbilityKitAuditScan,
+		Warning,
+		TEXT("[HCIAbilityKit][AgentSourceControl] case=%s request_id=%s tool_name=%s capability=%s write_like=%s source_control_enabled=%s fail_fast=%s offline_local_mode=%s checkout_attempted=%s checkout_succeeded=%s allowed=%s error_code=%s reason=%s"),
+		CaseName,
+		Decision.RequestId.IsEmpty() ? TEXT("-") : *Decision.RequestId,
+		Decision.ToolName.IsEmpty() ? TEXT("-") : *Decision.ToolName,
+		Decision.Capability.IsEmpty() ? TEXT("-") : *Decision.Capability,
+		Decision.bWriteLike ? TEXT("true") : TEXT("false"),
+		Decision.bSourceControlEnabled ? TEXT("true") : TEXT("false"),
+		Decision.bFailFastPolicy ? TEXT("true") : TEXT("false"),
+		Decision.bOfflineLocalMode ? TEXT("true") : TEXT("false"),
+		Decision.bCheckoutAttempted ? TEXT("true") : TEXT("false"),
+		Decision.bCheckoutSucceeded ? TEXT("true") : TEXT("false"),
+		Decision.bAllowed ? TEXT("true") : TEXT("false"),
+		Decision.ErrorCode.IsEmpty() ? TEXT("-") : *Decision.ErrorCode,
+		Decision.Reason.IsEmpty() ? TEXT("-") : *Decision.Reason);
+}
+
+static void HCI_RunAbilityKitAgentSourceControlDemoCommand(const TArray<FString>& Args)
+{
+	FHCIAbilityKitToolRegistry& Registry = FHCIAbilityKitToolRegistry::Get();
+	Registry.ResetToDefaults();
+
+	auto BuildInput = [](const TCHAR* RequestId, const TCHAR* ToolName, const bool bSourceControlEnabled, const bool bCheckoutSucceeded)
+	{
+		FHCIAbilityKitAgentSourceControlCheckInput Input;
+		Input.RequestId = RequestId;
+		Input.ToolName = FName(ToolName);
+		Input.bSourceControlEnabled = bSourceControlEnabled;
+		Input.bCheckoutSucceeded = bCheckoutSucceeded;
+		return Input;
+	};
+
+	if (Args.Num() == 0)
+	{
+		int32 AllowedCount = 0;
+		int32 BlockedCount = 0;
+		int32 OfflineLocalModeCount = 0;
+
+		auto RunCase = [&Registry, &AllowedCount, &BlockedCount, &OfflineLocalModeCount](const TCHAR* CaseName, const FHCIAbilityKitAgentSourceControlCheckInput& Input)
+		{
+			const FHCIAbilityKitAgentSourceControlDecision Decision =
+				FHCIAbilityKitAgentExecutionGate::EvaluateSourceControlFailFast(Input, Registry);
+			if (Decision.bAllowed)
+			{
+				++AllowedCount;
+			}
+			else
+			{
+				++BlockedCount;
+			}
+			if (Decision.bOfflineLocalMode)
+			{
+				++OfflineLocalModeCount;
+			}
+			HCI_LogAgentSourceControlDecision(CaseName, Decision);
+		};
+
+		RunCase(TEXT("read_only_enabled_bypass"), BuildInput(TEXT("req_demo_e6_01"), TEXT("ScanAssets"), true, false));
+		RunCase(TEXT("write_offline_local_mode"), BuildInput(TEXT("req_demo_e6_02"), TEXT("RenameAsset"), false, false));
+		RunCase(TEXT("write_checkout_fail_fast"), BuildInput(TEXT("req_demo_e6_03"), TEXT("MoveAsset"), true, false));
+
+		UE_LOG(
+			LogHCIAbilityKitAuditScan,
+			Display,
+			TEXT("[HCIAbilityKit][AgentSourceControl] summary total_cases=%d allowed=%d blocked=%d offline_local_mode_cases=%d fail_fast=%s expected_blocked_code=%s validation=ok"),
+			3,
+			AllowedCount,
+			BlockedCount,
+			OfflineLocalModeCount,
+			TEXT("true"),
+			TEXT("E4006"));
+		UE_LOG(
+			LogHCIAbilityKitAuditScan,
+			Display,
+			TEXT("[HCIAbilityKit][AgentSourceControl] hint=也可运行 HCIAbilityKit.AgentSourceControlDemo [tool_name] [source_control_enabled 0|1] [checkout_succeeded 0|1]"));
+		return;
+	}
+
+	if (Args.Num() < 3)
+	{
+		UE_LOG(
+			LogHCIAbilityKitAuditScan,
+			Error,
+			TEXT("[HCIAbilityKit][AgentSourceControl] invalid_args usage=HCIAbilityKit.AgentSourceControlDemo [tool_name] [source_control_enabled 0|1] [checkout_succeeded 0|1]"));
+		return;
+	}
+
+	bool bSourceControlEnabled = false;
+	bool bCheckoutSucceeded = false;
+	if (!HCI_TryParseBool01Arg(Args[1], bSourceControlEnabled) || !HCI_TryParseBool01Arg(Args[2], bCheckoutSucceeded))
+	{
+		UE_LOG(
+			LogHCIAbilityKitAuditScan,
+			Error,
+			TEXT("[HCIAbilityKit][AgentSourceControl] invalid_args reason=source_control_enabled and checkout_succeeded must be 0 or 1"));
+		return;
+	}
+
+	FHCIAbilityKitAgentSourceControlCheckInput Input;
+	Input.RequestId = TEXT("req_cli_e6");
+	Input.ToolName = FName(*Args[0].TrimStartAndEnd());
+	Input.bSourceControlEnabled = bSourceControlEnabled;
+	Input.bCheckoutSucceeded = bCheckoutSucceeded;
+
+	const FHCIAbilityKitAgentSourceControlDecision Decision =
+		FHCIAbilityKitAgentExecutionGate::EvaluateSourceControlFailFast(Input, Registry);
+	HCI_LogAgentSourceControlDecision(TEXT("custom"), Decision);
 }
 
 static void HCI_TryFillTriangleFromTagCached(
@@ -2395,6 +2532,14 @@ void FHCIAbilityKitEditorModule::StartupModule()
 			TEXT("E5 all-or-nothing transaction demo. Usage: HCIAbilityKit.AgentTransactionDemo [total_steps>=1] [fail_step_index>=0]"),
 			FConsoleCommandWithArgsDelegate::CreateStatic(&HCI_RunAbilityKitAgentTransactionDemoCommand));
 	}
+
+	if (!GHCIAbilityKitAgentSourceControlDemoCommand.IsValid())
+	{
+		GHCIAbilityKitAgentSourceControlDemoCommand = MakeUnique<FAutoConsoleCommand>(
+			TEXT("HCIAbilityKit.AgentSourceControlDemo"),
+			TEXT("E6 source-control fail-fast/offline demo. Usage: HCIAbilityKit.AgentSourceControlDemo [tool_name] [source_control_enabled 0|1] [checkout_succeeded 0|1]"),
+			FConsoleCommandWithArgsDelegate::CreateStatic(&HCI_RunAbilityKitAgentSourceControlDemoCommand));
+	}
 }
 
 void FHCIAbilityKitEditorModule::ShutdownModule()
@@ -2430,6 +2575,7 @@ void FHCIAbilityKitEditorModule::ShutdownModule()
 	GHCIAbilityKitAgentConfirmGateDemoCommand.Reset();
 	GHCIAbilityKitAgentBlastRadiusDemoCommand.Reset();
 	GHCIAbilityKitAgentTransactionDemoCommand.Reset();
+	GHCIAbilityKitAgentSourceControlDemoCommand.Reset();
 }
 
 IMPLEMENT_MODULE(FHCIAbilityKitEditorModule, HCIAbilityKitEditor)

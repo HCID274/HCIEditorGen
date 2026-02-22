@@ -612,6 +612,31 @@ public:
     - `failed_step_index/failed_step_id/failed_tool_name`
     - `error_code/reason`
 
+#### 14.4.4 StageE-SliceE6 落地（SourceControl Fail-Fast + 离线本地模式）
+
+- Runtime 在 `FHCIAbilityKitAgentExecutionGate` 中新增 SourceControl 判定：
+  - 输入：`request_id/tool_name/source_control_enabled/checkout_succeeded`（Editor 层负责真实 SC 状态采集；Runtime 仅做纯判定）
+  - 输出：`allowed/error_code/reason/capability/write_like/source_control_enabled/fail_fast/offline_local_mode/checkout_attempted/checkout_succeeded`
+- 判定口径（一期最小实现）：
+  - `tool_name` 不在 Tool Registry 白名单：返回 `E4002`（`reason=tool_not_whitelisted`）
+  - `capability=read_only`：允许执行，且不触发 `Checkout`（`checkout_attempted=false`）
+  - `capability in {write, destructive}`：
+    - `source_control_enabled=false`：进入“离线本地模式”，输出 Warning 并放行（`allowed=true`, `offline_local_mode=true`）
+    - `source_control_enabled=true && checkout_succeeded=false`：`Fail-Fast` 拦截并返回 `E4006`（`reason=source_control_checkout_failed_fail_fast`）
+    - `source_control_enabled=true && checkout_succeeded=true`：允许执行（`checkout_attempted=true`, `checkout_succeeded=true`）
+  - 一期不做自动重试与强制解锁。
+- Editor UE 手测入口（控制台）：
+  - `HCIAbilityKit.AgentSourceControlDemo`
+    - 默认输出三案例：`read_only_enabled_bypass / write_offline_local_mode / write_checkout_fail_fast`
+    - 输出摘要：`summary total_cases=... offline_local_mode_cases=... fail_fast=true expected_blocked_code=E4006 validation=ok`
+  - `HCIAbilityKit.AgentSourceControlDemo [tool_name] [source_control_enabled 0|1] [checkout_succeeded 0|1]`
+    - 用于单案例验证离线放行、Fail-Fast 拦截与成功放行日志口径
+  - 案例日志最小字段：
+    - `request_id/tool_name/capability/write_like`
+    - `source_control_enabled/fail_fast/offline_local_mode`
+    - `checkout_attempted/checkout_succeeded`
+    - `allowed/error_code/reason`
+
 ### 14.5 本地 Mock 权限与日志契约（极简冻结）
 
 - 权限来源：本地用户名 + 本地角色映射文件（JSON）。

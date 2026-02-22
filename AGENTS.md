@@ -198,8 +198,13 @@ Scope: whole repo.
     - 已完成：Editor 新增 `HCIAbilityKit.AgentTransactionDemo` 控制台命令（默认三案例 + 自定义 `total_steps/fail_step_index`）用于 UE 手测日志验证。
     - 已完成：自动化测试 `HCIAbilityKit.Editor.AgentExec` 扩展至 9/9（新增 `TransactionCommitsAllStepsOnSuccess/TransactionRollsBackOnFailure/TransactionRejectsUnknownToolBeforeExecution`），本地通过；`AgentTools`（3/3）与 `AgentDryRun`（2/2）回归通过。
     - 已完成：用户 UE 手测通过（无参命令摘要命中 `total_cases=3 committed=1 rolled_back=2 transaction_mode=all_or_nothing expected_failed_code=E4007 validation=ok`；`AgentTransactionDemo 3 0` 命中全提交；`AgentTransactionDemo 3 2` 命中 `E4007/step_failed_all_or_nothing_rollback` 且 `committed_steps=0`）。
-  - 当前切片：`Stage E-SliceE6`（SourceControl Fail-Fast + 离线本地模式）。
-  - 下一切片：`Stage E-SliceE7`（本地 Mock 鉴权与本地审计日志）。
+  - `Stage E-SliceE6` 已通过：SourceControl Fail-Fast + 离线本地模式。
+    - 已完成：在 `FHCIAbilityKitAgentExecutionGate` 中新增 `EvaluateSourceControlFailFast`，统一判定 `read_only` 绕过 Checkout、`SC disabled` 进入离线本地模式放行、`SC enabled + checkout fail` 返回 `E4006`（`source_control_checkout_failed_fail_fast`）。
+    - 已完成：Editor 新增 `HCIAbilityKit.AgentSourceControlDemo` 控制台命令（默认三案例 + 自定义 `tool_name/source_control_enabled/checkout_succeeded`）用于 UE 手测验证日志口径。
+    - 已完成：自动化测试 `HCIAbilityKit.Editor.AgentExec` 扩展至 13/13（新增 4 条 `SourceControl*` 测试），本地通过；`AgentTools`（3/3）与 `AgentDryRun`（2/2）回归通过。
+    - 已完成：用户 UE 手测通过（无参命令摘要命中 `total_cases=3 allowed=2 blocked=1 offline_local_mode_cases=1 fail_fast=true expected_blocked_code=E4006 validation=ok`；`RenameAsset 0 0` 命中离线本地模式放行；`RenameAsset 1 0` 命中 `E4006/source_control_checkout_failed_fail_fast`；`MoveAsset 1 1` 命中 checkout 成功放行）。
+  - 当前切片：`Stage E-SliceE7`（本地 Mock 鉴权与本地审计日志）。
+  - 下一切片：`Stage E-SliceE8`（规则级安全边界收束：LOD Nanite 拦截 / 类型校验）。
   - D 段收尾后续主线：`Stage E`（安全执行：Dry-Run/Confirm/Transaction/SC）-> `Stage F`（NL->Plan->Executor）。
   - B3 最新状态：
     - 已完成：新增 `HCIAbilityKit.AuditScanAsync [batch_size] [log_top_n]`，按分片执行 `AssetRegistry + FAssetData` 扫描，避免单帧全量阻塞。

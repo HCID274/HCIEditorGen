@@ -296,6 +296,11 @@ public:
   - `proposed_target_path`（可缺省）
   - `virtual_path`（可缺省）
   - `scan_state`（`ok/skipped_locked_or_dirty/skipped_unavailable`）
+- StageC-SliceC3 实现口径（2026-02-22）：
+  - Runtime 新增统一结果结构：`FHCIAbilityKitAuditReport` / `FHCIAbilityKitAuditResultEntry`；
+  - 结果构建器：`FHCIAbilityKitAuditReportBuilder::BuildFromSnapshot(...)`，将 `ScanSnapshot.Rows[*].AuditIssues[*]` 扁平化为 `results[]`；
+  - 严重级别统一字符串化：`Info/Warn/Error`（`SeverityToString`），供日志展示与下一切片 JSON 导出复用；
+  - 构建器保证核心追踪证据兜底：`scan_state`，以及可用时补齐 `triangle_source/representing_mesh_path`。
 
 ## 12. 索引统计契约（Step3-Slice2，历史基线）
 

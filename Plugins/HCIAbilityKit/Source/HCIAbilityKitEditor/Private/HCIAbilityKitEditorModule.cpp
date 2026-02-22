@@ -3,6 +3,7 @@
 #include "AssetRegistry/IAssetRegistry.h"
 #include "AssetRegistry/AssetRegistryModule.h"
 #include "Audit/HCIAbilityKitAuditScanAsyncController.h"
+#include "Audit/HCIAbilityKitAuditReport.h"
 #include "Audit/HCIAbilityKitAuditRuleRegistry.h"
 #include "Audit/HCIAbilityKitAuditTagNames.h"
 #include "ContentBrowserMenuContexts.h"
@@ -308,7 +309,7 @@ static void HCI_LogAuditRows(const TCHAR* Prefix, const TArray<FHCIAbilityKitAud
 		UE_LOG(
 			LogHCIAbilityKitAuditScan,
 			Display,
-			TEXT("%s row=%d asset=%s class=%s id=%s display_name=%s damage=%.2f representing_mesh=%s triangle_count_lod0=%d triangle_expected_lod0=%d mesh_lods=%d mesh_nanite=%s tex_dims=%dx%d triangle_source=%s triangle_source_tag=%s scan_state=%s skip_reason=%s audit_issue_count=%d first_issue_rule=%s first_issue_severity=%d"),
+			TEXT("%s row=%d asset=%s class=%s id=%s display_name=%s damage=%.2f representing_mesh=%s triangle_count_lod0=%d triangle_expected_lod0=%d mesh_lods=%d mesh_nanite=%s tex_dims=%dx%d triangle_source=%s triangle_source_tag=%s scan_state=%s skip_reason=%s audit_issue_count=%d first_issue_rule=%s first_issue_severity=%d first_issue_severity_name=%s"),
 			Prefix,
 			Index,
 			*Row.AssetPath,
@@ -329,7 +330,8 @@ static void HCI_LogAuditRows(const TCHAR* Prefix, const TArray<FHCIAbilityKitAud
 			*Row.SkipReason,
 			Row.AuditIssues.Num(),
 			FirstIssue ? *FirstIssue->RuleId.ToString() : TEXT(""),
-			FirstIssue ? static_cast<int32>(FirstIssue->Severity) : -1);
+			FirstIssue ? static_cast<int32>(FirstIssue->Severity) : -1,
+			FirstIssue ? *FHCIAbilityKitAuditReportBuilder::SeverityToString(FirstIssue->Severity) : TEXT(""));
 	}
 }
 

@@ -140,8 +140,13 @@ Scope: whole repo.
     - 已完成：`TextureNPOTRule` 使用 `Dimensions`（`WxH`）判定 NPOT，规则级自动化测试通过。
     - 已完成：`AuditScan/AuditScanAsync` 行日志新增 `class/mesh_lods/mesh_nanite/tex_dims` 字段，便于 UE 手测定位规则证据。
     - 已完成：用户 UE 手测通过（3 个高面数非 Nanite 单 LOD 样本命中 `HighPolyAutoLODRule`；摘要与行日志一致）。
-  - 当前切片：`Stage C-SliceC3`（统一审计结果结构与严重级别）。
-  - 下一切片：`Stage C-SliceC4`（JSON 报告导出，含 `triangle_source` 与规则证据）。
+  - `Stage C-SliceC3` 已通过：统一审计结果结构与严重级别。
+    - 已完成：Runtime 新增 `FHCIAbilityKitAuditReport / FHCIAbilityKitAuditResultEntry` 统一结果结构。
+    - 已完成：`FHCIAbilityKitAuditReportBuilder` 支持将 `ScanSnapshot` 扁平化为 `results[]`（为 `C4` JSON 导出复用）。
+    - 已完成：严重级别统一字符串化 `Info/Warn/Error`，扫描行日志新增 `first_issue_severity_name`。
+    - 已完成：用户 UE 手测通过（同步/异步扫描正常；`1 <-> Warn` 映射一致）。
+  - 当前切片：`Stage C-SliceC4`（JSON 报告导出，含 `triangle_source` 与规则证据）。
+  - 下一切片：`Stage D-SliceD1`（深度检查批次策略与分批加载释放）。
   - D 段收尾后续主线：`Stage E`（安全执行：Dry-Run/Confirm/Transaction/SC）-> `Stage F`（NL->Plan->Executor）。
   - B3 最新状态：
     - 已完成：新增 `HCIAbilityKit.AuditScanAsync [batch_size] [log_top_n]`，按分片执行 `AssetRegistry + FAssetData` 扫描，避免单帧全量阻塞。

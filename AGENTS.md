@@ -180,8 +180,14 @@ Scope: whole repo.
     - 已完成：Editor 新增 `HCIAbilityKit.DryRunDiffPreviewDemo`（Diff 列表预览）、`HCIAbilityKit.DryRunDiffLocate [row_index]`（定位入口）、`HCIAbilityKit.DryRunDiffPreviewJson`（契约 JSON 输出）。
     - 已完成：自动化测试新增 `HCIAbilityKit.Editor.AgentDryRun.*`（2/2），且 `AgentTools`（3/3）/`AuditResults`（3/3）/`AuditScanAsync`（5/5）回归通过。
     - 已完成：用户 UE 手测通过（`DryRunDiffPreviewDemo` 摘要与 `row=` 字段完整；覆盖 `asset->sync_browser` 与 `actor->camera_focus`；`DryRunDiffPreviewJson` 含核心契约字段；`DryRunDiffLocate 0/2` 输出定位策略日志，`actor_not_found` 在样例场景下可接受）。
-  - 当前切片：`Stage E-SliceE3`（确认门禁 + 事务/SourceControl 安全前置）。
-  - 下一切片：`Stage E-SliceE4`（Blast Radius 极简限流）。
+  - `Stage E-SliceE3` 已通过：确认门禁（未确认不得执行写操作）。
+    - 已完成：Runtime 新增 `FHCIAbilityKitAgentExecutionGate`，基于 `ToolRegistry` 能力执行确认门禁判定（`read_only` 放行；`write/destructive` 未确认拦截）。
+    - 已完成：错误收敛口径：未确认写操作返回 `E4005`（`user_not_confirmed/write_step_requires_confirm`）；非白名单工具返回 `E4002`。
+    - 已完成：Editor 新增 `HCIAbilityKit.AgentConfirmGateDemo` 控制台命令（默认三案例 + 自定义参数），用于 UE 手测日志验证。
+    - 已完成：自动化测试新增 `HCIAbilityKit.Editor.AgentExec.*`（3/3：未确认写阻断/只读放行/确认写放行），本地通过；`AgentTools`（3/3）与 `AgentDryRun`（2/2）回归通过。
+    - 已完成：用户 UE 手测通过（无参命令摘要命中 `total_cases=3 validation=ok`；`RenameAsset 1 0` 命中 `E4005/user_not_confirmed`；`ScanAssets 0 0` 与 `SetTextureMaxSize 1 1` 分别命中 `read_only/write` 放行）。
+  - 当前切片：`Stage E-SliceE4`（Blast Radius 极简限流）。
+  - 下一切片：`Stage E-SliceE5`（事务策略 All-or-Nothing）。
   - D 段收尾后续主线：`Stage E`（安全执行：Dry-Run/Confirm/Transaction/SC）-> `Stage F`（NL->Plan->Executor）。
   - B3 最新状态：
     - 已完成：新增 `HCIAbilityKit.AuditScanAsync [batch_size] [log_top_n]`，按分片执行 `AssetRegistry + FAssetData` 扫描，避免单帧全量阻塞。

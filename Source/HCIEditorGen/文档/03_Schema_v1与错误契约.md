@@ -545,6 +545,25 @@ public:
   - 当 SourceControl 已启用：固定 `Fail-Fast`，`Checkout` 任一步失败立即终止并返回 `E4006`；
   - 一期不做自动重试与强制解锁。
 
+#### 14.4.1 StageE-SliceE3 落地（确认门禁最小闭环）
+
+- Runtime 新增确认门禁 helper：`FHCIAbilityKitAgentExecutionGate`
+  - 输入：`FHCIAbilityKitAgentExecutionStep(step_id/tool_name/requires_confirm/user_confirmed)`
+  - 输出：`FHCIAbilityKitAgentExecutionDecision(allowed/error_code/reason/capability/write_like/...)`
+- 判定口径（一期最小实现）：
+  - `tool_name` 不在 Tool Registry 白名单：返回 `E4002`
+  - `capability=read_only`：允许执行（不要求确认）
+  - `capability in {write, destructive}`：
+    - `requires_confirm=false`：拦截并返回 `E4005`（`reason=write_step_requires_confirm`）
+    - `requires_confirm=true && user_confirmed=false`：拦截并返回 `E4005`（`reason=user_not_confirmed`）
+    - `requires_confirm=true && user_confirmed=true`：允许执行
+- Editor UE 手测入口（控制台）：
+  - `HCIAbilityKit.AgentConfirmGateDemo`
+    - 默认输出三案例：`read_only_unconfirmed / write_unconfirmed / write_confirmed`
+    - 输出摘要：`summary total_cases=... allowed=... blocked=... validation=ok`
+  - `HCIAbilityKit.AgentConfirmGateDemo [tool_name] [requires_confirm 0|1] [user_confirmed 0|1]`
+    - 用于单案例验证日志与错误码（如 `E4005`）
+
 ### 14.5 本地 Mock 权限与日志契约（极简冻结）
 
 - 权限来源：本地用户名 + 本地角色映射文件（JSON）。

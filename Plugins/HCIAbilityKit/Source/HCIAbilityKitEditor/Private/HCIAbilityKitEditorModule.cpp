@@ -2,6 +2,7 @@
 
 #include "AssetRegistry/IAssetRegistry.h"
 #include "AssetRegistry/AssetRegistryModule.h"
+#include "Agent/HCIAbilityKitAgentExecutionGate.h"
 #include "Agent/HCIAbilityKitDryRunDiff.h"
 #include "Agent/HCIAbilityKitDryRunDiffJsonSerializer.h"
 #include "Agent/HCIAbilityKitToolRegistry.h"
@@ -62,6 +63,7 @@ static TUniquePtr<FAutoConsoleCommand> GHCIAbilityKitToolRegistryDumpCommand;
 static TUniquePtr<FAutoConsoleCommand> GHCIAbilityKitDryRunDiffPreviewDemoCommand;
 static TUniquePtr<FAutoConsoleCommand> GHCIAbilityKitDryRunDiffPreviewLocateCommand;
 static TUniquePtr<FAutoConsoleCommand> GHCIAbilityKitDryRunDiffPreviewJsonCommand;
+static TUniquePtr<FAutoConsoleCommand> GHCIAbilityKitAgentConfirmGateDemoCommand;
 static const TCHAR* GHCIAbilityKitPythonScriptPath = TEXT("SourceData/AbilityKits/Python/hci_abilitykit_hook.py");
 
 struct FHCIAbilityKitAuditScanAsyncState
@@ -224,6 +226,24 @@ static FString HCI_FormatIntArrayForLog(const TArray<int32>& Values)
 		Parts.Add(FString::FromInt(Value));
 	}
 	return FString::Join(Parts, TEXT("|"));
+}
+
+static bool HCI_TryParseBool01Arg(const FString& InValue, bool& OutValue)
+{
+	const FString Trimmed = InValue.TrimStartAndEnd();
+	if (Trimmed == TEXT("0"))
+	{
+		OutValue = false;
+		return true;
+	}
+
+	if (Trimmed == TEXT("1"))
+	{
+		OutValue = true;
+		return true;
+	}
+
+	return false;
 }
 
 static void HCI_RunAbilityKitToolRegistryDumpCommand(const TArray<FString>& Args)
@@ -574,6 +594,122 @@ static void HCI_RunAbilityKitDryRunDiffPreviewLocateCommand(const TArray<FString
 			*Item.AssetPath,
 			Item.ActorPath.IsEmpty() ? TEXT("-") : *Item.ActorPath);
 	}
+}
+
+static void HCI_LogAgentConfirmGateDecision(const TCHAR* CaseName, const FHCIAbilityKitAgentExecutionDecision& Decision)
+{
+	if (Decision.bAllowed)
+	{
+		UE_LOG(
+			LogHCIAbilityKitAuditScan,
+			Display,
+			TEXT("[HCIAbilityKit][AgentConfirmGate] case=%s step_id=%s tool_name=%s capability=%s write_like=%s requires_confirm=%s user_confirmed=%s allowed=%s error_code=%s reason=%s"),
+			CaseName,
+			Decision.StepId.IsEmpty() ? TEXT("-") : *Decision.StepId,
+			Decision.ToolName.IsEmpty() ? TEXT("-") : *Decision.ToolName,
+			Decision.Capability.IsEmpty() ? TEXT("-") : *Decision.Capability,
+			Decision.bWriteLike ? TEXT("true") : TEXT("false"),
+			Decision.bRequiresConfirm ? TEXT("true") : TEXT("false"),
+			Decision.bUserConfirmed ? TEXT("true") : TEXT("false"),
+			TEXT("true"),
+			Decision.ErrorCode.IsEmpty() ? TEXT("-") : *Decision.ErrorCode,
+			Decision.Reason.IsEmpty() ? TEXT("-") : *Decision.Reason);
+		return;
+	}
+
+	UE_LOG(
+		LogHCIAbilityKitAuditScan,
+		Warning,
+		TEXT("[HCIAbilityKit][AgentConfirmGate] case=%s step_id=%s tool_name=%s capability=%s write_like=%s requires_confirm=%s user_confirmed=%s allowed=%s error_code=%s reason=%s"),
+		CaseName,
+		Decision.StepId.IsEmpty() ? TEXT("-") : *Decision.StepId,
+		Decision.ToolName.IsEmpty() ? TEXT("-") : *Decision.ToolName,
+		Decision.Capability.IsEmpty() ? TEXT("-") : *Decision.Capability,
+		Decision.bWriteLike ? TEXT("true") : TEXT("false"),
+		Decision.bRequiresConfirm ? TEXT("true") : TEXT("false"),
+		Decision.bUserConfirmed ? TEXT("true") : TEXT("false"),
+		TEXT("false"),
+		Decision.ErrorCode.IsEmpty() ? TEXT("-") : *Decision.ErrorCode,
+		Decision.Reason.IsEmpty() ? TEXT("-") : *Decision.Reason);
+}
+
+static void HCI_RunAbilityKitAgentConfirmGateDemoCommand(const TArray<FString>& Args)
+{
+	FHCIAbilityKitToolRegistry& Registry = FHCIAbilityKitToolRegistry::Get();
+	Registry.ResetToDefaults();
+
+	if (Args.Num() == 0)
+	{
+		int32 BlockedCount = 0;
+		int32 AllowedCount = 0;
+
+		auto RunCase = [&Registry, &BlockedCount, &AllowedCount](const TCHAR* CaseName, const TCHAR* StepId, const TCHAR* ToolName, const bool bRequiresConfirm, const bool bUserConfirmed)
+		{
+			FHCIAbilityKitAgentExecutionStep Step;
+			Step.StepId = StepId;
+			Step.ToolName = FName(ToolName);
+			Step.bRequiresConfirm = bRequiresConfirm;
+			Step.bUserConfirmed = bUserConfirmed;
+
+			const FHCIAbilityKitAgentExecutionDecision Decision = FHCIAbilityKitAgentExecutionGate::EvaluateConfirmGate(Step, Registry);
+			if (Decision.bAllowed)
+			{
+				++AllowedCount;
+			}
+			else
+			{
+				++BlockedCount;
+			}
+			HCI_LogAgentConfirmGateDecision(CaseName, Decision);
+		};
+
+		RunCase(TEXT("read_only_unconfirmed"), TEXT("step_demo_01"), TEXT("ScanAssets"), false, false);
+		RunCase(TEXT("write_unconfirmed"), TEXT("step_demo_02"), TEXT("RenameAsset"), true, false);
+		RunCase(TEXT("write_confirmed"), TEXT("step_demo_03"), TEXT("SetTextureMaxSize"), true, true);
+
+		UE_LOG(
+			LogHCIAbilityKitAuditScan,
+			Display,
+			TEXT("[HCIAbilityKit][AgentConfirmGate] summary total_cases=%d allowed=%d blocked=%d expected_blocked_code=%s validation=ok"),
+			3,
+			AllowedCount,
+			BlockedCount,
+			TEXT("E4005"));
+		UE_LOG(
+			LogHCIAbilityKitAuditScan,
+			Display,
+			TEXT("[HCIAbilityKit][AgentConfirmGate] hint=也可运行 HCIAbilityKit.AgentConfirmGateDemo [tool_name] [requires_confirm 0|1] [user_confirmed 0|1]"));
+		return;
+	}
+
+	if (Args.Num() < 3)
+	{
+		UE_LOG(
+			LogHCIAbilityKitAuditScan,
+			Error,
+			TEXT("[HCIAbilityKit][AgentConfirmGate] invalid_args usage=HCIAbilityKit.AgentConfirmGateDemo [tool_name] [requires_confirm 0|1] [user_confirmed 0|1]"));
+		return;
+	}
+
+	bool bRequiresConfirm = false;
+	bool bUserConfirmed = false;
+	if (!HCI_TryParseBool01Arg(Args[1], bRequiresConfirm) || !HCI_TryParseBool01Arg(Args[2], bUserConfirmed))
+	{
+		UE_LOG(
+			LogHCIAbilityKitAuditScan,
+			Error,
+			TEXT("[HCIAbilityKit][AgentConfirmGate] invalid_args reason=requires_confirm and user_confirmed must be 0 or 1"));
+		return;
+	}
+
+	FHCIAbilityKitAgentExecutionStep Step;
+	Step.StepId = TEXT("step_cli");
+	Step.ToolName = FName(*Args[0].TrimStartAndEnd());
+	Step.bRequiresConfirm = bRequiresConfirm;
+	Step.bUserConfirmed = bUserConfirmed;
+
+	const FHCIAbilityKitAgentExecutionDecision Decision = FHCIAbilityKitAgentExecutionGate::EvaluateConfirmGate(Step, Registry);
+	HCI_LogAgentConfirmGateDecision(TEXT("custom"), Decision);
 }
 
 static void HCI_TryFillTriangleFromTagCached(
@@ -1940,6 +2076,14 @@ void FHCIAbilityKitEditorModule::StartupModule()
 			TEXT("Serialize Dry-Run Diff preview demo to JSON and print it (E2 contract demo)."),
 			FConsoleCommandWithArgsDelegate::CreateStatic(&HCI_RunAbilityKitDryRunDiffPreviewJsonCommand));
 	}
+
+	if (!GHCIAbilityKitAgentConfirmGateDemoCommand.IsValid())
+	{
+		GHCIAbilityKitAgentConfirmGateDemoCommand = MakeUnique<FAutoConsoleCommand>(
+			TEXT("HCIAbilityKit.AgentConfirmGateDemo"),
+			TEXT("E3 confirm-gate demo. Usage: HCIAbilityKit.AgentConfirmGateDemo [tool_name] [requires_confirm 0|1] [user_confirmed 0|1]"),
+			FConsoleCommandWithArgsDelegate::CreateStatic(&HCI_RunAbilityKitAgentConfirmGateDemoCommand));
+	}
 }
 
 void FHCIAbilityKitEditorModule::ShutdownModule()
@@ -1972,6 +2116,7 @@ void FHCIAbilityKitEditorModule::ShutdownModule()
 	GHCIAbilityKitDryRunDiffPreviewDemoCommand.Reset();
 	GHCIAbilityKitDryRunDiffPreviewLocateCommand.Reset();
 	GHCIAbilityKitDryRunDiffPreviewJsonCommand.Reset();
+	GHCIAbilityKitAgentConfirmGateDemoCommand.Reset();
 }
 
 IMPLEMENT_MODULE(FHCIAbilityKitEditorModule, HCIAbilityKitEditor)

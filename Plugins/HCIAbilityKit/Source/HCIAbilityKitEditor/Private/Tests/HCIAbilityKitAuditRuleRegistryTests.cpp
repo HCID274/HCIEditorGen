@@ -1,9 +1,52 @@
 #if WITH_DEV_AUTOMATION_TESTS
 
 #include "Audit/HCIAbilityKitAuditReport.h"
+#include "Audit/HCIAbilityKitAuditReportJsonSerializer.h"
 #include "Audit/HCIAbilityKitAuditRuleRegistry.h"
 #include "Audit/HCIAbilityKitAuditScanService.h"
 #include "Misc/AutomationTest.h"
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FHCIAbilityKitAuditReportJsonSerializerTest,
+	"HCIAbilityKit.Editor.AuditResults.JsonSerializerIncludesCoreTraceFields",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FHCIAbilityKitAuditReportJsonSerializerTest::RunTest(const FString& Parameters)
+{
+	FHCIAbilityKitAuditReport Report;
+	Report.RunId = TEXT("audit_test_run_002");
+	Report.GeneratedUtc = FDateTime(2026, 2, 22, 13, 0, 0);
+	Report.Source = TEXT("asset_registry_fassetdata");
+
+	FHCIAbilityKitAuditResultEntry& Result = Report.Results.Emplace_GetRef();
+	Result.AssetPath = TEXT("/Game/HCI/Data/Ability_05.Ability_05");
+	Result.AssetClass = TEXT("HCIAbilityKitAsset");
+	Result.RuleId = TEXT("TriangleExpectedMismatchRule");
+	Result.Severity = EHCIAbilityKitAuditSeverity::Warn;
+	Result.SeverityText = TEXT("Warn");
+	Result.Reason = TEXT("triangle mismatch");
+	Result.Hint = TEXT("update expected");
+	Result.TriangleSource = TEXT("tag_cached");
+	Result.ScanState = TEXT("ok");
+	Result.Evidence.Add(TEXT("triangle_source"), TEXT("tag_cached"));
+	Result.Evidence.Add(TEXT("triangle_count_lod0_actual"), TEXT("196608"));
+
+	FString JsonText;
+	const bool bOk = FHCIAbilityKitAuditReportJsonSerializer::SerializeToJsonString(Report, JsonText);
+	TestTrue(TEXT("SerializeToJsonString should succeed"), bOk);
+	if (!bOk)
+	{
+		return false;
+	}
+
+	TestTrue(TEXT("JSON should contain run_id"), JsonText.Contains(TEXT("\"run_id\":\"audit_test_run_002\"")));
+	TestTrue(TEXT("JSON should contain rule_id"), JsonText.Contains(TEXT("\"rule_id\":\"TriangleExpectedMismatchRule\"")));
+	TestTrue(TEXT("JSON should contain severity"), JsonText.Contains(TEXT("\"severity\":\"Warn\"")));
+	TestTrue(TEXT("JSON should contain top-level triangle_source"), JsonText.Contains(TEXT("\"triangle_source\":\"tag_cached\"")));
+	TestTrue(TEXT("JSON should contain evidence object"), JsonText.Contains(TEXT("\"evidence\":{")));
+	TestTrue(TEXT("JSON should contain evidence triangle_count_lod0_actual"), JsonText.Contains(TEXT("\"triangle_count_lod0_actual\":\"196608\"")));
+	return true;
+}
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FHCIAbilityKitAuditSeverityStringTest,

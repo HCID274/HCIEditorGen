@@ -145,8 +145,13 @@ Scope: whole repo.
     - 已完成：`FHCIAbilityKitAuditReportBuilder` 支持将 `ScanSnapshot` 扁平化为 `results[]`（为 `C4` JSON 导出复用）。
     - 已完成：严重级别统一字符串化 `Info/Warn/Error`，扫描行日志新增 `first_issue_severity_name`。
     - 已完成：用户 UE 手测通过（同步/异步扫描正常；`1 <-> Warn` 映射一致）。
-  - 当前切片：`Stage C-SliceC4`（JSON 报告导出，含 `triangle_source` 与规则证据）。
-  - 下一切片：`Stage D-SliceD1`（深度检查批次策略与分批加载释放）。
+  - `Stage C-SliceC4` 已通过：JSON 报告导出（含 `triangle_source` 与规则证据）。
+    - 已完成：Runtime 新增 `FHCIAbilityKitAuditReportJsonSerializer`（`AuditReport -> JSON`）。
+    - 已完成：Editor 新增命令 `HCIAbilityKit.AuditExportJson [output_json_path]`。
+    - 已完成：本地 smoke 验证导出成功并落盘（`c4_local_smoke.json`，含 `triangle_source/evidence`）。
+    - 已完成：用户 UE 手测通过（无参数/指定路径导出均成功；日志含 `path/run_id/results`）。
+  - 当前切片：`Stage D-SliceD1`（深度检查批次策略与分批加载释放）。
+  - 下一切片：`Stage D-SliceD2`（GC 节流策略）。
   - D 段收尾后续主线：`Stage E`（安全执行：Dry-Run/Confirm/Transaction/SC）-> `Stage F`（NL->Plan->Executor）。
   - B3 最新状态：
     - 已完成：新增 `HCIAbilityKit.AuditScanAsync [batch_size] [log_top_n]`，按分片执行 `AssetRegistry + FAssetData` 扫描，避免单帧全量阻塞。

@@ -4,6 +4,7 @@
 #include "AssetRegistry/AssetRegistryModule.h"
 #include "Audit/HCIAbilityKitAuditScanAsyncController.h"
 #include "Audit/HCIAbilityKitAuditReport.h"
+#include "Audit/HCIAbilityKitAuditReportJsonSerializer.h"
 #include "Audit/HCIAbilityKitAuditRuleRegistry.h"
 #include "Audit/HCIAbilityKitAuditTagNames.h"
 #include "ContentBrowserMenuContexts.h"
@@ -40,6 +41,7 @@ DEFINE_LOG_CATEGORY_STATIC(LogHCIAbilityKitAuditScan, Log, All);
 static TObjectPtr<UHCIAbilityKitFactory> GHCIAbilityKitFactory;
 static TUniquePtr<FAutoConsoleCommand> GHCIAbilityKitSearchCommand;
 static TUniquePtr<FAutoConsoleCommand> GHCIAbilityKitAuditScanCommand;
+static TUniquePtr<FAutoConsoleCommand> GHCIAbilityKitAuditExportJsonCommand;
 static TUniquePtr<FAutoConsoleCommand> GHCIAbilityKitAuditScanAsyncCommand;
 static TUniquePtr<FAutoConsoleCommand> GHCIAbilityKitAuditScanProgressCommand;
 static TUniquePtr<FAutoConsoleCommand> GHCIAbilityKitAuditScanStopCommand;
@@ -85,6 +87,51 @@ static void HCI_DeleteTempFile(const FString& Filename)
 	{
 		IFileManager::Get().Delete(*Filename, false, true, true);
 	}
+}
+
+static FString HCI_GetDefaultAuditReportOutputPath(const FString& RunId)
+{
+	const FString Directory = FPaths::Combine(FPaths::ProjectSavedDir(), TEXT("HCIAbilityKit"), TEXT("AuditReports"));
+	return FPaths::Combine(Directory, FString::Printf(TEXT("%s.json"), *RunId));
+}
+
+static bool HCI_TryResolveAuditExportOutputPath(const TArray<FString>& Args, const FString& RunId, FString& OutPath, FString& OutError)
+{
+	FString CandidatePath;
+	if (Args.Num() >= 1 && !Args[0].TrimStartAndEnd().IsEmpty())
+	{
+		CandidatePath = Args[0].TrimStartAndEnd();
+		while (CandidatePath.EndsWith(TEXT(";")))
+		{
+			CandidatePath.LeftChopInline(1, EAllowShrinking::No);
+			CandidatePath = CandidatePath.TrimStartAndEnd();
+		}
+		if (FPaths::IsRelative(CandidatePath))
+		{
+			CandidatePath = FPaths::ConvertRelativePathToFull(FPaths::Combine(FPaths::ProjectDir(), CandidatePath));
+		}
+	}
+	else
+	{
+		CandidatePath = HCI_GetDefaultAuditReportOutputPath(RunId);
+	}
+
+	const FString Normalized = FPaths::ConvertRelativePathToFull(CandidatePath);
+	const FString Directory = FPaths::GetPath(Normalized);
+	if (Directory.IsEmpty())
+	{
+		OutError = TEXT("output path directory is empty");
+		return false;
+	}
+
+	if (!IFileManager::Get().MakeDirectory(*Directory, true))
+	{
+		OutError = FString::Printf(TEXT("failed to create output directory: %s"), *Directory);
+		return false;
+	}
+
+	OutPath = Normalized;
+	return true;
 }
 
 static bool HCI_TryMarkScanSkippedByState(const FAssetData& AssetData, FHCIAbilityKitAuditAssetRow& OutRow)
@@ -586,6 +633,62 @@ static void HCI_RunAbilityKitAuditScanCommand(const TArray<FString>& Args)
 	HCI_LogAuditRows(TEXT("[HCIAbilityKit][AuditScan]"), Snapshot.Rows, LogTopN);
 }
 
+static void HCI_RunAbilityKitAuditExportJsonCommand(const TArray<FString>& Args)
+{
+	const FHCIAbilityKitAuditScanSnapshot Snapshot = FHCIAbilityKitAuditScanService::Get().ScanFromAssetRegistry();
+	const FHCIAbilityKitAuditReport Report = FHCIAbilityKitAuditReportBuilder::BuildFromSnapshot(Snapshot);
+
+	FString OutputPath;
+	FString ResolveError;
+	if (!HCI_TryResolveAuditExportOutputPath(Args, Report.RunId, OutputPath, ResolveError))
+	{
+		UE_LOG(
+			LogHCIAbilityKitAuditScan,
+			Error,
+			TEXT("[HCIAbilityKit][AuditExportJson] failed reason=%s"),
+			*ResolveError);
+		return;
+	}
+
+	FString JsonText;
+	if (!FHCIAbilityKitAuditReportJsonSerializer::SerializeToJsonString(Report, JsonText))
+	{
+		UE_LOG(
+			LogHCIAbilityKitAuditScan,
+			Error,
+			TEXT("[HCIAbilityKit][AuditExportJson] failed reason=serialize_to_json_failed"));
+		return;
+	}
+
+	if (!FFileHelper::SaveStringToFile(JsonText, *OutputPath, FFileHelper::EEncodingOptions::ForceUTF8WithoutBOM))
+	{
+		UE_LOG(
+			LogHCIAbilityKitAuditScan,
+			Error,
+			TEXT("[HCIAbilityKit][AuditExportJson] failed reason=save_to_file_failed path=%s"),
+			*OutputPath);
+		return;
+	}
+
+	UE_LOG(
+		LogHCIAbilityKitAuditScan,
+		Display,
+		TEXT("[HCIAbilityKit][AuditExportJson] success path=%s run_id=%s results=%d issue_assets=%d source=%s"),
+		*OutputPath,
+		*Report.RunId,
+		Report.Results.Num(),
+		Snapshot.Stats.AssetsWithIssuesCount,
+		*Report.Source);
+
+	if (Snapshot.Rows.Num() == 0)
+	{
+		UE_LOG(
+			LogHCIAbilityKitAuditScan,
+			Warning,
+			TEXT("[HCIAbilityKit][AuditExportJson] suggestion=当前未发现 AbilityKit 资产，请先导入至少一个 .hciabilitykit 文件"));
+	}
+}
+
 static void HCI_RunAbilityKitAuditScanAsyncCommand(const TArray<FString>& Args)
 {
 	FHCIAbilityKitAuditScanAsyncState& State = GHCIAbilityKitAuditScanAsyncState;
@@ -1005,6 +1108,14 @@ void FHCIAbilityKitEditorModule::StartupModule()
 			FConsoleCommandWithArgsDelegate::CreateStatic(&HCI_RunAbilityKitAuditScanCommand));
 	}
 
+	if (!GHCIAbilityKitAuditExportJsonCommand.IsValid())
+	{
+		GHCIAbilityKitAuditExportJsonCommand = MakeUnique<FAutoConsoleCommand>(
+			TEXT("HCIAbilityKit.AuditExportJson"),
+			TEXT("Run sync audit scan and export JSON report. Usage: HCIAbilityKit.AuditExportJson [output_json_path]"),
+			FConsoleCommandWithArgsDelegate::CreateStatic(&HCI_RunAbilityKitAuditExportJsonCommand));
+	}
+
 	if (!GHCIAbilityKitAuditScanAsyncCommand.IsValid())
 	{
 		GHCIAbilityKitAuditScanAsyncCommand = MakeUnique<FAutoConsoleCommand>(
@@ -1059,6 +1170,7 @@ void FHCIAbilityKitEditorModule::ShutdownModule()
 
 	GHCIAbilityKitSearchCommand.Reset();
 	GHCIAbilityKitAuditScanCommand.Reset();
+	GHCIAbilityKitAuditExportJsonCommand.Reset();
 	GHCIAbilityKitAuditScanAsyncCommand.Reset();
 	GHCIAbilityKitAuditScanProgressCommand.Reset();
 	GHCIAbilityKitAuditScanStopCommand.Reset();

@@ -301,6 +301,12 @@ public:
   - 结果构建器：`FHCIAbilityKitAuditReportBuilder::BuildFromSnapshot(...)`，将 `ScanSnapshot.Rows[*].AuditIssues[*]` 扁平化为 `results[]`；
   - 严重级别统一字符串化：`Info/Warn/Error`（`SeverityToString`），供日志展示与下一切片 JSON 导出复用；
   - 构建器保证核心追踪证据兜底：`scan_state`，以及可用时补齐 `triangle_source/representing_mesh_path`。
+- StageC-SliceC4 实现口径（2026-02-22）：
+  - Runtime 新增 `FHCIAbilityKitAuditReportJsonSerializer::SerializeToJsonString(...)`；
+  - Editor 新增控制台命令：`HCIAbilityKit.AuditExportJson [output_json_path]`（同步扫描后直接导出）；
+  - 默认导出目录：`Saved/HCIAbilityKit/AuditReports/`；
+  - 输出结果项包含顶层 `triangle_source` 与 `evidence` 对象（保留规则证据键值对）；
+  - `ExecCmds` 场景兼容：导出命令会清洗路径参数尾部分号 `;`，避免生成错误文件名。
 
 ## 12. 索引统计契约（Step3-Slice2，历史基线）
 

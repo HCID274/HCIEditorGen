@@ -6,6 +6,7 @@
 #include "Agent/HCIAbilityKitAgentPlan.h"
 #include "Agent/HCIAbilityKitAgentPlanJsonSerializer.h"
 #include "Agent/HCIAbilityKitAgentPlanner.h"
+#include "Agent/HCIAbilityKitAgentPlanValidator.h"
 #include "Agent/HCIAbilityKitDryRunDiff.h"
 #include "Agent/HCIAbilityKitDryRunDiffJsonSerializer.h"
 #include "Agent/HCIAbilityKitToolRegistry.h"
@@ -77,6 +78,7 @@ static TUniquePtr<FAutoConsoleCommand> GHCIAbilityKitAgentRbacDemoCommand;
 static TUniquePtr<FAutoConsoleCommand> GHCIAbilityKitAgentLodSafetyDemoCommand;
 static TUniquePtr<FAutoConsoleCommand> GHCIAbilityKitAgentPlanDemoCommand;
 static TUniquePtr<FAutoConsoleCommand> GHCIAbilityKitAgentPlanDemoJsonCommand;
+static TUniquePtr<FAutoConsoleCommand> GHCIAbilityKitAgentPlanValidateDemoCommand;
 static const TCHAR* GHCIAbilityKitPythonScriptPath = TEXT("SourceData/AbilityKits/Python/hci_abilitykit_hook.py");
 
 struct FHCIAbilityKitAuditScanAsyncState
@@ -1975,6 +1977,305 @@ static void HCI_RunAbilityKitAgentPlanDemoJsonCommand(const TArray<FString>& Arg
 		*JsonText);
 }
 
+static FHCIAbilityKitAgentPlan HCI_MakeAgentPlanValidateTexturePlan(const TCHAR* RequestId)
+{
+	FHCIAbilityKitAgentPlan Plan;
+	Plan.PlanVersion = 1;
+	Plan.RequestId = RequestId;
+	Plan.Intent = TEXT("batch_fix_asset_compliance");
+
+	FHCIAbilityKitAgentPlanStep& Step = Plan.Steps.AddDefaulted_GetRef();
+	Step.StepId = TEXT("s1");
+	Step.ToolName = TEXT("SetTextureMaxSize");
+	Step.RiskLevel = EHCIAbilityKitAgentPlanRiskLevel::Write;
+	Step.bRequiresConfirm = true;
+	Step.RollbackStrategy = TEXT("all_or_nothing");
+	Step.ExpectedEvidence = {TEXT("asset_path"), TEXT("before"), TEXT("after")};
+	Step.Args = MakeShared<FJsonObject>();
+
+	TArray<TSharedPtr<FJsonValue>> AssetPaths;
+	AssetPaths.Add(MakeShared<FJsonValueString>(TEXT("/Game/Art/Trees/T_Tree_01_D.T_Tree_01_D")));
+	Step.Args->SetArrayField(TEXT("asset_paths"), AssetPaths);
+	Step.Args->SetNumberField(TEXT("max_size"), 1024);
+	return Plan;
+}
+
+static bool HCI_BuildAgentPlanValidateDemoCase(
+	const FString& CaseKey,
+	FHCIAbilityKitAgentPlan& OutPlan,
+	FHCIAbilityKitAgentPlanValidationContext& OutContext,
+	FString& OutDescription,
+	FString& OutExpectedCode,
+	FString& OutError)
+{
+	OutPlan = FHCIAbilityKitAgentPlan();
+	OutContext = FHCIAbilityKitAgentPlanValidationContext();
+	OutDescription.Reset();
+	OutExpectedCode = TEXT("-");
+	OutError.Reset();
+
+	FString RouteReason;
+	if (CaseKey.Equals(TEXT("ok_naming"), ESearchCase::IgnoreCase))
+	{
+		OutDescription = TEXT("planner_naming_valid");
+		return HCI_BuildAgentPlanDemoPlan(TEXT("整理临时目录资产，按规范命名并归档"), TEXT("req_demo_f2_ok"), OutPlan, RouteReason, OutError);
+	}
+
+	if (CaseKey.Equals(TEXT("fail_missing_tool"), ESearchCase::IgnoreCase))
+	{
+		OutDescription = TEXT("missing_tool_name");
+		OutExpectedCode = TEXT("E4001");
+		OutPlan = HCI_MakeAgentPlanValidateTexturePlan(TEXT("req_demo_f2_e4001"));
+		if (OutPlan.Steps.Num() > 0)
+		{
+			OutPlan.Steps[0].ToolName = NAME_None;
+		}
+		return true;
+	}
+
+	if (CaseKey.Equals(TEXT("fail_unknown_tool"), ESearchCase::IgnoreCase))
+	{
+		OutDescription = TEXT("unknown_tool");
+		OutExpectedCode = TEXT("E4002");
+		OutPlan = HCI_MakeAgentPlanValidateTexturePlan(TEXT("req_demo_f2_e4002"));
+		if (OutPlan.Steps.Num() > 0)
+		{
+			OutPlan.Steps[0].ToolName = TEXT("UnknownTool_X");
+		}
+		return true;
+	}
+
+	if (CaseKey.Equals(TEXT("fail_invalid_enum"), ESearchCase::IgnoreCase))
+	{
+		OutDescription = TEXT("invalid_max_size_enum");
+		OutExpectedCode = TEXT("E4009");
+		OutPlan = HCI_MakeAgentPlanValidateTexturePlan(TEXT("req_demo_f2_e4009"));
+		if (OutPlan.Steps.Num() > 0 && OutPlan.Steps[0].Args.IsValid())
+		{
+			OutPlan.Steps[0].Args->SetNumberField(TEXT("max_size"), 123);
+		}
+		return true;
+	}
+
+	if (CaseKey.Equals(TEXT("fail_over_limit"), ESearchCase::IgnoreCase))
+	{
+		OutDescription = TEXT("aggregate_modify_limit_exceeded");
+		OutExpectedCode = TEXT("E4004");
+		OutPlan = HCI_MakeAgentPlanValidateTexturePlan(TEXT("req_demo_f2_e4004"));
+		if (OutPlan.Steps.Num() > 0 && OutPlan.Steps[0].Args.IsValid())
+		{
+			TArray<TSharedPtr<FJsonValue>> AssetPathsA;
+			TArray<TSharedPtr<FJsonValue>> AssetPathsB;
+			for (int32 Index = 0; Index < 50; ++Index)
+			{
+				AssetPathsA.Add(MakeShared<FJsonValueString>(FString::Printf(TEXT("/Game/Temp/TA_%03d.TA_%03d"), Index, Index)));
+				AssetPathsB.Add(MakeShared<FJsonValueString>(FString::Printf(TEXT("/Game/Temp/TB_%03d.TB_%03d"), Index, Index)));
+			}
+			OutPlan.Steps[0].Args->SetArrayField(TEXT("asset_paths"), AssetPathsA);
+
+			FHCIAbilityKitAgentPlanStep& Step2 = OutPlan.Steps.AddDefaulted_GetRef();
+			Step2.StepId = TEXT("s2");
+			Step2.ToolName = TEXT("SetTextureMaxSize");
+			Step2.RiskLevel = EHCIAbilityKitAgentPlanRiskLevel::Write;
+			Step2.bRequiresConfirm = true;
+			Step2.RollbackStrategy = TEXT("all_or_nothing");
+			Step2.ExpectedEvidence = {TEXT("asset_path"), TEXT("before"), TEXT("after")};
+			Step2.Args = MakeShared<FJsonObject>();
+			Step2.Args->SetArrayField(TEXT("asset_paths"), AssetPathsB);
+			Step2.Args->SetNumberField(TEXT("max_size"), 1024);
+		}
+		return true;
+	}
+
+	if (CaseKey.Equals(TEXT("fail_level_scope"), ESearchCase::IgnoreCase))
+	{
+		OutDescription = TEXT("invalid_level_scope");
+		OutExpectedCode = TEXT("E4011");
+		if (!HCI_BuildAgentPlanDemoPlan(TEXT("检查当前关卡选中物体的碰撞和默认材质"), TEXT("req_demo_f2_e4011"), OutPlan, RouteReason, OutError))
+		{
+			return false;
+		}
+		if (OutPlan.Steps.Num() > 0 && OutPlan.Steps[0].Args.IsValid())
+		{
+			OutPlan.Steps[0].Args->SetStringField(TEXT("scope"), TEXT("world"));
+		}
+		return true;
+	}
+
+	if (CaseKey.Equals(TEXT("fail_naming_metadata"), ESearchCase::IgnoreCase))
+	{
+		OutDescription = TEXT("mock_metadata_insufficient");
+		OutExpectedCode = TEXT("E4012");
+		if (!HCI_BuildAgentPlanDemoPlan(TEXT("整理临时目录资产，按规范命名并归档"), TEXT("req_demo_f2_e4012"), OutPlan, RouteReason, OutError))
+		{
+			return false;
+		}
+		OutContext.MockMetadataUnavailableAssetPaths.Add(TEXT("/Game/Temp/SM_RockTemp_01.SM_RockTemp_01"));
+		return true;
+	}
+
+	OutError = FString::Printf(TEXT("unknown_case_key=%s"), *CaseKey);
+	return false;
+}
+
+static void HCI_LogAgentPlanValidationDecision(
+	const TCHAR* CaseName,
+	const FString& Description,
+	const FString& ExpectedCode,
+	const FHCIAbilityKitAgentPlanValidationResult& Result)
+{
+	const bool bExpected = ExpectedCode.IsEmpty() || ExpectedCode == TEXT("-") ? Result.bValid : Result.ErrorCode == ExpectedCode;
+	if (Result.bValid || bExpected)
+	{
+		UE_LOG(
+			LogHCIAbilityKitAuditScan,
+			Display,
+			TEXT("[HCIAbilityKit][AgentPlanValidate] case=%s request_id=%s intent=%s plan_version=%d step_count=%d valid=%s error_code=%s field=%s reason=%s validated_steps=%d write_steps=%d total_modify_targets=%d max_risk=%s expected_code=%s expected_match=%s note=%s"),
+			CaseName,
+			*Result.RequestId,
+			*Result.Intent,
+			Result.PlanVersion,
+			Result.StepCount,
+			Result.bValid ? TEXT("true") : TEXT("false"),
+			*Result.ErrorCode,
+			*Result.Field,
+			*Result.Reason,
+			Result.ValidatedStepCount,
+			Result.WriteLikeStepCount,
+			Result.TotalTargetModifyCount,
+			*Result.MaxRiskLevel,
+			*ExpectedCode,
+			bExpected ? TEXT("true") : TEXT("false"),
+			*Description);
+	}
+	else
+	{
+		UE_LOG(
+			LogHCIAbilityKitAuditScan,
+			Warning,
+			TEXT("[HCIAbilityKit][AgentPlanValidate] case=%s request_id=%s intent=%s plan_version=%d step_count=%d valid=%s error_code=%s field=%s reason=%s validated_steps=%d write_steps=%d total_modify_targets=%d max_risk=%s expected_code=%s expected_match=%s note=%s"),
+			CaseName,
+			*Result.RequestId,
+			*Result.Intent,
+			Result.PlanVersion,
+			Result.StepCount,
+			Result.bValid ? TEXT("true") : TEXT("false"),
+			*Result.ErrorCode,
+			*Result.Field,
+			*Result.Reason,
+			Result.ValidatedStepCount,
+			Result.WriteLikeStepCount,
+			Result.TotalTargetModifyCount,
+			*Result.MaxRiskLevel,
+			*ExpectedCode,
+			bExpected ? TEXT("true") : TEXT("false"),
+			*Description);
+	}
+}
+
+static void HCI_RunAbilityKitAgentPlanValidateDemoCommand(const TArray<FString>& Args)
+{
+	FHCIAbilityKitToolRegistry& Registry = FHCIAbilityKitToolRegistry::Get();
+	Registry.ResetToDefaults();
+
+	if (Args.Num() == 0)
+	{
+		const TArray<FString> Cases = {
+			TEXT("ok_naming"),
+			TEXT("fail_missing_tool"),
+			TEXT("fail_unknown_tool"),
+			TEXT("fail_invalid_enum"),
+			TEXT("fail_over_limit"),
+			TEXT("fail_level_scope"),
+			TEXT("fail_naming_metadata")};
+
+		int32 ValidCount = 0;
+		int32 InvalidCount = 0;
+		int32 ExpectedMatches = 0;
+
+		for (const FString& CaseKey : Cases)
+		{
+			FHCIAbilityKitAgentPlan Plan;
+			FHCIAbilityKitAgentPlanValidationContext Context;
+			FString Description;
+			FString ExpectedCode;
+			FString BuildError;
+			if (!HCI_BuildAgentPlanValidateDemoCase(CaseKey, Plan, Context, Description, ExpectedCode, BuildError))
+			{
+				UE_LOG(LogHCIAbilityKitAuditScan, Error, TEXT("[HCIAbilityKit][AgentPlanValidate] case=%s build_failed reason=%s"), *CaseKey, *BuildError);
+				continue;
+			}
+
+			FHCIAbilityKitAgentPlanValidationResult Result;
+			FHCIAbilityKitAgentPlanValidator::ValidatePlan(Plan, Registry, Context, Result);
+			GHCIAbilityKitAgentPlanPreviewState = Plan;
+			HCI_LogAgentPlanValidationDecision(*CaseKey, Description, ExpectedCode, Result);
+
+			if (Result.bValid)
+			{
+				++ValidCount;
+			}
+			else
+			{
+				++InvalidCount;
+			}
+
+			const bool bExpectedMatch = (ExpectedCode == TEXT("-") && Result.bValid) || (ExpectedCode != TEXT("-") && Result.ErrorCode == ExpectedCode);
+			if (bExpectedMatch)
+			{
+				++ExpectedMatches;
+			}
+		}
+
+		UE_LOG(
+			LogHCIAbilityKitAuditScan,
+			Display,
+			TEXT("[HCIAbilityKit][AgentPlanValidate] summary total_cases=%d valid=%d invalid=%d expected_matches=%d supports_checks=schema|whitelist|risk|threshold|special_cases validation=%s"),
+			Cases.Num(),
+			ValidCount,
+			InvalidCount,
+			ExpectedMatches,
+			ExpectedMatches == Cases.Num() ? TEXT("ok") : TEXT("fail"));
+		UE_LOG(
+			LogHCIAbilityKitAuditScan,
+			Display,
+			TEXT("[HCIAbilityKit][AgentPlanValidate] hint=也可运行 HCIAbilityKit.AgentPlanValidateDemo [ok_naming|fail_missing_tool|fail_unknown_tool|fail_invalid_enum|fail_over_limit|fail_level_scope|fail_naming_metadata]"));
+		return;
+	}
+
+	if (Args.Num() != 1)
+	{
+		UE_LOG(
+			LogHCIAbilityKitAuditScan,
+			Error,
+			TEXT("[HCIAbilityKit][AgentPlanValidate] invalid_args usage=HCIAbilityKit.AgentPlanValidateDemo [case_key]"));
+		return;
+	}
+
+	const FString CaseKey = Args[0].TrimStartAndEnd();
+	if (CaseKey.IsEmpty())
+	{
+		UE_LOG(LogHCIAbilityKitAuditScan, Error, TEXT("[HCIAbilityKit][AgentPlanValidate] invalid_args reason=case_key is empty"));
+		return;
+	}
+
+	FHCIAbilityKitAgentPlan Plan;
+	FHCIAbilityKitAgentPlanValidationContext Context;
+	FString Description;
+	FString ExpectedCode;
+	FString BuildError;
+	if (!HCI_BuildAgentPlanValidateDemoCase(CaseKey, Plan, Context, Description, ExpectedCode, BuildError))
+	{
+		UE_LOG(LogHCIAbilityKitAuditScan, Error, TEXT("[HCIAbilityKit][AgentPlanValidate] build_failed case=%s reason=%s"), *CaseKey, *BuildError);
+		return;
+	}
+
+	FHCIAbilityKitAgentPlanValidationResult Result;
+	FHCIAbilityKitAgentPlanValidator::ValidatePlan(Plan, Registry, Context, Result);
+	GHCIAbilityKitAgentPlanPreviewState = Plan;
+	HCI_LogAgentPlanValidationDecision(TEXT("custom"), Description, ExpectedCode, Result);
+}
+
 static void HCI_TryFillTriangleFromTagCached(
 	const FAssetData& AssetData,
 	IAssetRegistry* AssetRegistry,
@@ -3403,6 +3704,14 @@ void FHCIAbilityKitEditorModule::StartupModule()
 			TEXT("F1 NL->Plan JSON demo (print contract JSON). Usage: HCIAbilityKit.AgentPlanDemoJson [natural language text...]"),
 			FConsoleCommandWithArgsDelegate::CreateStatic(&HCI_RunAbilityKitAgentPlanDemoJsonCommand));
 	}
+
+	if (!GHCIAbilityKitAgentPlanValidateDemoCommand.IsValid())
+	{
+		GHCIAbilityKitAgentPlanValidateDemoCommand = MakeUnique<FAutoConsoleCommand>(
+			TEXT("HCIAbilityKit.AgentPlanValidateDemo"),
+			TEXT("F2 Plan validator demo. Usage: HCIAbilityKit.AgentPlanValidateDemo [case_key]"),
+			FConsoleCommandWithArgsDelegate::CreateStatic(&HCI_RunAbilityKitAgentPlanValidateDemoCommand));
+	}
 }
 
 void FHCIAbilityKitEditorModule::ShutdownModule()
@@ -3443,6 +3752,7 @@ void FHCIAbilityKitEditorModule::ShutdownModule()
 	GHCIAbilityKitAgentLodSafetyDemoCommand.Reset();
 	GHCIAbilityKitAgentPlanDemoCommand.Reset();
 	GHCIAbilityKitAgentPlanDemoJsonCommand.Reset();
+	GHCIAbilityKitAgentPlanValidateDemoCommand.Reset();
 }
 
 IMPLEMENT_MODULE(FHCIAbilityKitEditorModule, HCIAbilityKitEditor)

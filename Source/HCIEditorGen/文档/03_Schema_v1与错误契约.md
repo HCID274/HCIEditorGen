@@ -425,6 +425,35 @@ public:
   - `HCIAbilityKit.AgentPlanDemoJson [自然语言文本...]`
     - 输出序列化后的 `Plan JSON` 契约文本（用于手测字段核验）
 
+#### 14.1.2 StageF-SliceF2 落地（Plan 校验器：参数/权限/风险/阈值）
+
+- Runtime 新增 `FHCIAbilityKitAgentPlanValidator`
+  - 输入：
+    - `FHCIAbilityKitAgentPlan`
+    - `FHCIAbilityKitToolRegistry`（冻结白名单与 `args_schema`）
+    - `FHCIAbilityKitAgentPlanValidationContext`（F2 mock seam，用于模拟命名元数据不足 -> `E4012`）
+  - 输出：`FHCIAbilityKitAgentPlanValidationResult`
+    - `bValid/error_code/field/reason`
+    - `validated_steps/write_steps/total_modify_targets/max_risk`
+    - `failed_step_index/failed_step_id/failed_tool_name`
+- F2 校验范围（冻结）：
+  - 最小契约校验失败 -> `E4001`（复用 `ValidateMinimalContract`）
+  - `tool_name` 未命中白名单 -> `E4002`
+  - `risk_level` 与工具能力不一致、`requires_confirm` 与能力不一致 -> `E4003`
+  - 参数缺失/未声明字段/类型错误/边界与枚举非法：
+    - 缺失必填字段 -> `E4001`
+    - 未声明字段或枚举/边界非法 -> `E4009`
+    - 参数类型错误 -> `E4003`
+  - `ScanLevelMeshRisks` 的 `scope/checks` 非法（类型或枚举）-> `E4011`
+  - 写步骤累计修改目标数 `> MAX_ASSET_MODIFY_LIMIT(50)` -> `E4004`
+    - 注：单步 `asset_paths > 50` 会先命中 `args_schema` 上限（`E4009`）；`E4004` 用“多步累计超限”门禁验证
+  - `NormalizeAssetNamingByMetadata` 命名元数据不足（F2 mock seam）-> `E4012`
+- Editor 控制台命令（F2 手测门禁）：
+  - `HCIAbilityKit.AgentPlanValidateDemo [case_key]`
+    - 无参：输出固定案例集合（成功 + `E4001/E4002/E4004/E4009/E4011/E4012`）与摘要
+    - 有参：运行单案例（`ok_naming/fail_missing_tool/fail_unknown_tool/fail_invalid_enum/fail_over_limit/fail_level_scope/fail_naming_metadata`）
+    - 输出字段：`valid/error_code/field/reason/validated_steps/write_steps/total_modify_targets/max_risk/expected_code/expected_match`
+
 ### 14.2 Tool Registry 能力声明契约（必须做）
 
 - 最小结构：

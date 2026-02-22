@@ -64,4 +64,76 @@ bool FHCIAbilityKitAuditRuleRegistryNoIssueWhenExpectedMissingTest::RunTest(cons
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FHCIAbilityKitAuditRuleRegistryHighPolyAutoLodWarnTest,
+	"HCIAbilityKit.Editor.AuditRules.HighPolyAutoLODWarn",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FHCIAbilityKitAuditRuleRegistryHighPolyAutoLodWarnTest::RunTest(const FString& Parameters)
+{
+	FHCIAbilityKitAuditRuleRegistry& Registry = FHCIAbilityKitAuditRuleRegistry::Get();
+	Registry.ResetToDefaults();
+
+	FHCIAbilityKitAuditAssetRow Row;
+	Row.AssetPath = TEXT("/Game/HCI/Data/Ability_03.Ability_03");
+	Row.RepresentingMeshPath = TEXT("/Game/Seed/SM_Test.SM_Test");
+	Row.TriangleCountLod0Actual = 200000;
+	Row.MeshLodCount = 1;
+	Row.bMeshNaniteEnabled = false;
+	Row.bMeshNaniteEnabledKnown = true;
+
+	const FHCIAbilityKitAuditContext Context{Row};
+	TArray<FHCIAbilityKitAuditIssue> Issues;
+	Registry.Evaluate(Context, Issues);
+
+	const FHCIAbilityKitAuditIssue* Issue = Issues.FindByPredicate(
+		[](const FHCIAbilityKitAuditIssue& Candidate)
+		{
+			return Candidate.RuleId == FName(TEXT("HighPolyAutoLODRule"));
+		});
+	TestNotNull(TEXT("HighPolyAutoLODRule should emit issue when high poly and no extra LOD"), Issue);
+	if (!Issue)
+	{
+		return false;
+	}
+
+	TestEqual(TEXT("HighPolyAutoLODRule severity should be Warn"), static_cast<uint8>(Issue->Severity), static_cast<uint8>(EHCIAbilityKitAuditSeverity::Warn));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FHCIAbilityKitAuditRuleRegistryTextureNpotErrorTest,
+	"HCIAbilityKit.Editor.AuditRules.TextureNPOTError",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FHCIAbilityKitAuditRuleRegistryTextureNpotErrorTest::RunTest(const FString& Parameters)
+{
+	FHCIAbilityKitAuditRuleRegistry& Registry = FHCIAbilityKitAuditRuleRegistry::Get();
+	Registry.ResetToDefaults();
+
+	FHCIAbilityKitAuditAssetRow Row;
+	Row.AssetPath = TEXT("/Game/Textures/T_TestNPOT.T_TestNPOT");
+	Row.AssetClass = TEXT("Texture2D");
+	Row.TextureWidth = 1000;
+	Row.TextureHeight = 1024;
+
+	const FHCIAbilityKitAuditContext Context{Row};
+	TArray<FHCIAbilityKitAuditIssue> Issues;
+	Registry.Evaluate(Context, Issues);
+
+	const FHCIAbilityKitAuditIssue* Issue = Issues.FindByPredicate(
+		[](const FHCIAbilityKitAuditIssue& Candidate)
+		{
+			return Candidate.RuleId == FName(TEXT("TextureNPOTRule"));
+		});
+	TestNotNull(TEXT("TextureNPOTRule should emit issue for NPOT texture"), Issue);
+	if (!Issue)
+	{
+		return false;
+	}
+
+	TestEqual(TEXT("TextureNPOTRule severity should be Error"), static_cast<uint8>(Issue->Severity), static_cast<uint8>(EHCIAbilityKitAuditSeverity::Error));
+	return true;
+}
+
 #endif

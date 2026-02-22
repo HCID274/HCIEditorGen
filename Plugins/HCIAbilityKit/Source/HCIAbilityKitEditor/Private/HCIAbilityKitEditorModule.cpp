@@ -162,6 +162,31 @@ static void HCI_TryFillTriangleFromTagCached(
 		return;
 	}
 
+	FName MeshLodTagKey;
+	if (HCIAbilityKitAuditTagNames::TryResolveMeshLodCountFromTags(
+			[&MeshAssetData](const FName& TagName, FString& OutValue)
+			{
+				return MeshAssetData.GetTagValue(TagName, OutValue);
+			},
+			OutRow.MeshLodCount,
+			MeshLodTagKey))
+	{
+		OutRow.MeshLodCountTagKey = MeshLodTagKey.ToString();
+	}
+
+	FName MeshNaniteTagKey;
+	if (HCIAbilityKitAuditTagNames::TryResolveMeshNaniteEnabledFromTags(
+			[&MeshAssetData](const FName& TagName, FString& OutValue)
+			{
+				return MeshAssetData.GetTagValue(TagName, OutValue);
+			},
+			OutRow.bMeshNaniteEnabled,
+			MeshNaniteTagKey))
+	{
+		OutRow.bMeshNaniteEnabledKnown = true;
+		OutRow.MeshNaniteTagKey = MeshNaniteTagKey.ToString();
+	}
+
 	if (HCIAbilityKitAuditTagNames::TryResolveTriangleCountFromTags(
 			[&MeshAssetData](const FName& TagName, FString& OutValue)
 			{
@@ -185,10 +210,24 @@ static void HCI_ParseAuditRowFromAssetData(
 {
 	OutRow.AssetPath = AssetData.GetObjectPathString();
 	OutRow.AssetName = AssetData.AssetName.ToString();
+	OutRow.AssetClass = AssetData.AssetClassPath.GetAssetName().ToString();
 
 	AssetData.GetTagValue(HCIAbilityKitAuditTagNames::Id, OutRow.Id);
 	AssetData.GetTagValue(HCIAbilityKitAuditTagNames::DisplayName, OutRow.DisplayName);
 	AssetData.GetTagValue(HCIAbilityKitAuditTagNames::RepresentingMesh, OutRow.RepresentingMeshPath);
+
+	FName TextureDimensionsTagKey;
+	if (HCIAbilityKitAuditTagNames::TryResolveTextureDimensionsFromTags(
+			[&AssetData](const FName& TagName, FString& OutValue)
+			{
+				return AssetData.GetTagValue(TagName, OutValue);
+			},
+			OutRow.TextureWidth,
+			OutRow.TextureHeight,
+			TextureDimensionsTagKey))
+	{
+		OutRow.TextureDimensionsTagKey = TextureDimensionsTagKey.ToString();
+	}
 
 	FName TriangleExpectedTagKey;
 	HCIAbilityKitAuditTagNames::TryResolveTriangleExpectedFromTags(
@@ -269,16 +308,21 @@ static void HCI_LogAuditRows(const TCHAR* Prefix, const TArray<FHCIAbilityKitAud
 		UE_LOG(
 			LogHCIAbilityKitAuditScan,
 			Display,
-			TEXT("%s row=%d asset=%s id=%s display_name=%s damage=%.2f representing_mesh=%s triangle_count_lod0=%d triangle_expected_lod0=%d triangle_source=%s triangle_source_tag=%s scan_state=%s skip_reason=%s audit_issue_count=%d first_issue_rule=%s first_issue_severity=%d"),
+			TEXT("%s row=%d asset=%s class=%s id=%s display_name=%s damage=%.2f representing_mesh=%s triangle_count_lod0=%d triangle_expected_lod0=%d mesh_lods=%d mesh_nanite=%s tex_dims=%dx%d triangle_source=%s triangle_source_tag=%s scan_state=%s skip_reason=%s audit_issue_count=%d first_issue_rule=%s first_issue_severity=%d"),
 			Prefix,
 			Index,
 			*Row.AssetPath,
+			*Row.AssetClass,
 			*Row.Id,
 			*Row.DisplayName,
 			Row.Damage,
 			*Row.RepresentingMeshPath,
 			Row.TriangleCountLod0Actual,
 			Row.TriangleCountLod0ExpectedJson,
+			Row.MeshLodCount,
+			Row.bMeshNaniteEnabledKnown ? (Row.bMeshNaniteEnabled ? TEXT("true") : TEXT("false")) : TEXT("unknown"),
+			Row.TextureWidth,
+			Row.TextureHeight,
 			*Row.TriangleSource,
 			*Row.TriangleSourceTagKey,
 			*Row.ScanState,

@@ -4,6 +4,108 @@
 
 namespace
 {
+constexpr int32 GHighPolyAutoLodTriangleThreshold = 10000;
+
+class FHCIAbilityKitTextureNPOTRule final : public IHCIAbilityKitAuditRule
+{
+public:
+	virtual FName GetRuleId() const override
+	{
+		static const FName RuleId(TEXT("TextureNPOTRule"));
+		return RuleId;
+	}
+
+	virtual void Evaluate(const FHCIAbilityKitAuditContext& Context, TArray<FHCIAbilityKitAuditIssue>& OutIssues) const override
+	{
+		const FHCIAbilityKitAuditAssetRow& Row = Context.AssetRow;
+		if (Row.TextureWidth <= 0 || Row.TextureHeight <= 0)
+		{
+			return;
+		}
+
+		if (FMath::IsPowerOfTwo(Row.TextureWidth) && FMath::IsPowerOfTwo(Row.TextureHeight))
+		{
+			return;
+		}
+
+		FHCIAbilityKitAuditIssue& Issue = OutIssues.Emplace_GetRef();
+		Issue.RuleId = GetRuleId();
+		Issue.Severity = EHCIAbilityKitAuditSeverity::Error;
+		Issue.Reason = TEXT("texture dimensions are not power-of-two");
+		Issue.Hint = TEXT("Resize texture to power-of-two dimensions (for example 1024x1024) or set a justified exception in pipeline rules.");
+		Issue.AddEvidence(TEXT("asset_path"), Row.AssetPath);
+		Issue.AddEvidence(TEXT("texture_width"), FString::FromInt(Row.TextureWidth));
+		Issue.AddEvidence(TEXT("texture_height"), FString::FromInt(Row.TextureHeight));
+		if (!Row.TextureDimensionsTagKey.IsEmpty())
+		{
+			Issue.AddEvidence(TEXT("source_tag_key"), Row.TextureDimensionsTagKey);
+		}
+	}
+};
+
+class FHCIAbilityKitHighPolyAutoLODRule final : public IHCIAbilityKitAuditRule
+{
+public:
+	virtual FName GetRuleId() const override
+	{
+		static const FName RuleId(TEXT("HighPolyAutoLODRule"));
+		return RuleId;
+	}
+
+	virtual void Evaluate(const FHCIAbilityKitAuditContext& Context, TArray<FHCIAbilityKitAuditIssue>& OutIssues) const override
+	{
+		const FHCIAbilityKitAuditAssetRow& Row = Context.AssetRow;
+		if (Row.TriangleCountLod0Actual < 0 || Row.TriangleCountLod0Actual <= GHighPolyAutoLodTriangleThreshold)
+		{
+			return;
+		}
+
+		if (Row.RepresentingMeshPath.IsEmpty())
+		{
+			return;
+		}
+
+		if (Row.bMeshNaniteEnabledKnown && Row.bMeshNaniteEnabled)
+		{
+			return;
+		}
+
+		if (Row.MeshLodCount < 0)
+		{
+			return;
+		}
+
+		if (Row.MeshLodCount > 1)
+		{
+			return;
+		}
+
+		FHCIAbilityKitAuditIssue& Issue = OutIssues.Emplace_GetRef();
+		Issue.RuleId = GetRuleId();
+		Issue.Severity = EHCIAbilityKitAuditSeverity::Warn;
+		Issue.Reason = TEXT("high triangle mesh is missing additional LODs");
+		Issue.Hint = TEXT("Create LODs or plan a safe fix via SetMeshLODGroup(LevelArchitecture) in Stage E Dry-Run flow.");
+		Issue.AddEvidence(TEXT("asset_path"), Row.AssetPath);
+		Issue.AddEvidence(TEXT("representing_mesh_path"), Row.RepresentingMeshPath);
+		Issue.AddEvidence(TEXT("triangle_count_lod0_actual"), FString::FromInt(Row.TriangleCountLod0Actual));
+		Issue.AddEvidence(TEXT("triangle_threshold"), FString::FromInt(GHighPolyAutoLodTriangleThreshold));
+		Issue.AddEvidence(TEXT("mesh_lod_count"), FString::FromInt(Row.MeshLodCount));
+		Issue.AddEvidence(TEXT("suggested_lod_group"), TEXT("LevelArchitecture"));
+		if (Row.bMeshNaniteEnabledKnown)
+		{
+			Issue.AddEvidence(TEXT("mesh_nanite_enabled"), Row.bMeshNaniteEnabled ? TEXT("true") : TEXT("false"));
+		}
+		if (!Row.MeshLodCountTagKey.IsEmpty())
+		{
+			Issue.AddEvidence(TEXT("mesh_lod_tag_key"), Row.MeshLodCountTagKey);
+		}
+		if (!Row.MeshNaniteTagKey.IsEmpty())
+		{
+			Issue.AddEvidence(TEXT("mesh_nanite_tag_key"), Row.MeshNaniteTagKey);
+		}
+	}
+};
+
 class FHCIAbilityKitTriangleExpectedMismatchRule final : public IHCIAbilityKitAuditRule
 {
 public:
@@ -56,6 +158,8 @@ void FHCIAbilityKitAuditRuleRegistry::ResetToDefaults()
 	Rules.Reset();
 	RuleIndexById.Reset();
 	bDefaultsInitialized = true;
+	RegisterRule(MakeUnique<FHCIAbilityKitTextureNPOTRule>());
+	RegisterRule(MakeUnique<FHCIAbilityKitHighPolyAutoLODRule>());
 	RegisterRule(MakeUnique<FHCIAbilityKitTriangleExpectedMismatchRule>());
 }
 
@@ -150,4 +254,3 @@ void FHCIAbilityKitAuditRuleRegistry::EnsureDefaultRules() const
 
 	const_cast<FHCIAbilityKitAuditRuleRegistry*>(this)->ResetToDefaults();
 }
-

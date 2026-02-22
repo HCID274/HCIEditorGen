@@ -10,6 +10,9 @@ namespace HCIAbilityKitAuditTagNames
 	inline const FName RepresentingMesh = FName(TEXT("hci_representing_mesh"));
 	inline const FName TrianglesLod0 = FName(TEXT("hci_triangles_lod0"));
 	inline const FName TriangleExpectedLod0 = FName(TEXT("hci_triangle_expected_lod0"));
+	inline const FName MeshLods = FName(TEXT("LODs"));
+	inline const FName MeshNaniteEnabled = FName(TEXT("NaniteEnabled"));
+	inline const FName TextureDimensions = FName(TEXT("Dimensions"));
 
 	inline const TArray<FName>& GetTriangleCountTagCandidates()
 	{
@@ -30,6 +33,30 @@ namespace HCIAbilityKitAuditTagNames
 			FName(TEXT("triangle_count_lod0_expected")),
 			FName(TEXT("triangle_expected_lod0")),
 			FName(TEXT("hci_triangle_count_lod0_expected"))};
+		return CandidateTags;
+	}
+
+	inline const TArray<FName>& GetMeshLodCountTagCandidates()
+	{
+		static const TArray<FName> CandidateTags = {
+			MeshLods,
+			FName(TEXT("NumLODs"))};
+		return CandidateTags;
+	}
+
+	inline const TArray<FName>& GetMeshNaniteEnabledTagCandidates()
+	{
+		static const TArray<FName> CandidateTags = {
+			MeshNaniteEnabled,
+			FName(TEXT("bNaniteEnabled"))};
+		return CandidateTags;
+	}
+
+	inline const TArray<FName>& GetTextureDimensionsTagCandidates()
+	{
+		static const TArray<FName> CandidateTags = {
+			TextureDimensions,
+			FName(TEXT("ImportedSize"))};
 		return CandidateTags;
 	}
 
@@ -85,6 +112,59 @@ namespace HCIAbilityKitAuditTagNames
 		return false;
 	}
 
+	inline bool TryParseBoolTagValue(const FString& RawValue, bool& OutValue)
+	{
+		FString Normalized = RawValue;
+		Normalized.TrimStartAndEndInline();
+
+		if (Normalized.Equals(TEXT("True"), ESearchCase::IgnoreCase)
+			|| Normalized.Equals(TEXT("1"), ESearchCase::IgnoreCase))
+		{
+			OutValue = true;
+			return true;
+		}
+
+		if (Normalized.Equals(TEXT("False"), ESearchCase::IgnoreCase)
+			|| Normalized.Equals(TEXT("0"), ESearchCase::IgnoreCase))
+		{
+			OutValue = false;
+			return true;
+		}
+
+		return false;
+	}
+
+	inline bool TryParseTextureDimensionsTagValue(const FString& RawValue, int32& OutWidth, int32& OutHeight)
+	{
+		FString Normalized = RawValue;
+		Normalized.TrimStartAndEndInline();
+
+		int32 SeparatorIndex = INDEX_NONE;
+		if (!Normalized.FindChar(TEXT('x'), SeparatorIndex) && !Normalized.FindChar(TEXT('X'), SeparatorIndex))
+		{
+			return false;
+		}
+
+		const FString Left = Normalized.Left(SeparatorIndex).TrimStartAndEnd();
+		const FString Right = Normalized.Mid(SeparatorIndex + 1).TrimStartAndEnd();
+
+		int32 ParsedWidth = INDEX_NONE;
+		int32 ParsedHeight = INDEX_NONE;
+		if (!LexTryParseString(ParsedWidth, *Left) || !LexTryParseString(ParsedHeight, *Right))
+		{
+			return false;
+		}
+
+		if (ParsedWidth <= 0 || ParsedHeight <= 0)
+		{
+			return false;
+		}
+
+		OutWidth = ParsedWidth;
+		OutHeight = ParsedHeight;
+		return true;
+	}
+
 	template <typename TagGetterFuncType>
 	bool TryResolveTriangleCountFromTags(
 		TagGetterFuncType&& TryGetTagValue,
@@ -123,6 +203,79 @@ namespace HCIAbilityKitAuditTagNames
 			}
 
 			if (TryParseTriangleCountTagValue(RawValue, OutTriangleCountExpected))
+			{
+				OutSourceTagKey = CandidateTag;
+				return true;
+			}
+		}
+
+		return false;
+	}
+
+	template <typename TagGetterFuncType>
+	bool TryResolveMeshLodCountFromTags(
+		TagGetterFuncType&& TryGetTagValue,
+		int32& OutMeshLodCount,
+		FName& OutSourceTagKey)
+	{
+		for (const FName& CandidateTag : GetMeshLodCountTagCandidates())
+		{
+			FString RawValue;
+			if (!TryGetTagValue(CandidateTag, RawValue))
+			{
+				continue;
+			}
+
+			if (TryParseTriangleCountTagValue(RawValue, OutMeshLodCount))
+			{
+				OutSourceTagKey = CandidateTag;
+				return true;
+			}
+		}
+
+		return false;
+	}
+
+	template <typename TagGetterFuncType>
+	bool TryResolveMeshNaniteEnabledFromTags(
+		TagGetterFuncType&& TryGetTagValue,
+		bool& OutNaniteEnabled,
+		FName& OutSourceTagKey)
+	{
+		for (const FName& CandidateTag : GetMeshNaniteEnabledTagCandidates())
+		{
+			FString RawValue;
+			if (!TryGetTagValue(CandidateTag, RawValue))
+			{
+				continue;
+			}
+
+			if (TryParseBoolTagValue(RawValue, OutNaniteEnabled))
+			{
+				OutSourceTagKey = CandidateTag;
+				return true;
+			}
+		}
+
+		return false;
+	}
+
+	template <typename TagGetterFuncType>
+	bool TryResolveTextureDimensionsFromTags(
+		TagGetterFuncType&& TryGetTagValue,
+		int32& OutWidth,
+		int32& OutHeight,
+		FName& OutSourceTagKey)
+	{
+		for (const FName& CandidateTag : GetTextureDimensionsTagCandidates())
+		{
+			FString RawValue;
+			if (!TryGetTagValue(CandidateTag, RawValue))
+			{
+				continue;
+			}
+
+			if (TryParseTextureDimensionsTagValue(RawValue, OutWidth, OutHeight))
 			{
 				OutSourceTagKey = CandidateTag;
 				return true;

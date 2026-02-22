@@ -13,6 +13,22 @@
 
 namespace
 {
+void TryFillGenericAssetSignalsFromTags(const FAssetData& AssetData, FHCIAbilityKitAuditAssetRow& OutRow)
+{
+	FName TextureDimensionsTagKey;
+	if (HCIAbilityKitAuditTagNames::TryResolveTextureDimensionsFromTags(
+			[&AssetData](const FName& TagName, FString& OutValue)
+			{
+				return AssetData.GetTagValue(TagName, OutValue);
+			},
+			OutRow.TextureWidth,
+			OutRow.TextureHeight,
+			TextureDimensionsTagKey))
+	{
+		OutRow.TextureDimensionsTagKey = TextureDimensionsTagKey.ToString();
+	}
+}
+
 bool TryMarkScanSkippedByState(const FAssetData& AssetData, FHCIAbilityKitAuditAssetRow& OutRow)
 {
 	const FString PackageName = AssetData.PackageName.ToString();
@@ -83,6 +99,31 @@ void TryFillTriangleFromTagCached(
 		return;
 	}
 
+	FName MeshLodTagKey;
+	if (HCIAbilityKitAuditTagNames::TryResolveMeshLodCountFromTags(
+			[&MeshAssetData](const FName& TagName, FString& OutValue)
+			{
+				return MeshAssetData.GetTagValue(TagName, OutValue);
+			},
+			OutRow.MeshLodCount,
+			MeshLodTagKey))
+	{
+		OutRow.MeshLodCountTagKey = MeshLodTagKey.ToString();
+	}
+
+	FName MeshNaniteTagKey;
+	if (HCIAbilityKitAuditTagNames::TryResolveMeshNaniteEnabledFromTags(
+			[&MeshAssetData](const FName& TagName, FString& OutValue)
+			{
+				return MeshAssetData.GetTagValue(TagName, OutValue);
+			},
+			OutRow.bMeshNaniteEnabled,
+			MeshNaniteTagKey))
+	{
+		OutRow.bMeshNaniteEnabledKnown = true;
+		OutRow.MeshNaniteTagKey = MeshNaniteTagKey.ToString();
+	}
+
 	if (HCIAbilityKitAuditTagNames::TryResolveTriangleCountFromTags(
 			[&MeshAssetData](const FName& TagName, FString& OutValue)
 			{
@@ -103,10 +144,12 @@ void ReadAssetRowFromTags(const FAssetData& AssetData, IAssetRegistry& AssetRegi
 {
 	OutRow.AssetPath = AssetData.GetObjectPathString();
 	OutRow.AssetName = AssetData.AssetName.ToString();
+	OutRow.AssetClass = AssetData.AssetClassPath.GetAssetName().ToString();
 
 	AssetData.GetTagValue(HCIAbilityKitAuditTagNames::Id, OutRow.Id);
 	AssetData.GetTagValue(HCIAbilityKitAuditTagNames::DisplayName, OutRow.DisplayName);
 	AssetData.GetTagValue(HCIAbilityKitAuditTagNames::RepresentingMesh, OutRow.RepresentingMeshPath);
+	TryFillGenericAssetSignalsFromTags(AssetData, OutRow);
 
 	FName TriangleExpectedTagKey;
 	HCIAbilityKitAuditTagNames::TryResolveTriangleExpectedFromTags(

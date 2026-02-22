@@ -134,8 +134,14 @@ Scope: whole repo.
     - 已完成：`AuditScan/AuditScanAsync` 增加规则 issue 统计字段（`issue_assets/info/warn/error`）与行级 issue 输出。
     - 已完成：自动化测试 `HCIAbilityKit.Editor.AuditRules.TriangleExpectedMismatchWarn` 与 `...TriangleExpectedMissingShouldNotWarn`。
     - 已完成：用户 UE 手测通过（同步/异步扫描无异常，C1 新增摘要/行字段完整且 expected 缺失时不误报）。
-  - 当前切片：`Stage C-SliceC2`（首批规则：`TextureNPOTRule + HighPolyAutoLODRule`）。
-  - 下一切片：`Stage C-SliceC3`（统一审计结果结构与严重级别）。
+  - `Stage C-SliceC2` 已通过：首批规则 `TextureNPOTRule + HighPolyAutoLODRule` 落地。
+    - 已完成：默认 RuleRegistry 扩展首批规则 `TextureNPOTRule + HighPolyAutoLODRule`。
+    - 已完成：`HighPolyAutoLODRule` 使用 UE 真实 Tag（`Triangles/LODs/NaniteEnabled`）判断高面数且缺失额外 LOD。
+    - 已完成：`TextureNPOTRule` 使用 `Dimensions`（`WxH`）判定 NPOT，规则级自动化测试通过。
+    - 已完成：`AuditScan/AuditScanAsync` 行日志新增 `class/mesh_lods/mesh_nanite/tex_dims` 字段，便于 UE 手测定位规则证据。
+    - 已完成：用户 UE 手测通过（3 个高面数非 Nanite 单 LOD 样本命中 `HighPolyAutoLODRule`；摘要与行日志一致）。
+  - 当前切片：`Stage C-SliceC3`（统一审计结果结构与严重级别）。
+  - 下一切片：`Stage C-SliceC4`（JSON 报告导出，含 `triangle_source` 与规则证据）。
   - D 段收尾后续主线：`Stage E`（安全执行：Dry-Run/Confirm/Transaction/SC）-> `Stage F`（NL->Plan->Executor）。
   - B3 最新状态：
     - 已完成：新增 `HCIAbilityKit.AuditScanAsync [batch_size] [log_top_n]`，按分片执行 `AssetRegistry + FAssetData` 扫描，避免单帧全量阻塞。

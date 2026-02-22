@@ -198,6 +198,9 @@
 - 资产标签落地（Stage C1 实装）：
   - 导入时若 JSON 存在 `params.triangle_count_lod0`，写入 AssetRegistry Tag：`hci_triangle_expected_lod0`；
   - 扫描时读取该 Tag 作为 `triangle_count_lod0_expected_json` 的默认来源。
+- Stage C2 规则读取的 UE 原生标签（已实现）：
+  - `StaticMesh`：`Triangles`、`LODs`、`NaniteEnabled`
+  - `Texture2D`：`Dimensions`（格式 `WxH`）
 - 性能约束：
   - Stage B 元数据扫描禁止默认 `LoadObject`，仅验证 `representing_mesh_path` 可解析与可索引；
   - Stage D 深度提取必须批次化并记录峰值内存。

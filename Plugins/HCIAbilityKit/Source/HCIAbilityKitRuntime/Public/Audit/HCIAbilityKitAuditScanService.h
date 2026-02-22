@@ -7,6 +7,7 @@ struct HCIABILITYKITRUNTIME_API FHCIAbilityKitAuditAssetRow
 {
 	FString AssetPath;
 	FString AssetName;
+	FString AssetClass;
 	FString Id;
 	FString DisplayName;
 	float Damage = 0.0f;
@@ -15,6 +16,14 @@ struct HCIABILITYKITRUNTIME_API FHCIAbilityKitAuditAssetRow
 	int32 TriangleCountLod0ExpectedJson = INDEX_NONE;
 	FString TriangleSource;
 	FString TriangleSourceTagKey;
+	int32 MeshLodCount = INDEX_NONE;
+	FString MeshLodCountTagKey;
+	bool bMeshNaniteEnabled = false;
+	bool bMeshNaniteEnabledKnown = false;
+	FString MeshNaniteTagKey;
+	int32 TextureWidth = INDEX_NONE;
+	int32 TextureHeight = INDEX_NONE;
+	FString TextureDimensionsTagKey;
 	FString ScanState = TEXT("ok");
 	FString SkipReason;
 	TArray<FHCIAbilityKitAuditIssue> AuditIssues;

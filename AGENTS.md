@@ -174,8 +174,14 @@ Scope: whole repo.
     - 已完成：Editor 新增只读控制台命令 `HCIAbilityKit.ToolRegistryDump [tool_name]`，用于 UE 手测核验 Tool 声明与参数约束日志。
     - 已完成：自动化测试新增 `HCIAbilityKit.Editor.AgentTools.*`（3/3），且 `AuditScanAsync`（5/5）/`AuditResults`（3/3）回归通过。
     - 已完成：用户 UE 手测通过（`ToolRegistryDump` 全量/单工具命令均无 Error/Warning；汇总行 `total_registered=7 validation=ok`；白名单 7 工具齐全；`SetMeshLODGroup/SetTextureMaxSize/ScanLevelMeshRisks` 参数枚举与边界日志符合冻结口径）。
-  - 当前切片：`Stage E-SliceE2`（Dry-Run Diff 契约与 UE 面板展示）。
-  - 下一切片：`Stage E-SliceE3`（确认门禁 + 事务/SourceControl 安全前置）。
+  - `Stage E-SliceE2` 已通过：Dry-Run Diff 契约与 UE 面板展示（最小预览链路）。
+    - 已完成：Runtime 新增 `FHCIAbilityKitDryRunDiffReport/Item/Summary` 与 `FHCIAbilityKitDryRunDiffJsonSerializer`，覆盖 `request_id/summary/diff_items[]` 及扩展字段 `object_type/locate_strategy/evidence_key`。
+    - 已完成：`NormalizeAndFinalize` 自动推导定位策略（`actor -> camera_focus`, `asset -> sync_browser`）并汇总 `total_candidates/modifiable/skipped`。
+    - 已完成：Editor 新增 `HCIAbilityKit.DryRunDiffPreviewDemo`（Diff 列表预览）、`HCIAbilityKit.DryRunDiffLocate [row_index]`（定位入口）、`HCIAbilityKit.DryRunDiffPreviewJson`（契约 JSON 输出）。
+    - 已完成：自动化测试新增 `HCIAbilityKit.Editor.AgentDryRun.*`（2/2），且 `AgentTools`（3/3）/`AuditResults`（3/3）/`AuditScanAsync`（5/5）回归通过。
+    - 已完成：用户 UE 手测通过（`DryRunDiffPreviewDemo` 摘要与 `row=` 字段完整；覆盖 `asset->sync_browser` 与 `actor->camera_focus`；`DryRunDiffPreviewJson` 含核心契约字段；`DryRunDiffLocate 0/2` 输出定位策略日志，`actor_not_found` 在样例场景下可接受）。
+  - 当前切片：`Stage E-SliceE3`（确认门禁 + 事务/SourceControl 安全前置）。
+  - 下一切片：`Stage E-SliceE4`（Blast Radius 极简限流）。
   - D 段收尾后续主线：`Stage E`（安全执行：Dry-Run/Confirm/Transaction/SC）-> `Stage F`（NL->Plan->Executor）。
   - B3 最新状态：
     - 已完成：新增 `HCIAbilityKit.AuditScanAsync [batch_size] [log_top_n]`，按分片执行 `AssetRegistry + FAssetData` 扫描，避免单帧全量阻塞。

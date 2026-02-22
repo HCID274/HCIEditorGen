@@ -2,6 +2,8 @@
 
 #include "AssetRegistry/IAssetRegistry.h"
 #include "AssetRegistry/AssetRegistryModule.h"
+#include "Agent/HCIAbilityKitDryRunDiff.h"
+#include "Agent/HCIAbilityKitDryRunDiffJsonSerializer.h"
 #include "Agent/HCIAbilityKitToolRegistry.h"
 #include "Audit/HCIAbilityKitAuditPerfMetrics.h"
 #include "Audit/HCIAbilityKitAuditScanAsyncController.h"
@@ -15,7 +17,11 @@
 #include "Containers/Ticker.h"
 #include "Factories/HCIAbilityKitFactory.h"
 #include "Engine/StaticMesh.h"
+#include "Engine/World.h"
 #include "Engine/StreamableManager.h"
+#include "EngineUtils.h"
+#include "Editor.h"
+#include "GameFramework/Actor.h"
 #include "HAL/IConsoleManager.h"
 #include "HAL/FileManager.h"
 #include "HAL/PlatformMemory.h"
@@ -53,6 +59,9 @@ static TUniquePtr<FAutoConsoleCommand> GHCIAbilityKitAuditScanProgressCommand;
 static TUniquePtr<FAutoConsoleCommand> GHCIAbilityKitAuditScanStopCommand;
 static TUniquePtr<FAutoConsoleCommand> GHCIAbilityKitAuditScanRetryCommand;
 static TUniquePtr<FAutoConsoleCommand> GHCIAbilityKitToolRegistryDumpCommand;
+static TUniquePtr<FAutoConsoleCommand> GHCIAbilityKitDryRunDiffPreviewDemoCommand;
+static TUniquePtr<FAutoConsoleCommand> GHCIAbilityKitDryRunDiffPreviewLocateCommand;
+static TUniquePtr<FAutoConsoleCommand> GHCIAbilityKitDryRunDiffPreviewJsonCommand;
 static const TCHAR* GHCIAbilityKitPythonScriptPath = TEXT("SourceData/AbilityKits/Python/hci_abilitykit_hook.py");
 
 struct FHCIAbilityKitAuditScanAsyncState
@@ -83,6 +92,7 @@ struct FHCIAbilityKitAuditScanAsyncState
 };
 
 static FHCIAbilityKitAuditScanAsyncState GHCIAbilityKitAuditScanAsyncState;
+static FHCIAbilityKitDryRunDiffReport GHCIAbilityKitDryRunDiffPreviewState;
 
 static FString HCI_ToPythonStringLiteral(const FString& Value)
 {
@@ -296,6 +306,273 @@ static void HCI_RunAbilityKitToolRegistryDumpCommand(const TArray<FString>& Args
 			Warning,
 			TEXT("[HCIAbilityKit][ToolRegistry] filter_not_found tool=%s"),
 			*OptionalToolFilter);
+	}
+}
+
+static void HCI_LogDryRunDiffPreviewRows(const FHCIAbilityKitDryRunDiffReport& Report)
+{
+	for (int32 Index = 0; Index < Report.DiffItems.Num(); ++Index)
+	{
+		const FHCIAbilityKitDryRunDiffItem& Item = Report.DiffItems[Index];
+		UE_LOG(
+			LogHCIAbilityKitAuditScan,
+			Display,
+			TEXT("[HCIAbilityKit][DryRunDiff] row=%d asset_path=%s field=%s before=%s after=%s tool_name=%s risk=%s skip_reason=%s object_type=%s locate_strategy=%s evidence_key=%s actor_path=%s"),
+			Index,
+			*Item.AssetPath,
+			*Item.Field,
+			*Item.Before,
+			*Item.After,
+			*Item.ToolName,
+			*FHCIAbilityKitDryRunDiff::RiskToString(Item.Risk),
+			Item.SkipReason.IsEmpty() ? TEXT("-") : *Item.SkipReason,
+			*FHCIAbilityKitDryRunDiff::ObjectTypeToString(Item.ObjectType),
+			*FHCIAbilityKitDryRunDiff::LocateStrategyToString(Item.LocateStrategy),
+			Item.EvidenceKey.IsEmpty() ? TEXT("-") : *Item.EvidenceKey,
+			Item.ActorPath.IsEmpty() ? TEXT("-") : *Item.ActorPath);
+	}
+}
+
+static FString HCI_TryFindFirstAbilityAssetPath()
+{
+	FHCIAbilityKitAuditScanSnapshot Snapshot = FHCIAbilityKitAuditScanService::Get().ScanFromAssetRegistry();
+	for (const FHCIAbilityKitAuditAssetRow& Row : Snapshot.Rows)
+	{
+		if (!Row.AssetPath.IsEmpty())
+		{
+			return Row.AssetPath;
+		}
+	}
+	return TEXT("/Game/HCI/Data/TestSkill.TestSkill");
+}
+
+static void HCI_BuildDryRunDiffPreviewDemo(FHCIAbilityKitDryRunDiffReport& OutReport)
+{
+	OutReport = FHCIAbilityKitDryRunDiffReport();
+	OutReport.RequestId = FString::Printf(TEXT("req_dryrun_demo_%s"), *FGuid::NewGuid().ToString(EGuidFormats::Digits));
+
+	const FString FirstAbilityAssetPath = HCI_TryFindFirstAbilityAssetPath();
+
+	{
+		FHCIAbilityKitDryRunDiffItem& Item = OutReport.DiffItems.Emplace_GetRef();
+		Item.AssetPath = FirstAbilityAssetPath;
+		Item.Field = TEXT("max_texture_size");
+		Item.Before = TEXT("4096");
+		Item.After = TEXT("1024");
+		Item.ToolName = TEXT("SetTextureMaxSize");
+		Item.Risk = EHCIAbilityKitDryRunRisk::Write;
+		Item.ObjectType = EHCIAbilityKitDryRunObjectType::Asset;
+		Item.EvidenceKey = TEXT("asset_path");
+	}
+
+	{
+		FHCIAbilityKitDryRunDiffItem& Item = OutReport.DiffItems.Emplace_GetRef();
+		Item.AssetPath = FirstAbilityAssetPath;
+		Item.Field = TEXT("lod_group");
+		Item.Before = TEXT("None");
+		Item.After = TEXT("LevelArchitecture");
+		Item.ToolName = TEXT("SetMeshLODGroup");
+		Item.Risk = EHCIAbilityKitDryRunRisk::Write;
+		Item.ObjectType = EHCIAbilityKitDryRunObjectType::Asset;
+		Item.EvidenceKey = TEXT("triangle_count_lod0_actual");
+	}
+
+	{
+		FHCIAbilityKitDryRunDiffItem& Item = OutReport.DiffItems.Emplace_GetRef();
+		Item.AssetPath = TEXT("/Game/Maps/OpenWorld.OpenWorld:PersistentLevel.StaticMeshActor_1");
+		Item.ActorPath = Item.AssetPath;
+		Item.Field = TEXT("missing_collision");
+		Item.Before = TEXT("true");
+		Item.After = TEXT("would_add_collision");
+		Item.ToolName = TEXT("ScanLevelMeshRisks");
+		Item.Risk = EHCIAbilityKitDryRunRisk::ReadOnly;
+		Item.ObjectType = EHCIAbilityKitDryRunObjectType::Actor;
+		Item.EvidenceKey = TEXT("actor_path");
+	}
+
+	{
+		FHCIAbilityKitDryRunDiffItem& Item = OutReport.DiffItems.Emplace_GetRef();
+		Item.AssetPath = FirstAbilityAssetPath;
+		Item.Field = TEXT("rename_target");
+		Item.Before = TEXT("Temp_Ability_01");
+		Item.After = TEXT("SM_Ability_01");
+		Item.ToolName = TEXT("RenameAsset");
+		Item.Risk = EHCIAbilityKitDryRunRisk::Write;
+		Item.ObjectType = EHCIAbilityKitDryRunObjectType::Asset;
+		Item.SkipReason = TEXT("dry_run_only_preview");
+		Item.EvidenceKey = TEXT("asset_path");
+	}
+
+	FHCIAbilityKitDryRunDiff::NormalizeAndFinalize(OutReport);
+}
+
+static void HCI_RunAbilityKitDryRunDiffPreviewDemoCommand(const TArray<FString>& Args)
+{
+	HCI_BuildDryRunDiffPreviewDemo(GHCIAbilityKitDryRunDiffPreviewState);
+
+	const FHCIAbilityKitDryRunDiffReport& Report = GHCIAbilityKitDryRunDiffPreviewState;
+	UE_LOG(
+		LogHCIAbilityKitAuditScan,
+		Display,
+		TEXT("[HCIAbilityKit][DryRunDiff] summary request_id=%s total_candidates=%d modifiable=%d skipped=%d"),
+		*Report.RequestId,
+		Report.Summary.TotalCandidates,
+		Report.Summary.Modifiable,
+		Report.Summary.Skipped);
+	HCI_LogDryRunDiffPreviewRows(Report);
+	UE_LOG(
+		LogHCIAbilityKitAuditScan,
+		Display,
+		TEXT("[HCIAbilityKit][DryRunDiff] hint=运行 HCIAbilityKit.DryRunDiffLocate [row_index] 测试定位（actor->camera_focus, asset->sync_browser）"));
+}
+
+static void HCI_RunAbilityKitDryRunDiffPreviewJsonCommand(const TArray<FString>& Args)
+{
+	HCI_BuildDryRunDiffPreviewDemo(GHCIAbilityKitDryRunDiffPreviewState);
+
+	FString JsonText;
+	if (!FHCIAbilityKitDryRunDiffJsonSerializer::SerializeToJsonString(GHCIAbilityKitDryRunDiffPreviewState, JsonText))
+	{
+		UE_LOG(LogHCIAbilityKitAuditScan, Error, TEXT("[HCIAbilityKit][DryRunDiff] export_json_failed reason=serialize_failed"));
+		return;
+	}
+
+	UE_LOG(LogHCIAbilityKitAuditScan, Display, TEXT("[HCIAbilityKit][DryRunDiff] json=%s"), *JsonText);
+}
+
+static bool HCI_TryLocateActorByPathCameraFocus(const FString& ActorPath, FString& OutReason)
+{
+	if (!GEditor)
+	{
+		OutReason = TEXT("g_editor_unavailable");
+		return false;
+	}
+
+	UWorld* EditorWorld = GEditor->GetEditorWorldContext().World();
+	if (!EditorWorld)
+	{
+		OutReason = TEXT("editor_world_unavailable");
+		return false;
+	}
+
+	for (TActorIterator<AActor> It(EditorWorld); It; ++It)
+	{
+		AActor* Actor = *It;
+		if (!Actor)
+		{
+			continue;
+		}
+
+		if (Actor->GetPathName().Equals(ActorPath, ESearchCase::CaseSensitive))
+		{
+			GEditor->MoveViewportCamerasToActor(*Actor, false);
+			OutReason = TEXT("ok");
+			return true;
+		}
+	}
+
+	OutReason = TEXT("actor_not_found");
+	return false;
+}
+
+static bool HCI_TryLocateAssetSyncBrowser(const FString& AssetPath, FString& OutReason)
+{
+	if (!GEditor)
+	{
+		OutReason = TEXT("g_editor_unavailable");
+		return false;
+	}
+
+	FSoftObjectPath SoftPath(AssetPath);
+	UObject* Object = SoftPath.ResolveObject();
+	if (!Object)
+	{
+		Object = SoftPath.TryLoad();
+	}
+
+	if (!Object)
+	{
+		OutReason = TEXT("asset_load_failed");
+		return false;
+	}
+
+	TArray<UObject*> Objects;
+	Objects.Add(Object);
+	GEditor->SyncBrowserToObjects(Objects);
+	OutReason = TEXT("ok");
+	return true;
+}
+
+static void HCI_RunAbilityKitDryRunDiffPreviewLocateCommand(const TArray<FString>& Args)
+{
+	if (GHCIAbilityKitDryRunDiffPreviewState.DiffItems.Num() == 0)
+	{
+		UE_LOG(LogHCIAbilityKitAuditScan, Warning, TEXT("[HCIAbilityKit][DryRunDiff] locate=unavailable reason=no_preview_state"));
+		UE_LOG(LogHCIAbilityKitAuditScan, Display, TEXT("[HCIAbilityKit][DryRunDiff] suggestion=先运行 HCIAbilityKit.DryRunDiffPreviewDemo"));
+		return;
+	}
+
+	int32 RowIndex = 0;
+	if (Args.Num() >= 1)
+	{
+		if (!LexTryParseString(RowIndex, *Args[0]) || RowIndex < 0)
+		{
+			UE_LOG(LogHCIAbilityKitAuditScan, Error, TEXT("[HCIAbilityKit][DryRunDiff] locate_invalid_args reason=row_index must be integer >= 0"));
+			return;
+		}
+	}
+
+	if (!GHCIAbilityKitDryRunDiffPreviewState.DiffItems.IsValidIndex(RowIndex))
+	{
+		UE_LOG(
+			LogHCIAbilityKitAuditScan,
+			Error,
+			TEXT("[HCIAbilityKit][DryRunDiff] locate_invalid_args reason=row_index out_of_range row_index=%d total=%d"),
+			RowIndex,
+			GHCIAbilityKitDryRunDiffPreviewState.DiffItems.Num());
+		return;
+	}
+
+	const FHCIAbilityKitDryRunDiffItem& Item = GHCIAbilityKitDryRunDiffPreviewState.DiffItems[RowIndex];
+
+	FString LocateReason;
+	bool bLocateOk = false;
+	if (Item.LocateStrategy == EHCIAbilityKitDryRunLocateStrategy::CameraFocus)
+	{
+		bLocateOk = HCI_TryLocateActorByPathCameraFocus(Item.ActorPath.IsEmpty() ? Item.AssetPath : Item.ActorPath, LocateReason);
+	}
+	else
+	{
+		bLocateOk = HCI_TryLocateAssetSyncBrowser(Item.AssetPath, LocateReason);
+	}
+
+	if (bLocateOk)
+	{
+		UE_LOG(
+			LogHCIAbilityKitAuditScan,
+			Display,
+			TEXT("[HCIAbilityKit][DryRunDiff] locate row=%d strategy=%s object_type=%s success=%s reason=%s asset_path=%s actor_path=%s"),
+			RowIndex,
+			*FHCIAbilityKitDryRunDiff::LocateStrategyToString(Item.LocateStrategy),
+			*FHCIAbilityKitDryRunDiff::ObjectTypeToString(Item.ObjectType),
+			TEXT("true"),
+			*LocateReason,
+			*Item.AssetPath,
+			Item.ActorPath.IsEmpty() ? TEXT("-") : *Item.ActorPath);
+	}
+	else
+	{
+		UE_LOG(
+			LogHCIAbilityKitAuditScan,
+			Warning,
+			TEXT("[HCIAbilityKit][DryRunDiff] locate row=%d strategy=%s object_type=%s success=%s reason=%s asset_path=%s actor_path=%s"),
+			RowIndex,
+			*FHCIAbilityKitDryRunDiff::LocateStrategyToString(Item.LocateStrategy),
+			*FHCIAbilityKitDryRunDiff::ObjectTypeToString(Item.ObjectType),
+			TEXT("false"),
+			*LocateReason,
+			*Item.AssetPath,
+			Item.ActorPath.IsEmpty() ? TEXT("-") : *Item.ActorPath);
 	}
 }
 
@@ -1639,6 +1916,30 @@ void FHCIAbilityKitEditorModule::StartupModule()
 			TEXT("Dump frozen Tool Registry capability declarations. Usage: HCIAbilityKit.ToolRegistryDump [tool_name]"),
 			FConsoleCommandWithArgsDelegate::CreateStatic(&HCI_RunAbilityKitToolRegistryDumpCommand));
 	}
+
+	if (!GHCIAbilityKitDryRunDiffPreviewDemoCommand.IsValid())
+	{
+		GHCIAbilityKitDryRunDiffPreviewDemoCommand = MakeUnique<FAutoConsoleCommand>(
+			TEXT("HCIAbilityKit.DryRunDiffPreviewDemo"),
+			TEXT("Build and print a Dry-Run Diff preview list (E2 contract demo)."),
+			FConsoleCommandWithArgsDelegate::CreateStatic(&HCI_RunAbilityKitDryRunDiffPreviewDemoCommand));
+	}
+
+	if (!GHCIAbilityKitDryRunDiffPreviewLocateCommand.IsValid())
+	{
+		GHCIAbilityKitDryRunDiffPreviewLocateCommand = MakeUnique<FAutoConsoleCommand>(
+			TEXT("HCIAbilityKit.DryRunDiffLocate"),
+			TEXT("Locate a Dry-Run Diff preview row. Usage: HCIAbilityKit.DryRunDiffLocate [row_index]"),
+			FConsoleCommandWithArgsDelegate::CreateStatic(&HCI_RunAbilityKitDryRunDiffPreviewLocateCommand));
+	}
+
+	if (!GHCIAbilityKitDryRunDiffPreviewJsonCommand.IsValid())
+	{
+		GHCIAbilityKitDryRunDiffPreviewJsonCommand = MakeUnique<FAutoConsoleCommand>(
+			TEXT("HCIAbilityKit.DryRunDiffPreviewJson"),
+			TEXT("Serialize Dry-Run Diff preview demo to JSON and print it (E2 contract demo)."),
+			FConsoleCommandWithArgsDelegate::CreateStatic(&HCI_RunAbilityKitDryRunDiffPreviewJsonCommand));
+	}
 }
 
 void FHCIAbilityKitEditorModule::ShutdownModule()
@@ -1668,6 +1969,9 @@ void FHCIAbilityKitEditorModule::ShutdownModule()
 	GHCIAbilityKitAuditScanStopCommand.Reset();
 	GHCIAbilityKitAuditScanRetryCommand.Reset();
 	GHCIAbilityKitToolRegistryDumpCommand.Reset();
+	GHCIAbilityKitDryRunDiffPreviewDemoCommand.Reset();
+	GHCIAbilityKitDryRunDiffPreviewLocateCommand.Reset();
+	GHCIAbilityKitDryRunDiffPreviewJsonCommand.Reset();
 }
 
 IMPLEMENT_MODULE(FHCIAbilityKitEditorModule, HCIAbilityKitEditor)

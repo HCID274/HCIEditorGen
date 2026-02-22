@@ -512,6 +512,26 @@ public:
   - 场景中可定位的 Actor：触发 `Camera Focus`；
   - 纯资产（`Texture2D/DataAsset` 等）：调用 `GEditor->SyncBrowserToObjects` 在 Content Browser 高亮。
 
+#### 14.3.1 StageE-SliceE2 落地（最小预览链路）
+
+- Runtime 新增：
+  - `FHCIAbilityKitDryRunDiffReport / FHCIAbilityKitDryRunDiffItem / Summary`
+  - `FHCIAbilityKitDryRunDiff::NormalizeAndFinalize(...)`
+    - 自动汇总 `total_candidates/modifiable/skipped`
+    - `object_type=actor -> locate_strategy=camera_focus`
+    - `object_type=asset -> locate_strategy=sync_browser`
+    - 自动补默认 `evidence_key`（`actor_path/asset_path`）
+  - `FHCIAbilityKitDryRunDiffJsonSerializer`（输出 `request_id/summary/diff_items[]`）
+- Editor 最小 UE 展示（控制台预览版，作为面板前置门禁）：
+  - `HCIAbilityKit.DryRunDiffPreviewDemo`
+    - 输出 Diff 摘要与 `row=` 列表（包含 `asset_path/field/before/after/tool_name/risk/skip_reason/object_type/locate_strategy/evidence_key`）
+  - `HCIAbilityKit.DryRunDiffLocate [row_index]`
+    - 按 `locate_strategy` 执行定位：
+      - `camera_focus` -> 尝试定位 Actor 并聚焦
+      - `sync_browser` -> 尝试加载对象并 `SyncBrowserToObjects`
+  - `HCIAbilityKit.DryRunDiffPreviewJson`
+    - 输出序列化后的 Dry-Run Diff JSON（用于契约核验）
+
 ### 14.4 安全执行策略契约（极简冻结）
 
 - Blast Radius：

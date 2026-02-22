@@ -64,6 +64,7 @@ static TUniquePtr<FAutoConsoleCommand> GHCIAbilityKitDryRunDiffPreviewDemoComman
 static TUniquePtr<FAutoConsoleCommand> GHCIAbilityKitDryRunDiffPreviewLocateCommand;
 static TUniquePtr<FAutoConsoleCommand> GHCIAbilityKitDryRunDiffPreviewJsonCommand;
 static TUniquePtr<FAutoConsoleCommand> GHCIAbilityKitAgentConfirmGateDemoCommand;
+static TUniquePtr<FAutoConsoleCommand> GHCIAbilityKitAgentBlastRadiusDemoCommand;
 static const TCHAR* GHCIAbilityKitPythonScriptPath = TEXT("SourceData/AbilityKits/Python/hci_abilitykit_hook.py");
 
 struct FHCIAbilityKitAuditScanAsyncState
@@ -244,6 +245,15 @@ static bool HCI_TryParseBool01Arg(const FString& InValue, bool& OutValue)
 	}
 
 	return false;
+}
+
+static bool HCI_TryParseNonNegativeIntArg(const FString& InValue, int32& OutValue)
+{
+	if (!LexTryParseString(OutValue, *InValue.TrimStartAndEnd()))
+	{
+		return false;
+	}
+	return OutValue >= 0;
 }
 
 static void HCI_RunAbilityKitToolRegistryDumpCommand(const TArray<FString>& Args)
@@ -710,6 +720,121 @@ static void HCI_RunAbilityKitAgentConfirmGateDemoCommand(const TArray<FString>& 
 
 	const FHCIAbilityKitAgentExecutionDecision Decision = FHCIAbilityKitAgentExecutionGate::EvaluateConfirmGate(Step, Registry);
 	HCI_LogAgentConfirmGateDecision(TEXT("custom"), Decision);
+}
+
+static void HCI_LogAgentBlastRadiusDecision(const TCHAR* CaseName, const FHCIAbilityKitAgentBlastRadiusDecision& Decision)
+{
+	if (Decision.bAllowed)
+	{
+		UE_LOG(
+			LogHCIAbilityKitAuditScan,
+			Display,
+			TEXT("[HCIAbilityKit][AgentBlastRadius] case=%s request_id=%s tool_name=%s capability=%s write_like=%s target_modify_count=%d max_limit=%d allowed=%s error_code=%s reason=%s"),
+			CaseName,
+			Decision.RequestId.IsEmpty() ? TEXT("-") : *Decision.RequestId,
+			Decision.ToolName.IsEmpty() ? TEXT("-") : *Decision.ToolName,
+			Decision.Capability.IsEmpty() ? TEXT("-") : *Decision.Capability,
+			Decision.bWriteLike ? TEXT("true") : TEXT("false"),
+			Decision.TargetModifyCount,
+			Decision.MaxAssetModifyLimit,
+			TEXT("true"),
+			Decision.ErrorCode.IsEmpty() ? TEXT("-") : *Decision.ErrorCode,
+			Decision.Reason.IsEmpty() ? TEXT("-") : *Decision.Reason);
+		return;
+	}
+
+	UE_LOG(
+		LogHCIAbilityKitAuditScan,
+		Warning,
+		TEXT("[HCIAbilityKit][AgentBlastRadius] case=%s request_id=%s tool_name=%s capability=%s write_like=%s target_modify_count=%d max_limit=%d allowed=%s error_code=%s reason=%s"),
+		CaseName,
+		Decision.RequestId.IsEmpty() ? TEXT("-") : *Decision.RequestId,
+		Decision.ToolName.IsEmpty() ? TEXT("-") : *Decision.ToolName,
+		Decision.Capability.IsEmpty() ? TEXT("-") : *Decision.Capability,
+		Decision.bWriteLike ? TEXT("true") : TEXT("false"),
+		Decision.TargetModifyCount,
+		Decision.MaxAssetModifyLimit,
+		TEXT("false"),
+		Decision.ErrorCode.IsEmpty() ? TEXT("-") : *Decision.ErrorCode,
+		Decision.Reason.IsEmpty() ? TEXT("-") : *Decision.Reason);
+}
+
+static void HCI_RunAbilityKitAgentBlastRadiusDemoCommand(const TArray<FString>& Args)
+{
+	FHCIAbilityKitToolRegistry& Registry = FHCIAbilityKitToolRegistry::Get();
+	Registry.ResetToDefaults();
+
+	if (Args.Num() == 0)
+	{
+		int32 BlockedCount = 0;
+		int32 AllowedCount = 0;
+
+		auto RunCase = [&Registry, &BlockedCount, &AllowedCount](const TCHAR* CaseName, const TCHAR* RequestId, const TCHAR* ToolName, const int32 TargetModifyCount)
+		{
+			FHCIAbilityKitAgentBlastRadiusCheckInput Input;
+			Input.RequestId = RequestId;
+			Input.ToolName = FName(ToolName);
+			Input.TargetModifyCount = TargetModifyCount;
+
+			const FHCIAbilityKitAgentBlastRadiusDecision Decision = FHCIAbilityKitAgentExecutionGate::EvaluateBlastRadius(Input, Registry);
+			if (Decision.bAllowed)
+			{
+				++AllowedCount;
+			}
+			else
+			{
+				++BlockedCount;
+			}
+
+			HCI_LogAgentBlastRadiusDecision(CaseName, Decision);
+		};
+
+		RunCase(TEXT("read_only_large_count"), TEXT("req_demo_e4_01"), TEXT("ScanAssets"), 999);
+		RunCase(TEXT("write_at_limit"), TEXT("req_demo_e4_02"), TEXT("SetTextureMaxSize"), 50);
+		RunCase(TEXT("write_over_limit"), TEXT("req_demo_e4_03"), TEXT("RenameAsset"), 51);
+
+		UE_LOG(
+			LogHCIAbilityKitAuditScan,
+			Display,
+			TEXT("[HCIAbilityKit][AgentBlastRadius] summary total_cases=%d allowed=%d blocked=%d max_limit=%d expected_blocked_code=%s validation=ok"),
+			3,
+			AllowedCount,
+			BlockedCount,
+			FHCIAbilityKitAgentExecutionGate::MaxAssetModifyLimit,
+			TEXT("E4004"));
+		UE_LOG(
+			LogHCIAbilityKitAuditScan,
+			Display,
+			TEXT("[HCIAbilityKit][AgentBlastRadius] hint=也可运行 HCIAbilityKit.AgentBlastRadiusDemo [tool_name] [target_modify_count>=0]"));
+		return;
+	}
+
+	if (Args.Num() < 2)
+	{
+		UE_LOG(
+			LogHCIAbilityKitAuditScan,
+			Error,
+			TEXT("[HCIAbilityKit][AgentBlastRadius] invalid_args usage=HCIAbilityKit.AgentBlastRadiusDemo [tool_name] [target_modify_count>=0]"));
+		return;
+	}
+
+	int32 TargetModifyCount = 0;
+	if (!HCI_TryParseNonNegativeIntArg(Args[1], TargetModifyCount))
+	{
+		UE_LOG(
+			LogHCIAbilityKitAuditScan,
+			Error,
+			TEXT("[HCIAbilityKit][AgentBlastRadius] invalid_args reason=target_modify_count must be integer >= 0"));
+		return;
+	}
+
+	FHCIAbilityKitAgentBlastRadiusCheckInput Input;
+	Input.RequestId = TEXT("req_cli_e4");
+	Input.ToolName = FName(*Args[0].TrimStartAndEnd());
+	Input.TargetModifyCount = TargetModifyCount;
+
+	const FHCIAbilityKitAgentBlastRadiusDecision Decision = FHCIAbilityKitAgentExecutionGate::EvaluateBlastRadius(Input, Registry);
+	HCI_LogAgentBlastRadiusDecision(TEXT("custom"), Decision);
 }
 
 static void HCI_TryFillTriangleFromTagCached(
@@ -2084,6 +2209,14 @@ void FHCIAbilityKitEditorModule::StartupModule()
 			TEXT("E3 confirm-gate demo. Usage: HCIAbilityKit.AgentConfirmGateDemo [tool_name] [requires_confirm 0|1] [user_confirmed 0|1]"),
 			FConsoleCommandWithArgsDelegate::CreateStatic(&HCI_RunAbilityKitAgentConfirmGateDemoCommand));
 	}
+
+	if (!GHCIAbilityKitAgentBlastRadiusDemoCommand.IsValid())
+	{
+		GHCIAbilityKitAgentBlastRadiusDemoCommand = MakeUnique<FAutoConsoleCommand>(
+			TEXT("HCIAbilityKit.AgentBlastRadiusDemo"),
+			TEXT("E4 blast-radius demo. Usage: HCIAbilityKit.AgentBlastRadiusDemo [tool_name] [target_modify_count>=0]"),
+			FConsoleCommandWithArgsDelegate::CreateStatic(&HCI_RunAbilityKitAgentBlastRadiusDemoCommand));
+	}
 }
 
 void FHCIAbilityKitEditorModule::ShutdownModule()
@@ -2117,6 +2250,7 @@ void FHCIAbilityKitEditorModule::ShutdownModule()
 	GHCIAbilityKitDryRunDiffPreviewLocateCommand.Reset();
 	GHCIAbilityKitDryRunDiffPreviewJsonCommand.Reset();
 	GHCIAbilityKitAgentConfirmGateDemoCommand.Reset();
+	GHCIAbilityKitAgentBlastRadiusDemoCommand.Reset();
 }
 
 IMPLEMENT_MODULE(FHCIAbilityKitEditorModule, HCIAbilityKitEditor)

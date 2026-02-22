@@ -564,6 +564,25 @@ public:
   - `HCIAbilityKit.AgentConfirmGateDemo [tool_name] [requires_confirm 0|1] [user_confirmed 0|1]`
     - 用于单案例验证日志与错误码（如 `E4005`）
 
+#### 14.4.2 StageE-SliceE4 落地（Blast Radius 极简限流）
+
+- Runtime 在 `FHCIAbilityKitAgentExecutionGate` 中新增 Blast Radius 判定：
+  - 固定常量：`MAX_ASSET_MODIFY_LIMIT = 50`
+  - 输入：`request_id/tool_name/target_modify_count`
+  - 输出：`allowed/error_code/reason/capability/write_like/target_modify_count/max_limit`
+- 判定口径（一期最小实现）：
+  - `tool_name` 不在 Tool Registry 白名单：返回 `E4002`
+  - `capability=read_only`：不受 Blast Radius 限制，直接放行
+  - `capability in {write, destructive}`：
+    - `target_modify_count <= 50`：允许执行
+    - `target_modify_count > 50`：拦截并返回 `E4004`（`reason=modify_limit_exceeded`）
+- Editor UE 手测入口（控制台）：
+  - `HCIAbilityKit.AgentBlastRadiusDemo`
+    - 默认输出三案例：`read_only_large_count / write_at_limit / write_over_limit`
+    - 输出摘要：`summary total_cases=... max_limit=50 ... validation=ok`
+  - `HCIAbilityKit.AgentBlastRadiusDemo [tool_name] [target_modify_count>=0]`
+    - 用于单案例验证 `E4004` 与边界值 `50`
+
 ### 14.5 本地 Mock 权限与日志契约（极简冻结）
 
 - 权限来源：本地用户名 + 本地角色映射文件（JSON）。

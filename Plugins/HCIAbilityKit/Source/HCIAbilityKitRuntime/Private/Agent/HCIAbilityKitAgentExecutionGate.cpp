@@ -3,6 +3,7 @@
 namespace
 {
 static const TCHAR* const HCI_Error_ToolNotWhitelisted = TEXT("E4002");
+static const TCHAR* const HCI_Error_BlastRadiusExceeded = TEXT("E4004");
 static const TCHAR* const HCI_Error_WriteNotConfirmed = TEXT("E4005");
 }
 
@@ -59,3 +60,43 @@ FHCIAbilityKitAgentExecutionDecision FHCIAbilityKitAgentExecutionGate::EvaluateC
 	return Decision;
 }
 
+FHCIAbilityKitAgentBlastRadiusDecision FHCIAbilityKitAgentExecutionGate::EvaluateBlastRadius(
+	const FHCIAbilityKitAgentBlastRadiusCheckInput& Input,
+	const FHCIAbilityKitToolRegistry& Registry)
+{
+	FHCIAbilityKitAgentBlastRadiusDecision Decision;
+	Decision.bAllowed = false;
+	Decision.RequestId = Input.RequestId;
+	Decision.ToolName = Input.ToolName.ToString();
+	Decision.TargetModifyCount = Input.TargetModifyCount;
+	Decision.MaxAssetModifyLimit = MaxAssetModifyLimit;
+
+	const FHCIAbilityKitToolDescriptor* Tool = Registry.FindTool(Input.ToolName);
+	if (!Tool)
+	{
+		Decision.ErrorCode = HCI_Error_ToolNotWhitelisted;
+		Decision.Reason = TEXT("tool_not_whitelisted");
+		Decision.Capability = TEXT("unknown");
+		Decision.bWriteLike = true;
+		return Decision;
+	}
+
+	Decision.Capability = FHCIAbilityKitToolRegistry::CapabilityToString(Tool->Capability);
+	Decision.bWriteLike = IsWriteLikeCapability(Tool->Capability);
+
+	if (!Decision.bWriteLike)
+	{
+		Decision.bAllowed = true;
+		return Decision;
+	}
+
+	if (Input.TargetModifyCount > MaxAssetModifyLimit)
+	{
+		Decision.ErrorCode = HCI_Error_BlastRadiusExceeded;
+		Decision.Reason = TEXT("modify_limit_exceeded");
+		return Decision;
+	}
+
+	Decision.bAllowed = true;
+	return Decision;
+}

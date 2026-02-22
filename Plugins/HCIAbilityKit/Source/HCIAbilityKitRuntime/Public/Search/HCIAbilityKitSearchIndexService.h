@@ -32,7 +32,8 @@ public:
 
 private:
 	void Reset();
-	void RebuildStats(const FString& RefreshMode, double DurationMs);
+	void UpdateDocumentStats(const FHCIAbilitySearchDocument& Document, bool bAdd);
+	void UpdateStatsMetadata(const FString& RefreshMode, double DurationMs);
 
 	FHCIAbilitySearchIndex Index;
 	TMap<FString, FString> AssetPathToId;

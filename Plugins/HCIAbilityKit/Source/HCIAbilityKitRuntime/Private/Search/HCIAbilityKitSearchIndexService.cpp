@@ -80,10 +80,11 @@ void FHCIAbilityKitSearchIndexService::RebuildFromAssetRegistry()
 		}
 
 		AssetPathToId.Add(AssetPath, Document.Id);
+		UpdateDocumentStats(Document, true);
 	}
 
 	const double DurationMs = (FPlatformTime::Seconds() - StartTime) * 1000.0;
-	RebuildStats(TEXT("full_rebuild"), DurationMs);
+	UpdateStatsMetadata(TEXT("full_rebuild"), DurationMs);
 	UE_LOG(LogHCIAbilityKitSearchIndex, Display, TEXT("[HCIAbilityKit][SearchIndex] %s"), *Stats.ToSummaryString());
 }
 
@@ -104,6 +105,11 @@ bool FHCIAbilityKitSearchIndexService::RefreshAsset(const UHCIAbilityKitAsset* A
 	const FString* ExistingId = AssetPathToId.Find(AssetPath);
 	if (ExistingId)
 	{
+		const FHCIAbilitySearchDocument* ExistingDocument = Index.DocumentsById.Find(*ExistingId);
+		if (ExistingDocument)
+		{
+			UpdateDocumentStats(*ExistingDocument, false);
+		}
 		Index.RemoveDocumentById(*ExistingId);
 	}
 
@@ -115,8 +121,10 @@ bool FHCIAbilityKitSearchIndexService::RefreshAsset(const UHCIAbilityKitAsset* A
 	}
 
 	AssetPathToId.Add(AssetPath, Document.Id);
+	UpdateDocumentStats(Document, true);
+
 	const double DurationMs = (FPlatformTime::Seconds() - StartTime) * 1000.0;
-	RebuildStats(TEXT("incremental_refresh"), DurationMs);
+	UpdateStatsMetadata(TEXT("incremental_refresh"), DurationMs);
 
 	UE_LOG(LogHCIAbilityKitSearchIndex, Display, TEXT("[HCIAbilityKit][SearchIndex] %s"), *Stats.ToSummaryString());
 	return true;
@@ -130,9 +138,15 @@ bool FHCIAbilityKitSearchIndexService::RemoveAssetByPath(const FString& AssetPat
 		return false;
 	}
 
+	const FHCIAbilitySearchDocument* ExistingDocument = Index.DocumentsById.Find(*ExistingId);
+	if (ExistingDocument)
+	{
+		UpdateDocumentStats(*ExistingDocument, false);
+	}
+
 	const bool bRemoved = Index.RemoveDocumentById(*ExistingId);
 	AssetPathToId.Remove(AssetPath);
-	RebuildStats(TEXT("incremental_remove"), 0.0);
+	UpdateStatsMetadata(TEXT("incremental_remove"), 0.0);
 	return bRemoved;
 }
 
@@ -153,28 +167,28 @@ void FHCIAbilityKitSearchIndexService::Reset()
 	Stats = FHCIAbilitySearchIndexStats();
 }
 
-void FHCIAbilityKitSearchIndexService::RebuildStats(const FString& RefreshMode, const double DurationMs)
+void FHCIAbilityKitSearchIndexService::UpdateDocumentStats(const FHCIAbilitySearchDocument& Document, const bool bAdd)
 {
-	Stats = FHCIAbilitySearchIndexStats();
-	Stats.IndexedDocumentCount = Index.GetDocumentCount();
+	const int32 Delta = bAdd ? 1 : -1;
+	Stats.IndexedDocumentCount += Delta;
+
+	if (!Document.DisplayName.IsEmpty())
+	{
+		Stats.DisplayNameCoveredCount += Delta;
+	}
+	if (Document.UsageScenes.Num() > 0)
+	{
+		Stats.SceneCoveredCount += Delta;
+	}
+	if (Document.Tokens.Num() > 0)
+	{
+		Stats.TokenCoveredCount += Delta;
+	}
+}
+
+void FHCIAbilityKitSearchIndexService::UpdateStatsMetadata(const FString& RefreshMode, const double DurationMs)
+{
 	Stats.LastRefreshUtc = FDateTime::UtcNow();
 	Stats.LastRefreshDurationMs = DurationMs;
 	Stats.LastRefreshMode = RefreshMode;
-
-	for (const TPair<FString, FHCIAbilitySearchDocument>& Pair : Index.DocumentsById)
-	{
-		const FHCIAbilitySearchDocument& Document = Pair.Value;
-		if (!Document.DisplayName.IsEmpty())
-		{
-			++Stats.DisplayNameCoveredCount;
-		}
-		if (Document.UsageScenes.Num() > 0)
-		{
-			++Stats.SceneCoveredCount;
-		}
-		if (Document.Tokens.Num() > 0)
-		{
-			++Stats.TokenCoveredCount;
-		}
-	}
 }

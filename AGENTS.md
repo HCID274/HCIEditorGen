@@ -210,8 +210,13 @@ Scope: whole repo.
     - 已完成：新增默认 RBAC 配表 `SourceData/AbilityKits/Config/agent_rbac_mock.json`（`artist_a/ta_a/reviewer_a`）。
     - 已完成：自动化测试 `HCIAbilityKit.Editor.AgentExec` 扩展至 17/17（新增 `MockRbac*` 与 `LocalAuditLogJsonLineIncludesCoreFields`），本地通过；`AgentTools`（3/3）与 `AgentDryRun`（2/2）回归通过。
     - 已完成：用户 UE 手测通过（无参摘要命中 `total_cases=3 ... guest_fallback_cases=2 ... audit_log_appends=3 ... validation=ok`；`unknown_guest RenameAsset 1` 命中 `E4008/guest_read_only_write_blocked`；`unknown_guest ScanAssets 0` 命中 `guest_read_only_allowed`；`artist_a SetTextureMaxSize 3` 命中 `rbac_allowed`；并确认 `agent_exec_log.jsonl` 存在且字段齐全）。
-  - 当前切片：`Stage E-SliceE8`（规则级安全边界收束：LOD Nanite 拦截 / 类型校验）。
-  - 下一切片：`待 E8 通过后按主计划推进 Stage E 后续切片`。
+  - `Stage E-SliceE8` 已通过：规则级安全边界收束（LOD Nanite 拦截 / 类型校验）。
+    - 已完成：`FHCIAbilityKitAgentExecutionGate` 新增 `EvaluateLodToolSafety`，对 `SetMeshLODGroup` 执行类型校验与 Nanite 拦截（非 `StaticMesh` 或 `Nanite=true` 返回 `E4010`）。
+    - 已完成：Editor 新增 `HCIAbilityKit.AgentLodSafetyDemo [tool_name] [target_object_class] [nanite_enabled 0|1]`（默认三案例 + 自定义参数）用于 UE 手测日志验证。
+    - 已完成：自动化测试 `HCIAbilityKit.Editor.AgentExec` 扩展至 E8（新增 `LodSafetyBlocksNonStaticMeshTarget/LodSafetyBlocksNaniteMesh/LodSafetyAllowsNonNaniteStaticMesh`），本地通过；`AgentTools`（3/3）与 `AgentDryRun`（2/2）回归通过。
+    - 已完成：用户 UE 手测通过（无参摘要命中 `total_cases=3 allowed=1 blocked=2 type_blocked=1 nanite_blocked=1 expected_blocked_code=E4010 validation=ok`；`Texture2D` 类型拦截与 `Nanite` 拦截均返回 `E4010`；`UStaticMesh + nanite=false` 放行）。
+  - 当前切片：`Stage F-SliceF1`（自然语言 -> Plan JSON 契约冻结与最小落地）
+  - 下一切片：`Stage F-SliceF2`（Plan 校验器：参数完整性/权限/风险/阈值）
   - 兼容性说明（时间字符串）：对外日志/JSON 的时间值已统一改为北京时间 `+08:00` 输出；字段名（如 `updated_utc/generated_utc/timestamp_utc`）暂保持不变以兼容既有门禁与测试。
   - D 段收尾后续主线：`Stage E`（安全执行：Dry-Run/Confirm/Transaction/SC）-> `Stage F`（NL->Plan->Executor）。
   - B3 最新状态：

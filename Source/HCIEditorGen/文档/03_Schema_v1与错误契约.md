@@ -707,6 +707,25 @@ public:
 - `SetMeshLODGroup` 执行前必须 `Cast<UStaticMesh>` 成功，否则返回 `E4010`。
 - 若目标网格 `NaniteSettings.bEnabled == true`，必须拦截并返回 `E4010`（禁止修改 LODGroup）。
 - 仅当目标为 `UStaticMesh` 且 `Nanite` 关闭时，允许执行 LOD 相关写操作。
+- Runtime E8 最小判定输出（`FHCIAbilityKitAgentExecutionGate::EvaluateLodToolSafety`）：
+  - 输入：`request_id/tool_name/target_object_class/nanite_enabled`
+  - 输出：`allowed/error_code/reason/request_id/tool_name/capability/write_like/is_lod_tool/target_object_class/is_static_mesh_target/nanite_enabled`
+  - 判定口径（冻结）：
+    - `tool_name` 不在 Tool Registry 白名单：返回 `E4002`（`reason=tool_not_whitelisted`）
+    - `tool_name != SetMeshLODGroup`：旁路放行（`reason=non_lod_tool_bypass`）
+    - `target_object_class` 非 `StaticMesh`（兼容 `UStaticMesh` 归一化）：返回 `E4010`（`reason=lod_tool_requires_static_mesh`）
+    - `target_object_class=StaticMesh && nanite_enabled=true`：返回 `E4010`（`reason=lod_tool_nanite_enabled_blocked`）
+    - `target_object_class=StaticMesh && nanite_enabled=false`：允许执行（`reason=lod_tool_static_mesh_non_nanite_allowed`）
+- Editor UE 手测入口（控制台）：
+  - `HCIAbilityKit.AgentLodSafetyDemo`
+    - 默认输出三案例：`type_not_static_mesh_blocked / nanite_static_mesh_blocked / static_mesh_non_nanite_allowed`
+    - 输出摘要：`summary total_cases=... type_blocked=... nanite_blocked=... expected_blocked_code=E4010 validation=ok`
+  - `HCIAbilityKit.AgentLodSafetyDemo [tool_name] [target_object_class] [nanite_enabled 0|1]`
+    - 用于单案例验证类型拦截、Nanite 拦截与合法放行日志口径
+- 案例日志最小字段（E8）：
+  - `request_id/tool_name/capability/write_like/is_lod_tool`
+  - `target_object_class/is_static_mesh_target/nanite_enabled`
+  - `allowed/error_code/reason`
 
 ### 14.8 关卡排雷与命名溯源工具边界（必须做）
 

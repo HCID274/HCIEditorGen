@@ -488,4 +488,86 @@ bool FHCIAbilityKitAgentExecutionGateLocalAuditLogJsonLineIncludesCoreFieldsTest
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FHCIAbilityKitAgentExecutionGateLodSafetyBlocksNonStaticMeshTargetTest,
+	"HCIAbilityKit.Editor.AgentExec.LodSafetyBlocksNonStaticMeshTarget",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FHCIAbilityKitAgentExecutionGateLodSafetyBlocksNonStaticMeshTargetTest::RunTest(const FString& Parameters)
+{
+	FHCIAbilityKitToolRegistry& Registry = FHCIAbilityKitToolRegistry::Get();
+	Registry.ResetToDefaults();
+
+	FHCIAbilityKitAgentLodToolSafetyCheckInput Input;
+	Input.RequestId = TEXT("req_e8_001");
+	Input.ToolName = TEXT("SetMeshLODGroup");
+	Input.TargetObjectClass = TEXT("Texture2D");
+	Input.bNaniteEnabled = false;
+
+	const FHCIAbilityKitAgentLodToolSafetyDecision Decision =
+		FHCIAbilityKitAgentExecutionGate::EvaluateLodToolSafety(Input, Registry);
+
+	TestFalse(TEXT("SetMeshLODGroup must reject non-StaticMesh target"), Decision.bAllowed);
+	TestEqual(TEXT("Type violation should return E4010"), Decision.ErrorCode, FString(TEXT("E4010")));
+	TestEqual(TEXT("Type violation reason should be stable"), Decision.Reason, FString(TEXT("lod_tool_requires_static_mesh")));
+	TestFalse(TEXT("Target should not be classified as StaticMesh"), Decision.bStaticMeshTarget);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FHCIAbilityKitAgentExecutionGateLodSafetyBlocksNaniteMeshTest,
+	"HCIAbilityKit.Editor.AgentExec.LodSafetyBlocksNaniteMesh",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FHCIAbilityKitAgentExecutionGateLodSafetyBlocksNaniteMeshTest::RunTest(const FString& Parameters)
+{
+	FHCIAbilityKitToolRegistry& Registry = FHCIAbilityKitToolRegistry::Get();
+	Registry.ResetToDefaults();
+
+	FHCIAbilityKitAgentLodToolSafetyCheckInput Input;
+	Input.RequestId = TEXT("req_e8_002");
+	Input.ToolName = TEXT("SetMeshLODGroup");
+	Input.TargetObjectClass = TEXT("StaticMesh");
+	Input.bNaniteEnabled = true;
+
+	const FHCIAbilityKitAgentLodToolSafetyDecision Decision =
+		FHCIAbilityKitAgentExecutionGate::EvaluateLodToolSafety(Input, Registry);
+
+	TestFalse(TEXT("SetMeshLODGroup must reject Nanite-enabled StaticMesh"), Decision.bAllowed);
+	TestEqual(TEXT("Nanite violation should return E4010"), Decision.ErrorCode, FString(TEXT("E4010")));
+	TestEqual(TEXT("Nanite violation reason should be stable"), Decision.Reason, FString(TEXT("lod_tool_nanite_enabled_blocked")));
+	TestTrue(TEXT("StaticMesh target flag should be set"), Decision.bStaticMeshTarget);
+	TestTrue(TEXT("Nanite flag should be preserved"), Decision.bNaniteEnabled);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FHCIAbilityKitAgentExecutionGateLodSafetyAllowsNonNaniteStaticMeshTest,
+	"HCIAbilityKit.Editor.AgentExec.LodSafetyAllowsNonNaniteStaticMesh",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FHCIAbilityKitAgentExecutionGateLodSafetyAllowsNonNaniteStaticMeshTest::RunTest(const FString& Parameters)
+{
+	FHCIAbilityKitToolRegistry& Registry = FHCIAbilityKitToolRegistry::Get();
+	Registry.ResetToDefaults();
+
+	FHCIAbilityKitAgentLodToolSafetyCheckInput Input;
+	Input.RequestId = TEXT("req_e8_003");
+	Input.ToolName = TEXT("SetMeshLODGroup");
+	Input.TargetObjectClass = TEXT("UStaticMesh");
+	Input.bNaniteEnabled = false;
+
+	const FHCIAbilityKitAgentLodToolSafetyDecision Decision =
+		FHCIAbilityKitAgentExecutionGate::EvaluateLodToolSafety(Input, Registry);
+
+	TestTrue(TEXT("SetMeshLODGroup should allow non-Nanite StaticMesh"), Decision.bAllowed);
+	TestEqual(TEXT("Capability should remain write"), Decision.Capability, FString(TEXT("write")));
+	TestTrue(TEXT("StaticMesh target detection should accept UStaticMesh"), Decision.bStaticMeshTarget);
+	TestEqual(TEXT("Allow reason should be stable"), Decision.Reason, FString(TEXT("lod_tool_static_mesh_non_nanite_allowed")));
+
+	return true;
+}
+
 #endif

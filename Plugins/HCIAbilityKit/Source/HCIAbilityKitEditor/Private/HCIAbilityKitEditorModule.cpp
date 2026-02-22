@@ -70,6 +70,7 @@ static TUniquePtr<FAutoConsoleCommand> GHCIAbilityKitAgentBlastRadiusDemoCommand
 static TUniquePtr<FAutoConsoleCommand> GHCIAbilityKitAgentTransactionDemoCommand;
 static TUniquePtr<FAutoConsoleCommand> GHCIAbilityKitAgentSourceControlDemoCommand;
 static TUniquePtr<FAutoConsoleCommand> GHCIAbilityKitAgentRbacDemoCommand;
+static TUniquePtr<FAutoConsoleCommand> GHCIAbilityKitAgentLodSafetyDemoCommand;
 static const TCHAR* GHCIAbilityKitPythonScriptPath = TEXT("SourceData/AbilityKits/Python/hci_abilitykit_hook.py");
 
 struct FHCIAbilityKitAuditScanAsyncState
@@ -1606,6 +1607,154 @@ static void HCI_RunAbilityKitAgentRbacDemoCommand(const TArray<FString>& Args)
 	RunCase(TEXT("custom"), TEXT("req_cli_e7"), UserName, *ToolName, AssetCount);
 }
 
+static void HCI_LogAgentLodSafetyDecision(const TCHAR* CaseName, const FHCIAbilityKitAgentLodToolSafetyDecision& Decision)
+{
+	const bool bUseWarning = !Decision.bAllowed;
+	if (!bUseWarning)
+	{
+		UE_LOG(
+			LogHCIAbilityKitAuditScan,
+			Display,
+			TEXT("[HCIAbilityKit][AgentLodSafety] case=%s request_id=%s tool_name=%s capability=%s write_like=%s is_lod_tool=%s target_object_class=%s is_static_mesh_target=%s nanite_enabled=%s allowed=%s error_code=%s reason=%s"),
+			CaseName,
+			Decision.RequestId.IsEmpty() ? TEXT("-") : *Decision.RequestId,
+			Decision.ToolName.IsEmpty() ? TEXT("-") : *Decision.ToolName,
+			Decision.Capability.IsEmpty() ? TEXT("-") : *Decision.Capability,
+			Decision.bWriteLike ? TEXT("true") : TEXT("false"),
+			Decision.bLodTool ? TEXT("true") : TEXT("false"),
+			Decision.TargetObjectClass.IsEmpty() ? TEXT("-") : *Decision.TargetObjectClass,
+			Decision.bStaticMeshTarget ? TEXT("true") : TEXT("false"),
+			Decision.bNaniteEnabled ? TEXT("true") : TEXT("false"),
+			TEXT("true"),
+			Decision.ErrorCode.IsEmpty() ? TEXT("-") : *Decision.ErrorCode,
+			Decision.Reason.IsEmpty() ? TEXT("-") : *Decision.Reason);
+		return;
+	}
+
+	UE_LOG(
+		LogHCIAbilityKitAuditScan,
+		Warning,
+		TEXT("[HCIAbilityKit][AgentLodSafety] case=%s request_id=%s tool_name=%s capability=%s write_like=%s is_lod_tool=%s target_object_class=%s is_static_mesh_target=%s nanite_enabled=%s allowed=%s error_code=%s reason=%s"),
+		CaseName,
+		Decision.RequestId.IsEmpty() ? TEXT("-") : *Decision.RequestId,
+		Decision.ToolName.IsEmpty() ? TEXT("-") : *Decision.ToolName,
+		Decision.Capability.IsEmpty() ? TEXT("-") : *Decision.Capability,
+		Decision.bWriteLike ? TEXT("true") : TEXT("false"),
+		Decision.bLodTool ? TEXT("true") : TEXT("false"),
+		Decision.TargetObjectClass.IsEmpty() ? TEXT("-") : *Decision.TargetObjectClass,
+		Decision.bStaticMeshTarget ? TEXT("true") : TEXT("false"),
+		Decision.bNaniteEnabled ? TEXT("true") : TEXT("false"),
+		TEXT("false"),
+		Decision.ErrorCode.IsEmpty() ? TEXT("-") : *Decision.ErrorCode,
+		Decision.Reason.IsEmpty() ? TEXT("-") : *Decision.Reason);
+}
+
+static void HCI_RunAbilityKitAgentLodSafetyDemoCommand(const TArray<FString>& Args)
+{
+	FHCIAbilityKitToolRegistry& Registry = FHCIAbilityKitToolRegistry::Get();
+	Registry.ResetToDefaults();
+
+	auto BuildInput = [](const TCHAR* RequestId, const TCHAR* ToolName, const TCHAR* TargetObjectClass, const bool bNaniteEnabled)
+	{
+		FHCIAbilityKitAgentLodToolSafetyCheckInput Input;
+		Input.RequestId = RequestId;
+		Input.ToolName = FName(ToolName);
+		Input.TargetObjectClass = TargetObjectClass;
+		Input.bNaniteEnabled = bNaniteEnabled;
+		return Input;
+	};
+
+	if (Args.Num() == 0)
+	{
+		int32 AllowedCount = 0;
+		int32 BlockedCount = 0;
+		int32 TypeBlockedCount = 0;
+		int32 NaniteBlockedCount = 0;
+
+		auto RunCase = [&Registry, &AllowedCount, &BlockedCount, &TypeBlockedCount, &NaniteBlockedCount](
+						   const TCHAR* CaseName,
+						   const FHCIAbilityKitAgentLodToolSafetyCheckInput& Input)
+		{
+			const FHCIAbilityKitAgentLodToolSafetyDecision Decision =
+				FHCIAbilityKitAgentExecutionGate::EvaluateLodToolSafety(Input, Registry);
+			if (Decision.bAllowed)
+			{
+				++AllowedCount;
+			}
+			else
+			{
+				++BlockedCount;
+				if (Decision.Reason == TEXT("lod_tool_requires_static_mesh"))
+				{
+					++TypeBlockedCount;
+				}
+				else if (Decision.Reason == TEXT("lod_tool_nanite_enabled_blocked"))
+				{
+					++NaniteBlockedCount;
+				}
+			}
+
+			HCI_LogAgentLodSafetyDecision(CaseName, Decision);
+		};
+
+		RunCase(TEXT("type_not_static_mesh_blocked"), BuildInput(TEXT("req_demo_e8_01"), TEXT("SetMeshLODGroup"), TEXT("Texture2D"), false));
+		RunCase(TEXT("nanite_static_mesh_blocked"), BuildInput(TEXT("req_demo_e8_02"), TEXT("SetMeshLODGroup"), TEXT("StaticMesh"), true));
+		RunCase(TEXT("static_mesh_non_nanite_allowed"), BuildInput(TEXT("req_demo_e8_03"), TEXT("SetMeshLODGroup"), TEXT("UStaticMesh"), false));
+
+		UE_LOG(
+			LogHCIAbilityKitAuditScan,
+			Display,
+			TEXT("[HCIAbilityKit][AgentLodSafety] summary total_cases=%d allowed=%d blocked=%d type_blocked=%d nanite_blocked=%d expected_blocked_code=%s validation=ok"),
+			3,
+			AllowedCount,
+			BlockedCount,
+			TypeBlockedCount,
+			NaniteBlockedCount,
+			TEXT("E4010"));
+		UE_LOG(
+			LogHCIAbilityKitAuditScan,
+			Display,
+			TEXT("[HCIAbilityKit][AgentLodSafety] hint=也可运行 HCIAbilityKit.AgentLodSafetyDemo [tool_name] [target_object_class] [nanite_enabled 0|1]"));
+		return;
+	}
+
+	if (Args.Num() < 3)
+	{
+		UE_LOG(
+			LogHCIAbilityKitAuditScan,
+			Error,
+			TEXT("[HCIAbilityKit][AgentLodSafety] invalid_args usage=HCIAbilityKit.AgentLodSafetyDemo [tool_name] [target_object_class] [nanite_enabled 0|1]"));
+		return;
+	}
+
+	bool bNaniteEnabled = false;
+	if (!HCI_TryParseBool01Arg(Args[2], bNaniteEnabled))
+	{
+		UE_LOG(
+			LogHCIAbilityKitAuditScan,
+			Error,
+			TEXT("[HCIAbilityKit][AgentLodSafety] invalid_args reason=nanite_enabled must be 0 or 1"));
+		return;
+	}
+
+	const FString ToolName = Args[0].TrimStartAndEnd();
+	const FString TargetObjectClass = Args[1].TrimStartAndEnd();
+	if (ToolName.IsEmpty() || TargetObjectClass.IsEmpty())
+	{
+		UE_LOG(
+			LogHCIAbilityKitAuditScan,
+			Error,
+			TEXT("[HCIAbilityKit][AgentLodSafety] invalid_args reason=tool_name and target_object_class must be non-empty"));
+		return;
+	}
+
+	const FHCIAbilityKitAgentLodToolSafetyDecision Decision =
+		FHCIAbilityKitAgentExecutionGate::EvaluateLodToolSafety(
+			BuildInput(TEXT("req_cli_e8"), *ToolName, *TargetObjectClass, bNaniteEnabled),
+			Registry);
+	HCI_LogAgentLodSafetyDecision(TEXT("custom"), Decision);
+}
+
 static void HCI_TryFillTriangleFromTagCached(
 	const FAssetData& AssetData,
 	IAssetRegistry* AssetRegistry,
@@ -3010,6 +3159,14 @@ void FHCIAbilityKitEditorModule::StartupModule()
 			TEXT("E7 local mock RBAC + local audit log demo. Usage: HCIAbilityKit.AgentRbacDemo [user_name] [tool_name] [asset_count>=0]"),
 			FConsoleCommandWithArgsDelegate::CreateStatic(&HCI_RunAbilityKitAgentRbacDemoCommand));
 	}
+
+	if (!GHCIAbilityKitAgentLodSafetyDemoCommand.IsValid())
+	{
+		GHCIAbilityKitAgentLodSafetyDemoCommand = MakeUnique<FAutoConsoleCommand>(
+			TEXT("HCIAbilityKit.AgentLodSafetyDemo"),
+			TEXT("E8 LOD tool safety boundary demo. Usage: HCIAbilityKit.AgentLodSafetyDemo [tool_name] [target_object_class] [nanite_enabled 0|1]"),
+			FConsoleCommandWithArgsDelegate::CreateStatic(&HCI_RunAbilityKitAgentLodSafetyDemoCommand));
+	}
 }
 
 void FHCIAbilityKitEditorModule::ShutdownModule()
@@ -3047,6 +3204,7 @@ void FHCIAbilityKitEditorModule::ShutdownModule()
 	GHCIAbilityKitAgentTransactionDemoCommand.Reset();
 	GHCIAbilityKitAgentSourceControlDemoCommand.Reset();
 	GHCIAbilityKitAgentRbacDemoCommand.Reset();
+	GHCIAbilityKitAgentLodSafetyDemoCommand.Reset();
 }
 
 IMPLEMENT_MODULE(FHCIAbilityKitEditorModule, HCIAbilityKitEditor)

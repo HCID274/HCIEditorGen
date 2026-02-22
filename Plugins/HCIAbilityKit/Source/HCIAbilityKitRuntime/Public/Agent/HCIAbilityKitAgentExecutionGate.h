@@ -145,6 +145,30 @@ struct HCIABILITYKITRUNTIME_API FHCIAbilityKitAgentLocalAuditLogRecord
 	FString Reason;
 };
 
+struct HCIABILITYKITRUNTIME_API FHCIAbilityKitAgentLodToolSafetyCheckInput
+{
+	FString RequestId;
+	FName ToolName;
+	FString TargetObjectClass;
+	bool bNaniteEnabled = false;
+};
+
+struct HCIABILITYKITRUNTIME_API FHCIAbilityKitAgentLodToolSafetyDecision
+{
+	bool bAllowed = false;
+	FString ErrorCode;
+	FString Reason;
+
+	FString RequestId;
+	FString ToolName;
+	FString Capability;
+	bool bWriteLike = false;
+	bool bLodTool = false;
+	FString TargetObjectClass;
+	bool bStaticMeshTarget = false;
+	bool bNaniteEnabled = false;
+};
+
 class HCIABILITYKITRUNTIME_API FHCIAbilityKitAgentExecutionGate
 {
 public:
@@ -168,6 +192,10 @@ public:
 
 	static FHCIAbilityKitAgentMockRbacDecision EvaluateMockRbac(
 		const FHCIAbilityKitAgentMockRbacCheckInput& Input,
+		const FHCIAbilityKitToolRegistry& Registry);
+
+	static FHCIAbilityKitAgentLodToolSafetyDecision EvaluateLodToolSafety(
+		const FHCIAbilityKitAgentLodToolSafetyCheckInput& Input,
 		const FHCIAbilityKitToolRegistry& Registry);
 
 	static bool SerializeLocalAuditLogRecordToJsonLine(

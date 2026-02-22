@@ -12,6 +12,7 @@ static const TCHAR* const HCI_Error_WriteNotConfirmed = TEXT("E4005");
 static const TCHAR* const HCI_Error_SourceControlCheckoutFailed = TEXT("E4006");
 static const TCHAR* const HCI_Error_TransactionRolledBack = TEXT("E4007");
 static const TCHAR* const HCI_Error_RbacDenied = TEXT("E4008");
+static const TCHAR* const HCI_Error_LodToolSafetyViolation = TEXT("E4010");
 
 static bool HCI_ContainsCapabilityIgnoreCase(const TArray<FString>& AllowedCapabilities, const FString& Capability)
 {
@@ -23,6 +24,16 @@ static bool HCI_ContainsCapabilityIgnoreCase(const TArray<FString>& AllowedCapab
 		}
 	}
 	return false;
+}
+
+static FString HCI_NormalizeObjectClassForSafetyCheck(const FString& InClassName)
+{
+	FString Normalized = InClassName.TrimStartAndEnd();
+	if (Normalized.StartsWith(TEXT("U")) && Normalized.Len() > 1)
+	{
+		Normalized = Normalized.RightChop(1);
+	}
+	return Normalized;
 }
 }
 
@@ -276,6 +287,59 @@ FHCIAbilityKitAgentMockRbacDecision FHCIAbilityKitAgentExecutionGate::EvaluateMo
 	{
 		Decision.Reason = TEXT("capability_not_allowed_by_role");
 	}
+	return Decision;
+}
+
+FHCIAbilityKitAgentLodToolSafetyDecision FHCIAbilityKitAgentExecutionGate::EvaluateLodToolSafety(
+	const FHCIAbilityKitAgentLodToolSafetyCheckInput& Input,
+	const FHCIAbilityKitToolRegistry& Registry)
+{
+	FHCIAbilityKitAgentLodToolSafetyDecision Decision;
+	Decision.RequestId = Input.RequestId;
+	Decision.ToolName = Input.ToolName.ToString();
+	Decision.TargetObjectClass = Input.TargetObjectClass.TrimStartAndEnd();
+	Decision.bNaniteEnabled = Input.bNaniteEnabled;
+	Decision.bLodTool = Input.ToolName == TEXT("SetMeshLODGroup");
+
+	const FHCIAbilityKitToolDescriptor* Tool = Registry.FindTool(Input.ToolName);
+	if (Tool == nullptr)
+	{
+		Decision.ErrorCode = HCI_Error_ToolNotWhitelisted;
+		Decision.Reason = TEXT("tool_not_whitelisted");
+		Decision.Capability = TEXT("unknown");
+		Decision.bWriteLike = true;
+		return Decision;
+	}
+
+	Decision.Capability = FHCIAbilityKitToolRegistry::CapabilityToString(Tool->Capability);
+	Decision.bWriteLike = IsWriteLikeCapability(Tool->Capability);
+
+	if (!Decision.bLodTool)
+	{
+		Decision.bAllowed = true;
+		Decision.Reason = TEXT("non_lod_tool_bypass");
+		return Decision;
+	}
+
+	const FString NormalizedTargetClass = HCI_NormalizeObjectClassForSafetyCheck(Decision.TargetObjectClass);
+	Decision.bStaticMeshTarget = NormalizedTargetClass.Equals(TEXT("StaticMesh"), ESearchCase::IgnoreCase);
+
+	if (!Decision.bStaticMeshTarget)
+	{
+		Decision.ErrorCode = HCI_Error_LodToolSafetyViolation;
+		Decision.Reason = TEXT("lod_tool_requires_static_mesh");
+		return Decision;
+	}
+
+	if (Decision.bNaniteEnabled)
+	{
+		Decision.ErrorCode = HCI_Error_LodToolSafetyViolation;
+		Decision.Reason = TEXT("lod_tool_nanite_enabled_blocked");
+		return Decision;
+	}
+
+	Decision.bAllowed = true;
+	Decision.Reason = TEXT("lod_tool_static_mesh_non_nanite_allowed");
 	return Decision;
 }
 

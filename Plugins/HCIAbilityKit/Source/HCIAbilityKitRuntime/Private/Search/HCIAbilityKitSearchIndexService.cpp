@@ -102,26 +102,82 @@ bool FHCIAbilityKitSearchIndexService::RefreshAsset(const UHCIAbilityKitAsset* A
 		return false;
 	}
 
-	const FString* ExistingId = AssetPathToId.Find(AssetPath);
-	if (ExistingId)
-	{
-		const FHCIAbilitySearchDocument* ExistingDocument = Index.DocumentsById.Find(*ExistingId);
-		if (ExistingDocument)
-		{
-			UpdateDocumentStats(*ExistingDocument, false);
-		}
-		Index.RemoveDocumentById(*ExistingId);
-	}
-
 	const FHCIAbilityKitParsedData ParsedData = BuildParsedDataFromAsset(Asset);
-	const FHCIAbilitySearchDocument Document = FHCIAbilitySearchSchema::BuildDocument(ParsedData, AssetPath);
-	if (!Index.AddDocument(Document))
+	const FHCIAbilitySearchDocument NewDocument = FHCIAbilitySearchSchema::BuildDocument(ParsedData, AssetPath);
+	if (!NewDocument.IsValid())
 	{
 		return false;
 	}
 
-	AssetPathToId.Add(AssetPath, Document.Id);
-	UpdateDocumentStats(Document, true);
+	bool bHadExistingDocument = false;
+	FString ExistingId;
+	FHCIAbilitySearchDocument ExistingDocument;
+	if (const FString* ExistingIdPtr = AssetPathToId.Find(AssetPath))
+	{
+		ExistingId = *ExistingIdPtr;
+		const FHCIAbilitySearchDocument* ExistingDocumentPtr = Index.DocumentsById.Find(ExistingId);
+		if (!ExistingDocumentPtr)
+		{
+			UE_LOG(
+				LogHCIAbilityKitSearchIndex,
+				Error,
+				TEXT("RefreshAsset aborted: AssetPathToId stale mapping detected path=%s id=%s"),
+				*AssetPath,
+				*ExistingId);
+			return false;
+		}
+		ExistingDocument = *ExistingDocumentPtr;
+		bHadExistingDocument = true;
+	}
+
+	if (const FHCIAbilitySearchDocument* ConflictingDocument = Index.DocumentsById.Find(NewDocument.Id))
+	{
+		const bool bSelfReplacement = bHadExistingDocument && ConflictingDocument->AssetPath == AssetPath;
+		if (!bSelfReplacement)
+		{
+			return false;
+		}
+	}
+
+	bool bRemovedExisting = false;
+	if (bHadExistingDocument)
+	{
+		bRemovedExisting = Index.RemoveDocumentById(ExistingId);
+		if (!bRemovedExisting)
+		{
+			UE_LOG(
+				LogHCIAbilityKitSearchIndex,
+				Error,
+				TEXT("RefreshAsset aborted: failed to remove existing document path=%s id=%s"),
+				*AssetPath,
+				*ExistingId);
+			return false;
+		}
+		UpdateDocumentStats(ExistingDocument, false);
+	}
+
+	if (!Index.AddDocument(NewDocument))
+	{
+		// Roll back to pre-refresh state if commit failed after removing the old document.
+		if (bRemovedExisting && Index.AddDocument(ExistingDocument))
+		{
+			UpdateDocumentStats(ExistingDocument, true);
+			AssetPathToId.Add(AssetPath, ExistingId);
+		}
+		else if (bRemovedExisting)
+		{
+			UE_LOG(
+				LogHCIAbilityKitSearchIndex,
+				Error,
+				TEXT("RefreshAsset rollback failed path=%s old_id=%s"),
+				*AssetPath,
+				*ExistingId);
+		}
+		return false;
+	}
+
+	AssetPathToId.Add(AssetPath, NewDocument.Id);
+	UpdateDocumentStats(NewDocument, true);
 
 	const double DurationMs = (FPlatformTime::Seconds() - StartTime) * 1000.0;
 	UpdateStatsMetadata(TEXT("incremental_refresh"), DurationMs);
@@ -139,15 +195,27 @@ bool FHCIAbilityKitSearchIndexService::RemoveAssetByPath(const FString& AssetPat
 	}
 
 	const FHCIAbilitySearchDocument* ExistingDocument = Index.DocumentsById.Find(*ExistingId);
-	if (ExistingDocument)
+	if (!ExistingDocument)
 	{
-		UpdateDocumentStats(*ExistingDocument, false);
+		UE_LOG(
+			LogHCIAbilityKitSearchIndex,
+			Error,
+			TEXT("RemoveAssetByPath aborted: AssetPathToId stale mapping detected path=%s id=%s"),
+			*AssetPath,
+			*(*ExistingId));
+		return false;
 	}
 
 	const bool bRemoved = Index.RemoveDocumentById(*ExistingId);
+	if (!bRemoved)
+	{
+		return false;
+	}
+
+	UpdateDocumentStats(*ExistingDocument, false);
 	AssetPathToId.Remove(AssetPath);
 	UpdateStatsMetadata(TEXT("incremental_remove"), 0.0);
-	return bRemoved;
+	return true;
 }
 
 const FHCIAbilitySearchIndex& FHCIAbilityKitSearchIndexService::GetIndex() const

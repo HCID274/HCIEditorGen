@@ -1,6 +1,7 @@
 #include "Search/HCIAbilityKitSearchIndexService.h"
 
 #include "AssetRegistry/AssetRegistryModule.h"
+#include "Common/HCIAbilityKitTimeFormat.h"
 #include "HCIAbilityKitAsset.h"
 #include "Modules/ModuleManager.h"
 
@@ -30,7 +31,7 @@ FString FHCIAbilitySearchIndexStats::ToSummaryString() const
 	const double DisplayNameCoverage = (static_cast<double>(DisplayNameCoveredCount) / SafeCount) * 100.0;
 	const double SceneCoverage = (static_cast<double>(SceneCoveredCount) / SafeCount) * 100.0;
 	const double TokenCoverage = (static_cast<double>(TokenCoveredCount) / SafeCount) * 100.0;
-	const FString LastRefreshUtcText = LastRefreshUtc.ToIso8601();
+	const FString LastRefreshUtcText = FHCIAbilityKitTimeFormat::FormatUtcAsBeijingIso8601(LastRefreshUtc);
 
 	return FString::Printf(
 		TEXT("mode=%s docs=%d display_name_coverage=%.1f%% scene_coverage=%.1f%% token_coverage=%.1f%% refresh_ms=%.2f updated_utc=%s"),

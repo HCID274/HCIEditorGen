@@ -362,4 +362,130 @@ bool FHCIAbilityKitAgentExecutionGateSourceControlAllowsEnabledCheckoutSuccessTe
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FHCIAbilityKitAgentExecutionGateMockRbacBlocksGuestWriteFallbackTest,
+	"HCIAbilityKit.Editor.AgentExec.MockRbacBlocksGuestWriteFallback",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FHCIAbilityKitAgentExecutionGateMockRbacBlocksGuestWriteFallbackTest::RunTest(const FString& Parameters)
+{
+	FHCIAbilityKitToolRegistry& Registry = FHCIAbilityKitToolRegistry::Get();
+	Registry.ResetToDefaults();
+
+	FHCIAbilityKitAgentMockRbacCheckInput Input;
+	Input.RequestId = TEXT("req_e7_001");
+	Input.UserName = TEXT("unknown_user");
+	Input.ResolvedRole = TEXT("Guest");
+	Input.bUserMatchedWhitelist = false;
+	Input.ToolName = TEXT("RenameAsset");
+	Input.TargetAssetCount = 1;
+	Input.AllowedCapabilities.Add(TEXT("read_only"));
+
+	const FHCIAbilityKitAgentMockRbacDecision Decision =
+		FHCIAbilityKitAgentExecutionGate::EvaluateMockRbac(Input, Registry);
+
+	TestFalse(TEXT("Guest fallback should block write tools"), Decision.bAllowed);
+	TestEqual(TEXT("Guest write denial should return E4008"), Decision.ErrorCode, FString(TEXT("E4008")));
+	TestTrue(TEXT("Guest fallback flag should be set"), Decision.bGuestFallback);
+	TestEqual(TEXT("Capability should be write"), Decision.Capability, FString(TEXT("write")));
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FHCIAbilityKitAgentExecutionGateMockRbacAllowsGuestReadOnlyFallbackTest,
+	"HCIAbilityKit.Editor.AgentExec.MockRbacAllowsGuestReadOnlyFallback",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FHCIAbilityKitAgentExecutionGateMockRbacAllowsGuestReadOnlyFallbackTest::RunTest(const FString& Parameters)
+{
+	FHCIAbilityKitToolRegistry& Registry = FHCIAbilityKitToolRegistry::Get();
+	Registry.ResetToDefaults();
+
+	FHCIAbilityKitAgentMockRbacCheckInput Input;
+	Input.RequestId = TEXT("req_e7_002");
+	Input.UserName = TEXT("unknown_user");
+	Input.ResolvedRole = TEXT("Guest");
+	Input.bUserMatchedWhitelist = false;
+	Input.ToolName = TEXT("ScanAssets");
+	Input.TargetAssetCount = 0;
+	Input.AllowedCapabilities.Add(TEXT("read_only"));
+
+	const FHCIAbilityKitAgentMockRbacDecision Decision =
+		FHCIAbilityKitAgentExecutionGate::EvaluateMockRbac(Input, Registry);
+
+	TestTrue(TEXT("Guest fallback should allow read-only tool"), Decision.bAllowed);
+	TestTrue(TEXT("Guest fallback flag should be set"), Decision.bGuestFallback);
+	TestEqual(TEXT("Capability should be read_only"), Decision.Capability, FString(TEXT("read_only")));
+	TestEqual(TEXT("Allowed guest read-only reason should be stable"), Decision.Reason, FString(TEXT("guest_read_only_allowed")));
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FHCIAbilityKitAgentExecutionGateMockRbacAllowsConfiguredWriteUserTest,
+	"HCIAbilityKit.Editor.AgentExec.MockRbacAllowsConfiguredWriteUser",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FHCIAbilityKitAgentExecutionGateMockRbacAllowsConfiguredWriteUserTest::RunTest(const FString& Parameters)
+{
+	FHCIAbilityKitToolRegistry& Registry = FHCIAbilityKitToolRegistry::Get();
+	Registry.ResetToDefaults();
+
+	FHCIAbilityKitAgentMockRbacCheckInput Input;
+	Input.RequestId = TEXT("req_e7_003");
+	Input.UserName = TEXT("artist_a");
+	Input.ResolvedRole = TEXT("Artist");
+	Input.bUserMatchedWhitelist = true;
+	Input.ToolName = TEXT("SetTextureMaxSize");
+	Input.TargetAssetCount = 3;
+	Input.AllowedCapabilities.Add(TEXT("read_only"));
+	Input.AllowedCapabilities.Add(TEXT("write"));
+
+	const FHCIAbilityKitAgentMockRbacDecision Decision =
+		FHCIAbilityKitAgentExecutionGate::EvaluateMockRbac(Input, Registry);
+
+	TestTrue(TEXT("Configured write-capable user should be allowed"), Decision.bAllowed);
+	TestFalse(TEXT("Configured user should not be guest fallback"), Decision.bGuestFallback);
+	TestEqual(TEXT("Resolved role should be preserved"), Decision.ResolvedRole, FString(TEXT("Artist")));
+	TestEqual(TEXT("Capability should be write"), Decision.Capability, FString(TEXT("write")));
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FHCIAbilityKitAgentExecutionGateLocalAuditLogJsonLineIncludesCoreFieldsTest,
+	"HCIAbilityKit.Editor.AgentExec.LocalAuditLogJsonLineIncludesCoreFields",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FHCIAbilityKitAgentExecutionGateLocalAuditLogJsonLineIncludesCoreFieldsTest::RunTest(const FString& Parameters)
+{
+	FHCIAbilityKitAgentLocalAuditLogRecord Record;
+	Record.TimestampUtc = TEXT("2026-02-22T12:00:00Z");
+	Record.UserName = TEXT("artist_a");
+	Record.ResolvedRole = TEXT("Artist");
+	Record.RequestId = TEXT("req_e7_log_001");
+	Record.ToolName = TEXT("SetTextureMaxSize");
+	Record.Capability = TEXT("write");
+	Record.AssetCount = 3;
+	Record.Result = TEXT("allowed");
+	Record.ErrorCode = TEXT("");
+	Record.Reason = TEXT("rbac_allowed");
+
+	FString JsonLine;
+	FString Error;
+	const bool bOk = FHCIAbilityKitAgentExecutionGate::SerializeLocalAuditLogRecordToJsonLine(Record, JsonLine, Error);
+
+	TestTrue(TEXT("Audit log JSON line serialization should succeed"), bOk);
+	TestTrue(TEXT("JSON line should include timestamp_utc"), JsonLine.Contains(TEXT("\"timestamp_utc\"")));
+	TestTrue(TEXT("JSON line should include user"), JsonLine.Contains(TEXT("\"user\"")));
+	TestTrue(TEXT("JSON line should include request_id"), JsonLine.Contains(TEXT("\"request_id\"")));
+	TestTrue(TEXT("JSON line should include tool_name"), JsonLine.Contains(TEXT("\"tool_name\"")));
+	TestTrue(TEXT("JSON line should include asset_count"), JsonLine.Contains(TEXT("\"asset_count\"")));
+	TestTrue(TEXT("JSON line should include result"), JsonLine.Contains(TEXT("\"result\"")));
+	TestTrue(TEXT("JSON line should include error_code"), JsonLine.Contains(TEXT("\"error_code\"")));
+
+	return true;
+}
+
 #endif

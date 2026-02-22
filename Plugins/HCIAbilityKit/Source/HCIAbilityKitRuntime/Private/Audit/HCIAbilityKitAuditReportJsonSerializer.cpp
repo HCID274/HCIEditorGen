@@ -1,6 +1,7 @@
 #include "Audit/HCIAbilityKitAuditReportJsonSerializer.h"
 
 #include "Audit/HCIAbilityKitAuditReport.h"
+#include "Common/HCIAbilityKitTimeFormat.h"
 #include "Dom/JsonObject.h"
 #include "Policies/CondensedJsonPrintPolicy.h"
 #include "Serialization/JsonSerializer.h"
@@ -10,7 +11,7 @@ bool FHCIAbilityKitAuditReportJsonSerializer::SerializeToJsonString(const FHCIAb
 {
 	TSharedRef<FJsonObject> Root = MakeShared<FJsonObject>();
 	Root->SetStringField(TEXT("run_id"), Report.RunId);
-	Root->SetStringField(TEXT("generated_utc"), Report.GeneratedUtc.ToIso8601());
+	Root->SetStringField(TEXT("generated_utc"), FHCIAbilityKitTimeFormat::FormatUtcAsBeijingIso8601(Report.GeneratedUtc));
 	Root->SetStringField(TEXT("source"), Report.Source);
 
 	TArray<TSharedPtr<FJsonValue>> ResultValues;
@@ -47,4 +48,3 @@ bool FHCIAbilityKitAuditReportJsonSerializer::SerializeToJsonString(const FHCIAb
 		TJsonWriterFactory<TCHAR, TCondensedJsonPrintPolicy<TCHAR>>::Create(&OutJsonText);
 	return FJsonSerializer::Serialize(Root, Writer);
 }
-

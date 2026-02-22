@@ -203,8 +203,16 @@ Scope: whole repo.
     - 已完成：Editor 新增 `HCIAbilityKit.AgentSourceControlDemo` 控制台命令（默认三案例 + 自定义 `tool_name/source_control_enabled/checkout_succeeded`）用于 UE 手测验证日志口径。
     - 已完成：自动化测试 `HCIAbilityKit.Editor.AgentExec` 扩展至 13/13（新增 4 条 `SourceControl*` 测试），本地通过；`AgentTools`（3/3）与 `AgentDryRun`（2/2）回归通过。
     - 已完成：用户 UE 手测通过（无参命令摘要命中 `total_cases=3 allowed=2 blocked=1 offline_local_mode_cases=1 fail_fast=true expected_blocked_code=E4006 validation=ok`；`RenameAsset 0 0` 命中离线本地模式放行；`RenameAsset 1 0` 命中 `E4006/source_control_checkout_failed_fail_fast`；`MoveAsset 1 1` 命中 checkout 成功放行）。
-  - 当前切片：`Stage E-SliceE7`（本地 Mock 鉴权与本地审计日志）。
-  - 下一切片：`Stage E-SliceE8`（规则级安全边界收束：LOD Nanite 拦截 / 类型校验）。
+  - `Stage E-SliceE7` 已通过：本地 Mock 鉴权与本地审计日志。
+    - 已完成：`FHCIAbilityKitAgentExecutionGate` 新增 `EvaluateMockRbac`（本地用户名映射 + 默认 `Guest(read_only)` 回退；未授权写操作返回 `E4008`）。
+    - 已完成：新增本地审计日志 JSONL 序列化接口 `SerializeLocalAuditLogRecordToJsonLine`（核心字段含 `timestamp_utc/user/request_id/tool_name/asset_count/result/error_code`）。
+    - 已完成：Editor 新增 `HCIAbilityKit.AgentRbacDemo [user_name] [tool_name] [asset_count>=0]` 控制台命令（默认三案例 + 自定义参数），并写入 `Saved/HCIAbilityKit/Audit/agent_exec_log.jsonl`。
+    - 已完成：新增默认 RBAC 配表 `SourceData/AbilityKits/Config/agent_rbac_mock.json`（`artist_a/ta_a/reviewer_a`）。
+    - 已完成：自动化测试 `HCIAbilityKit.Editor.AgentExec` 扩展至 17/17（新增 `MockRbac*` 与 `LocalAuditLogJsonLineIncludesCoreFields`），本地通过；`AgentTools`（3/3）与 `AgentDryRun`（2/2）回归通过。
+    - 已完成：用户 UE 手测通过（无参摘要命中 `total_cases=3 ... guest_fallback_cases=2 ... audit_log_appends=3 ... validation=ok`；`unknown_guest RenameAsset 1` 命中 `E4008/guest_read_only_write_blocked`；`unknown_guest ScanAssets 0` 命中 `guest_read_only_allowed`；`artist_a SetTextureMaxSize 3` 命中 `rbac_allowed`；并确认 `agent_exec_log.jsonl` 存在且字段齐全）。
+  - 当前切片：`Stage E-SliceE8`（规则级安全边界收束：LOD Nanite 拦截 / 类型校验）。
+  - 下一切片：`待 E8 通过后按主计划推进 Stage E 后续切片`。
+  - 兼容性说明（时间字符串）：对外日志/JSON 的时间值已统一改为北京时间 `+08:00` 输出；字段名（如 `updated_utc/generated_utc/timestamp_utc`）暂保持不变以兼容既有门禁与测试。
   - D 段收尾后续主线：`Stage E`（安全执行：Dry-Run/Confirm/Transaction/SC）-> `Stage F`（NL->Plan->Executor）。
   - B3 最新状态：
     - 已完成：新增 `HCIAbilityKit.AuditScanAsync [batch_size] [log_top_n]`，按分片执行 `AssetRegistry + FAssetData` 扫描，避免单帧全量阻塞。

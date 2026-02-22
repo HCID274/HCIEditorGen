@@ -1,0 +1,28 @@
+{
+  "users": [
+    {
+      "user": "artist_a",
+      "role": "Artist",
+      "allowed_capabilities": [
+        "read_only",
+        "write"
+      ]
+    },
+    {
+      "user": "ta_a",
+      "role": "TA",
+      "allowed_capabilities": [
+        "read_only",
+        "write",
+        "destructive"
+      ]
+    },
+    {
+      "user": "reviewer_a",
+      "role": "Reviewer",
+      "allowed_capabilities": [
+        "read_only"
+      ]
+    }
+  ]
+}

@@ -103,6 +103,48 @@ struct HCIABILITYKITRUNTIME_API FHCIAbilityKitAgentSourceControlDecision
 	bool bCheckoutSucceeded = false;
 };
 
+struct HCIABILITYKITRUNTIME_API FHCIAbilityKitAgentMockRbacCheckInput
+{
+	FString RequestId;
+	FString UserName;
+	FString ResolvedRole;
+	bool bUserMatchedWhitelist = false;
+	FName ToolName;
+	int32 TargetAssetCount = 0;
+	TArray<FString> AllowedCapabilities;
+};
+
+struct HCIABILITYKITRUNTIME_API FHCIAbilityKitAgentMockRbacDecision
+{
+	bool bAllowed = false;
+	FString ErrorCode;
+	FString Reason;
+
+	FString RequestId;
+	FString UserName;
+	FString ResolvedRole;
+	bool bUserMatchedWhitelist = false;
+	bool bGuestFallback = false;
+	FString ToolName;
+	FString Capability;
+	bool bWriteLike = false;
+	int32 TargetAssetCount = 0;
+};
+
+struct HCIABILITYKITRUNTIME_API FHCIAbilityKitAgentLocalAuditLogRecord
+{
+	FString TimestampUtc;
+	FString UserName;
+	FString ResolvedRole;
+	FString RequestId;
+	FString ToolName;
+	FString Capability;
+	int32 AssetCount = 0;
+	FString Result;
+	FString ErrorCode;
+	FString Reason;
+};
+
 class HCIABILITYKITRUNTIME_API FHCIAbilityKitAgentExecutionGate
 {
 public:
@@ -123,6 +165,15 @@ public:
 	static FHCIAbilityKitAgentSourceControlDecision EvaluateSourceControlFailFast(
 		const FHCIAbilityKitAgentSourceControlCheckInput& Input,
 		const FHCIAbilityKitToolRegistry& Registry);
+
+	static FHCIAbilityKitAgentMockRbacDecision EvaluateMockRbac(
+		const FHCIAbilityKitAgentMockRbacCheckInput& Input,
+		const FHCIAbilityKitToolRegistry& Registry);
+
+	static bool SerializeLocalAuditLogRecordToJsonLine(
+		const FHCIAbilityKitAgentLocalAuditLogRecord& Record,
+		FString& OutJsonLine,
+		FString& OutError);
 
 	static bool IsWriteLikeCapability(EHCIAbilityKitToolCapability Capability);
 };

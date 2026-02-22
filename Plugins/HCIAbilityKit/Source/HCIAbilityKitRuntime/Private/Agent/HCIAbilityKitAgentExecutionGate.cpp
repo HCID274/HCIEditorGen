@@ -1,5 +1,9 @@
 #include "Agent/HCIAbilityKitAgentExecutionGate.h"
 
+#include "Dom/JsonObject.h"
+#include "Serialization/JsonSerializer.h"
+#include "Serialization/JsonWriter.h"
+
 namespace
 {
 static const TCHAR* const HCI_Error_ToolNotWhitelisted = TEXT("E4002");
@@ -7,6 +11,19 @@ static const TCHAR* const HCI_Error_BlastRadiusExceeded = TEXT("E4004");
 static const TCHAR* const HCI_Error_WriteNotConfirmed = TEXT("E4005");
 static const TCHAR* const HCI_Error_SourceControlCheckoutFailed = TEXT("E4006");
 static const TCHAR* const HCI_Error_TransactionRolledBack = TEXT("E4007");
+static const TCHAR* const HCI_Error_RbacDenied = TEXT("E4008");
+
+static bool HCI_ContainsCapabilityIgnoreCase(const TArray<FString>& AllowedCapabilities, const FString& Capability)
+{
+	for (const FString& Candidate : AllowedCapabilities)
+	{
+		if (Candidate.Equals(Capability, ESearchCase::IgnoreCase))
+		{
+			return true;
+		}
+	}
+	return false;
+}
 }
 
 bool FHCIAbilityKitAgentExecutionGate::IsWriteLikeCapability(const EHCIAbilityKitToolCapability Capability)
@@ -207,4 +224,88 @@ FHCIAbilityKitAgentSourceControlDecision FHCIAbilityKitAgentExecutionGate::Evalu
 	Decision.bAllowed = true;
 	Decision.Reason = TEXT("checkout_succeeded");
 	return Decision;
+}
+
+FHCIAbilityKitAgentMockRbacDecision FHCIAbilityKitAgentExecutionGate::EvaluateMockRbac(
+	const FHCIAbilityKitAgentMockRbacCheckInput& Input,
+	const FHCIAbilityKitToolRegistry& Registry)
+{
+	FHCIAbilityKitAgentMockRbacDecision Decision;
+	Decision.RequestId = Input.RequestId;
+	Decision.UserName = Input.UserName;
+	Decision.ResolvedRole = Input.ResolvedRole.IsEmpty() ? TEXT("Guest") : Input.ResolvedRole;
+	Decision.bUserMatchedWhitelist = Input.bUserMatchedWhitelist;
+	Decision.bGuestFallback = !Input.bUserMatchedWhitelist;
+	Decision.ToolName = Input.ToolName.ToString();
+	Decision.TargetAssetCount = Input.TargetAssetCount;
+
+	const FHCIAbilityKitToolDescriptor* Tool = Registry.FindTool(Input.ToolName);
+	if (Tool == nullptr)
+	{
+		Decision.ErrorCode = HCI_Error_ToolNotWhitelisted;
+		Decision.Reason = TEXT("tool_not_whitelisted");
+		Decision.Capability = TEXT("unknown");
+		Decision.bWriteLike = true;
+		return Decision;
+	}
+
+	Decision.Capability = FHCIAbilityKitToolRegistry::CapabilityToString(Tool->Capability);
+	Decision.bWriteLike = IsWriteLikeCapability(Tool->Capability);
+
+	if (HCI_ContainsCapabilityIgnoreCase(Input.AllowedCapabilities, Decision.Capability))
+	{
+		Decision.bAllowed = true;
+		if (Decision.bGuestFallback && !Decision.bWriteLike)
+		{
+			Decision.Reason = TEXT("guest_read_only_allowed");
+		}
+		else
+		{
+			Decision.Reason = TEXT("rbac_allowed");
+		}
+		return Decision;
+	}
+
+	Decision.bAllowed = false;
+	Decision.ErrorCode = HCI_Error_RbacDenied;
+	if (Decision.bGuestFallback && Decision.bWriteLike)
+	{
+		Decision.Reason = TEXT("guest_read_only_write_blocked");
+	}
+	else
+	{
+		Decision.Reason = TEXT("capability_not_allowed_by_role");
+	}
+	return Decision;
+}
+
+bool FHCIAbilityKitAgentExecutionGate::SerializeLocalAuditLogRecordToJsonLine(
+	const FHCIAbilityKitAgentLocalAuditLogRecord& Record,
+	FString& OutJsonLine,
+	FString& OutError)
+{
+	OutJsonLine.Reset();
+	OutError.Reset();
+
+	const TSharedRef<FJsonObject> JsonObject = MakeShared<FJsonObject>();
+	JsonObject->SetStringField(TEXT("timestamp_utc"), Record.TimestampUtc);
+	JsonObject->SetStringField(TEXT("user"), Record.UserName);
+	JsonObject->SetStringField(TEXT("role"), Record.ResolvedRole);
+	JsonObject->SetStringField(TEXT("request_id"), Record.RequestId);
+	JsonObject->SetStringField(TEXT("tool_name"), Record.ToolName);
+	JsonObject->SetStringField(TEXT("capability"), Record.Capability);
+	JsonObject->SetNumberField(TEXT("asset_count"), Record.AssetCount);
+	JsonObject->SetStringField(TEXT("result"), Record.Result);
+	JsonObject->SetStringField(TEXT("error_code"), Record.ErrorCode);
+	JsonObject->SetStringField(TEXT("reason"), Record.Reason);
+
+	TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&OutJsonLine);
+	if (!FJsonSerializer::Serialize(JsonObject, Writer))
+	{
+		OutError = TEXT("json_serialize_failed");
+		OutJsonLine.Reset();
+		return false;
+	}
+
+	return true;
 }

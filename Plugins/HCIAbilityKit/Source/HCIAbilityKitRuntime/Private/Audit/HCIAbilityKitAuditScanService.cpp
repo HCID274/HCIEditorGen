@@ -3,6 +3,7 @@
 #include "Audit/HCIAbilityKitAuditRuleRegistry.h"
 #include "AssetRegistry/AssetRegistryModule.h"
 #include "Audit/HCIAbilityKitAuditTagNames.h"
+#include "Common/HCIAbilityKitTimeFormat.h"
 #include "HAL/FileManager.h"
 #include "HCIAbilityKitAsset.h"
 #include "Misc/PackageName.h"
@@ -202,7 +203,7 @@ FString FHCIAbilityKitAuditScanStats::ToSummaryString() const
 		WarnIssueCount,
 		ErrorIssueCount,
 		DurationMs,
-		*UpdatedUtc.ToIso8601());
+		*FHCIAbilityKitTimeFormat::FormatUtcAsBeijingIso8601(UpdatedUtc));
 }
 
 FHCIAbilityKitAuditScanService& FHCIAbilityKitAuditScanService::Get()

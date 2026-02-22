@@ -655,9 +655,47 @@ public:
   - 未命中白名单用户默认映射为 `Guest`；
   - `Guest` 仅允许 `read_only`，阻断所有 `write/destructive`（返回 `E4008`）；
   - `Guest` 允许执行扫描与报告导出。
+- Runtime E7 最小判定输出（`FHCIAbilityKitAgentExecutionGate::EvaluateMockRbac`）：
+  - 输入：`request_id/user_name/resolved_role/user_matched_whitelist/tool_name/asset_count/allowed_capabilities[]`
+  - 输出：`allowed/error_code/reason/user/resolved_role/user_in_whitelist/guest_fallback/tool_name/capability/write_like/asset_count`
+  - 判定口径：
+    - `tool_name` 不在 Tool Registry 白名单：返回 `E4002`（`reason=tool_not_whitelisted`）
+    - `capability` 在 `allowed_capabilities[]` 中：允许执行（`reason=rbac_allowed`）
+    - `Guest + read_only`：允许执行（`reason=guest_read_only_allowed`）
+    - 其余权限不足：返回 `E4008`
+      - `Guest` 写操作：`reason=guest_read_only_write_blocked`
+      - 非 Guest 能力不足：`reason=capability_not_allowed_by_role`
 - 审计日志落地：本地 `json/txt` 文件。
 - 审计日志路径（一期固定）：`Saved/HCIAbilityKit/Audit/agent_exec_log.jsonl`
 - 日志最小字段：`timestamp/user/request_id/tool_name/asset_count/result/error_code`。
+- 时间显示兼容说明（2026-02-22 起）：
+  - 对外日志/JSON 时间字符串统一按北京时间 ISO-8601（`+08:00`）输出；
+  - 字段名为兼容既有门禁暂不重命名（例如 `updated_utc/generated_utc/timestamp_utc` 仍保留）。
+- 本期 JSONL 序列化字段（E7 落地）：
+  - `timestamp_utc`
+  - `user`
+  - `role`
+  - `request_id`
+  - `tool_name`
+  - `capability`
+  - `asset_count`
+  - `result`（`allowed|blocked`）
+  - `error_code`
+  - `reason`
+- Editor UE 手测入口（控制台）：
+  - `HCIAbilityKit.AgentRbacDemo`
+    - 默认输出三案例：`guest_read_only_allowed / guest_write_blocked / configured_write_allowed`
+    - 同时写入本地审计日志并输出摘要：
+      - `summary total_cases=... allowed=... blocked=... guest_fallback_cases=... audit_log_appends=... config_users=... validation=ok`
+      - `paths config_path=... audit_log_path=...`
+  - `HCIAbilityKit.AgentRbacDemo [user_name] [tool_name] [asset_count>=0]`
+    - 用于单案例验证 `E4008`、Guest 回退与日志落盘口径
+- 案例日志最小字段（E7）：
+  - `request_id/user/resolved_role/user_in_whitelist/guest_fallback`
+  - `tool_name/capability/write_like`
+  - `asset_count`
+  - `allowed/error_code/reason`
+  - `audit_log_appended/audit_log_path/audit_log_error`
 
 ### 14.6 一期禁止实现（延期到 Phase 3）
 

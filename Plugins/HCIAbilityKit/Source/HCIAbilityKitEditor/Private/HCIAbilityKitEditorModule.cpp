@@ -15,6 +15,7 @@
 #include "ContentBrowserMenuContexts.h"
 #include "Dom/JsonObject.h"
 #include "Audit/HCIAbilityKitAuditScanService.h"
+#include "Common/HCIAbilityKitTimeFormat.h"
 #include "Containers/Ticker.h"
 #include "Factories/HCIAbilityKitFactory.h"
 #include "Engine/StaticMesh.h"
@@ -40,6 +41,7 @@
 #include "Search/HCIAbilityKitSearchQueryService.h"
 #include "Serialization/JsonReader.h"
 #include "Serialization/JsonSerializer.h"
+#include "Serialization/JsonWriter.h"
 #include "Services/HCIAbilityKitParserService.h"
 #include "Styling/AppStyle.h"
 #include "ToolMenus.h"
@@ -67,6 +69,7 @@ static TUniquePtr<FAutoConsoleCommand> GHCIAbilityKitAgentConfirmGateDemoCommand
 static TUniquePtr<FAutoConsoleCommand> GHCIAbilityKitAgentBlastRadiusDemoCommand;
 static TUniquePtr<FAutoConsoleCommand> GHCIAbilityKitAgentTransactionDemoCommand;
 static TUniquePtr<FAutoConsoleCommand> GHCIAbilityKitAgentSourceControlDemoCommand;
+static TUniquePtr<FAutoConsoleCommand> GHCIAbilityKitAgentRbacDemoCommand;
 static const TCHAR* GHCIAbilityKitPythonScriptPath = TEXT("SourceData/AbilityKits/Python/hci_abilitykit_hook.py");
 
 struct FHCIAbilityKitAuditScanAsyncState
@@ -133,6 +136,21 @@ static FString HCI_GetDefaultAuditReportOutputPath(const FString& RunId)
 {
 	const FString Directory = FPaths::Combine(FPaths::ProjectSavedDir(), TEXT("HCIAbilityKit"), TEXT("AuditReports"));
 	return FPaths::Combine(Directory, FString::Printf(TEXT("%s.json"), *RunId));
+}
+
+static FString HCI_GetAgentRbacMockConfigPath()
+{
+	return FPaths::ConvertRelativePathToFull(FPaths::Combine(
+		FPaths::ProjectDir(),
+		TEXT("SourceData"),
+		TEXT("AbilityKits"),
+		TEXT("Config"),
+		TEXT("agent_rbac_mock.json")));
+}
+
+static FString HCI_GetAgentExecAuditLogPath()
+{
+	return FPaths::Combine(FPaths::ProjectSavedDir(), TEXT("HCIAbilityKit"), TEXT("Audit"), TEXT("agent_exec_log.jsonl"));
 }
 
 static bool HCI_TryResolveAuditExportOutputPath(const TArray<FString>& Args, const FString& RunId, FString& OutPath, FString& OutError)
@@ -1142,6 +1160,450 @@ static void HCI_RunAbilityKitAgentSourceControlDemoCommand(const TArray<FString>
 	const FHCIAbilityKitAgentSourceControlDecision Decision =
 		FHCIAbilityKitAgentExecutionGate::EvaluateSourceControlFailFast(Input, Registry);
 	HCI_LogAgentSourceControlDecision(TEXT("custom"), Decision);
+}
+
+struct FHCIAbilityKitAgentRbacMockUserConfigEntry
+{
+	FString UserName;
+	FString UserNameNormalized;
+	FString RoleName;
+	TArray<FString> AllowedCapabilities;
+};
+
+struct FHCIAbilityKitAgentRbacResolvedUser
+{
+	FString UserName;
+	FString ResolvedRole = TEXT("Guest");
+	bool bMatchedWhitelist = false;
+	TArray<FString> AllowedCapabilities;
+};
+
+static FString HCI_BuildDefaultAgentRbacMockConfigJson()
+{
+	return TEXT(
+		"{\n"
+		"  \"users\": [\n"
+		"    { \"user\": \"artist_a\", \"role\": \"Artist\", \"allowed_capabilities\": [\"read_only\", \"write\"] },\n"
+		"    { \"user\": \"ta_a\", \"role\": \"TA\", \"allowed_capabilities\": [\"read_only\", \"write\", \"destructive\"] },\n"
+		"    { \"user\": \"reviewer_a\", \"role\": \"Reviewer\", \"allowed_capabilities\": [\"read_only\"] }\n"
+		"  ]\n"
+		"}\n");
+}
+
+static bool HCI_EnsureAgentRbacMockConfigExists(FString& OutConfigPath, bool& OutCreated, FString& OutError)
+{
+	OutConfigPath = HCI_GetAgentRbacMockConfigPath();
+	OutCreated = false;
+	OutError.Reset();
+
+	if (IFileManager::Get().FileExists(*OutConfigPath))
+	{
+		return true;
+	}
+
+	const FString Directory = FPaths::GetPath(OutConfigPath);
+	if (!IFileManager::Get().MakeDirectory(*Directory, true))
+	{
+		OutError = FString::Printf(TEXT("failed_to_create_config_dir:%s"), *Directory);
+		return false;
+	}
+
+	if (!FFileHelper::SaveStringToFile(
+			HCI_BuildDefaultAgentRbacMockConfigJson(),
+			*OutConfigPath,
+			FFileHelper::EEncodingOptions::ForceUTF8WithoutBOM))
+	{
+		OutError = FString::Printf(TEXT("failed_to_write_default_config:%s"), *OutConfigPath);
+		return false;
+	}
+
+	OutCreated = true;
+	return true;
+}
+
+static bool HCI_LoadAgentRbacMockConfigEntries(
+	TArray<FHCIAbilityKitAgentRbacMockUserConfigEntry>& OutEntries,
+	FString& OutConfigPath,
+	bool& OutConfigCreated,
+	FString& OutError)
+{
+	OutEntries.Reset();
+	OutError.Reset();
+	OutConfigPath.Reset();
+	OutConfigCreated = false;
+
+	if (!HCI_EnsureAgentRbacMockConfigExists(OutConfigPath, OutConfigCreated, OutError))
+	{
+		return false;
+	}
+
+	FString JsonText;
+	if (!FFileHelper::LoadFileToString(JsonText, *OutConfigPath))
+	{
+		OutError = FString::Printf(TEXT("failed_to_read_config:%s"), *OutConfigPath);
+		return false;
+	}
+
+	TSharedPtr<FJsonObject> RootObject;
+	TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(JsonText);
+	if (!FJsonSerializer::Deserialize(Reader, RootObject) || !RootObject.IsValid())
+	{
+		OutError = TEXT("invalid_json_root_object");
+		return false;
+	}
+
+	const TArray<TSharedPtr<FJsonValue>>* UsersArray = nullptr;
+	if (!RootObject->TryGetArrayField(TEXT("users"), UsersArray) || UsersArray == nullptr)
+	{
+		OutError = TEXT("missing_users_array");
+		return false;
+	}
+
+	for (const TSharedPtr<FJsonValue>& UserValue : *UsersArray)
+	{
+		const TSharedPtr<FJsonObject> UserObject = UserValue.IsValid() ? UserValue->AsObject() : nullptr;
+		if (!UserObject.IsValid())
+		{
+			continue;
+		}
+
+		FString UserName;
+		if (!UserObject->TryGetStringField(TEXT("user"), UserName))
+		{
+			continue;
+		}
+
+		UserName = UserName.TrimStartAndEnd();
+		if (UserName.IsEmpty())
+		{
+			continue;
+		}
+
+		FHCIAbilityKitAgentRbacMockUserConfigEntry& Entry = OutEntries.AddDefaulted_GetRef();
+		Entry.UserName = UserName;
+		Entry.UserNameNormalized = UserName.ToLower();
+		UserObject->TryGetStringField(TEXT("role"), Entry.RoleName);
+		if (Entry.RoleName.IsEmpty())
+		{
+			Entry.RoleName = TEXT("Custom");
+		}
+
+		const TArray<TSharedPtr<FJsonValue>>* CapabilityArray = nullptr;
+		if (UserObject->TryGetArrayField(TEXT("allowed_capabilities"), CapabilityArray) && CapabilityArray != nullptr)
+		{
+			for (const TSharedPtr<FJsonValue>& CapabilityValue : *CapabilityArray)
+			{
+				FString CapabilityString;
+				if (CapabilityValue.IsValid() && CapabilityValue->TryGetString(CapabilityString))
+				{
+					CapabilityString = CapabilityString.TrimStartAndEnd();
+					if (!CapabilityString.IsEmpty())
+					{
+						Entry.AllowedCapabilities.Add(CapabilityString);
+					}
+				}
+			}
+		}
+	}
+
+	return true;
+}
+
+static FHCIAbilityKitAgentRbacResolvedUser HCI_ResolveAgentRbacMockUser(
+	const FString& UserName,
+	const TArray<FHCIAbilityKitAgentRbacMockUserConfigEntry>& Entries)
+{
+	FHCIAbilityKitAgentRbacResolvedUser Resolved;
+	Resolved.UserName = UserName.TrimStartAndEnd();
+	const FString UserNameNormalized = Resolved.UserName.ToLower();
+
+	for (const FHCIAbilityKitAgentRbacMockUserConfigEntry& Entry : Entries)
+	{
+		if (Entry.UserNameNormalized == UserNameNormalized)
+		{
+			Resolved.bMatchedWhitelist = true;
+			Resolved.ResolvedRole = Entry.RoleName.IsEmpty() ? TEXT("Custom") : Entry.RoleName;
+			Resolved.AllowedCapabilities = Entry.AllowedCapabilities;
+			return Resolved;
+		}
+	}
+
+	Resolved.bMatchedWhitelist = false;
+	Resolved.ResolvedRole = TEXT("Guest");
+	Resolved.AllowedCapabilities = {TEXT("read_only")};
+	return Resolved;
+}
+
+static bool HCI_AppendAgentExecAuditLogRecord(
+	const FHCIAbilityKitAgentLocalAuditLogRecord& Record,
+	FString& OutAuditLogPath,
+	FString& OutJsonLine,
+	FString& OutError)
+{
+	OutAuditLogPath = HCI_GetAgentExecAuditLogPath();
+	OutJsonLine.Reset();
+	OutError.Reset();
+
+	if (!FHCIAbilityKitAgentExecutionGate::SerializeLocalAuditLogRecordToJsonLine(Record, OutJsonLine, OutError))
+	{
+		return false;
+	}
+
+	const FString Directory = FPaths::GetPath(OutAuditLogPath);
+	if (!IFileManager::Get().MakeDirectory(*Directory, true))
+	{
+		OutError = FString::Printf(TEXT("failed_to_create_audit_log_dir:%s"), *Directory);
+		return false;
+	}
+
+	const FString LineWithNewline = OutJsonLine + LINE_TERMINATOR;
+	if (!FFileHelper::SaveStringToFile(
+			LineWithNewline,
+			*OutAuditLogPath,
+			FFileHelper::EEncodingOptions::ForceUTF8WithoutBOM,
+			&IFileManager::Get(),
+			FILEWRITE_Append))
+	{
+		OutError = FString::Printf(TEXT("failed_to_append_audit_log:%s"), *OutAuditLogPath);
+		return false;
+	}
+
+	return true;
+}
+
+static void HCI_LogAgentRbacDecision(
+	const TCHAR* CaseName,
+	const FHCIAbilityKitAgentMockRbacDecision& Decision,
+	const bool bAuditLogAppended,
+	const FString& AuditLogPath,
+	const FString& AuditLogError)
+{
+	const bool bUseWarning = !Decision.bAllowed;
+	if (!bUseWarning)
+	{
+		UE_LOG(
+			LogHCIAbilityKitAuditScan,
+			Display,
+			TEXT("[HCIAbilityKit][AgentRBAC] case=%s request_id=%s user=%s resolved_role=%s user_in_whitelist=%s guest_fallback=%s tool_name=%s capability=%s write_like=%s asset_count=%d allowed=%s error_code=%s reason=%s audit_log_appended=%s audit_log_path=%s audit_log_error=%s"),
+			CaseName,
+			Decision.RequestId.IsEmpty() ? TEXT("-") : *Decision.RequestId,
+			Decision.UserName.IsEmpty() ? TEXT("-") : *Decision.UserName,
+			Decision.ResolvedRole.IsEmpty() ? TEXT("-") : *Decision.ResolvedRole,
+			Decision.bUserMatchedWhitelist ? TEXT("true") : TEXT("false"),
+			Decision.bGuestFallback ? TEXT("true") : TEXT("false"),
+			Decision.ToolName.IsEmpty() ? TEXT("-") : *Decision.ToolName,
+			Decision.Capability.IsEmpty() ? TEXT("-") : *Decision.Capability,
+			Decision.bWriteLike ? TEXT("true") : TEXT("false"),
+			Decision.TargetAssetCount,
+			TEXT("true"),
+			Decision.ErrorCode.IsEmpty() ? TEXT("-") : *Decision.ErrorCode,
+			Decision.Reason.IsEmpty() ? TEXT("-") : *Decision.Reason,
+			bAuditLogAppended ? TEXT("true") : TEXT("false"),
+			AuditLogPath.IsEmpty() ? TEXT("-") : *AuditLogPath,
+			AuditLogError.IsEmpty() ? TEXT("-") : *AuditLogError);
+		return;
+	}
+
+	UE_LOG(
+		LogHCIAbilityKitAuditScan,
+		Warning,
+		TEXT("[HCIAbilityKit][AgentRBAC] case=%s request_id=%s user=%s resolved_role=%s user_in_whitelist=%s guest_fallback=%s tool_name=%s capability=%s write_like=%s asset_count=%d allowed=%s error_code=%s reason=%s audit_log_appended=%s audit_log_path=%s audit_log_error=%s"),
+		CaseName,
+		Decision.RequestId.IsEmpty() ? TEXT("-") : *Decision.RequestId,
+		Decision.UserName.IsEmpty() ? TEXT("-") : *Decision.UserName,
+		Decision.ResolvedRole.IsEmpty() ? TEXT("-") : *Decision.ResolvedRole,
+		Decision.bUserMatchedWhitelist ? TEXT("true") : TEXT("false"),
+		Decision.bGuestFallback ? TEXT("true") : TEXT("false"),
+		Decision.ToolName.IsEmpty() ? TEXT("-") : *Decision.ToolName,
+		Decision.Capability.IsEmpty() ? TEXT("-") : *Decision.Capability,
+		Decision.bWriteLike ? TEXT("true") : TEXT("false"),
+		Decision.TargetAssetCount,
+		TEXT("false"),
+		Decision.ErrorCode.IsEmpty() ? TEXT("-") : *Decision.ErrorCode,
+		Decision.Reason.IsEmpty() ? TEXT("-") : *Decision.Reason,
+		bAuditLogAppended ? TEXT("true") : TEXT("false"),
+		AuditLogPath.IsEmpty() ? TEXT("-") : *AuditLogPath,
+		AuditLogError.IsEmpty() ? TEXT("-") : *AuditLogError);
+}
+
+static void HCI_RunAbilityKitAgentRbacDemoCommand(const TArray<FString>& Args)
+{
+	FHCIAbilityKitToolRegistry& Registry = FHCIAbilityKitToolRegistry::Get();
+	Registry.ResetToDefaults();
+
+	TArray<FHCIAbilityKitAgentRbacMockUserConfigEntry> RbacEntries;
+	FString ConfigPath;
+	FString ConfigError;
+	bool bConfigCreated = false;
+	if (!HCI_LoadAgentRbacMockConfigEntries(RbacEntries, ConfigPath, bConfigCreated, ConfigError))
+	{
+		UE_LOG(
+			LogHCIAbilityKitAuditScan,
+			Error,
+			TEXT("[HCIAbilityKit][AgentRBAC] config_load_failed path=%s reason=%s"),
+			ConfigPath.IsEmpty() ? TEXT("-") : *ConfigPath,
+			ConfigError.IsEmpty() ? TEXT("unknown") : *ConfigError);
+		return;
+	}
+
+	if (bConfigCreated)
+	{
+		UE_LOG(
+			LogHCIAbilityKitAuditScan,
+			Warning,
+			TEXT("[HCIAbilityKit][AgentRBAC] config_created_default path=%s"),
+			*ConfigPath);
+	}
+
+	auto RunCase = [&Registry, &RbacEntries](const TCHAR* CaseName, const TCHAR* RequestId, const FString& UserName, const TCHAR* ToolName, const int32 AssetCount) -> TTuple<FHCIAbilityKitAgentMockRbacDecision, bool, FString, FString>
+	{
+		const FHCIAbilityKitAgentRbacResolvedUser ResolvedUser = HCI_ResolveAgentRbacMockUser(UserName, RbacEntries);
+
+		FHCIAbilityKitAgentMockRbacCheckInput Input;
+		Input.RequestId = RequestId;
+		Input.UserName = ResolvedUser.UserName;
+		Input.ResolvedRole = ResolvedUser.ResolvedRole;
+		Input.bUserMatchedWhitelist = ResolvedUser.bMatchedWhitelist;
+		Input.ToolName = FName(ToolName);
+		Input.TargetAssetCount = AssetCount;
+		Input.AllowedCapabilities = ResolvedUser.AllowedCapabilities;
+
+		const FHCIAbilityKitAgentMockRbacDecision Decision = FHCIAbilityKitAgentExecutionGate::EvaluateMockRbac(Input, Registry);
+
+		FHCIAbilityKitAgentLocalAuditLogRecord Record;
+		Record.TimestampUtc = FHCIAbilityKitTimeFormat::FormatNowBeijingIso8601();
+		Record.UserName = Decision.UserName;
+		Record.ResolvedRole = Decision.ResolvedRole;
+		Record.RequestId = Decision.RequestId;
+		Record.ToolName = Decision.ToolName;
+		Record.Capability = Decision.Capability;
+		Record.AssetCount = Decision.TargetAssetCount;
+		Record.Result = Decision.bAllowed ? TEXT("allowed") : TEXT("blocked");
+		Record.ErrorCode = Decision.ErrorCode;
+		Record.Reason = Decision.Reason;
+
+		FString AuditLogPath;
+		FString JsonLine;
+		FString AuditLogError;
+		const bool bAuditLogAppended = HCI_AppendAgentExecAuditLogRecord(Record, AuditLogPath, JsonLine, AuditLogError);
+		if (!bAuditLogAppended)
+		{
+			UE_LOG(
+				LogHCIAbilityKitAuditScan,
+				Error,
+				TEXT("[HCIAbilityKit][AgentAuditLog] append_failed case=%s path=%s reason=%s"),
+				CaseName,
+				AuditLogPath.IsEmpty() ? TEXT("-") : *AuditLogPath,
+				AuditLogError.IsEmpty() ? TEXT("unknown") : *AuditLogError);
+		}
+		else
+		{
+			UE_LOG(
+				LogHCIAbilityKitAuditScan,
+				Display,
+				TEXT("[HCIAbilityKit][AgentAuditLog] append_ok case=%s path=%s bytes=%d user=%s tool_name=%s result=%s error_code=%s"),
+				CaseName,
+				*AuditLogPath,
+				JsonLine.Len(),
+				Decision.UserName.IsEmpty() ? TEXT("-") : *Decision.UserName,
+				Decision.ToolName.IsEmpty() ? TEXT("-") : *Decision.ToolName,
+				Decision.bAllowed ? TEXT("allowed") : TEXT("blocked"),
+				Decision.ErrorCode.IsEmpty() ? TEXT("-") : *Decision.ErrorCode);
+		}
+
+		HCI_LogAgentRbacDecision(CaseName, Decision, bAuditLogAppended, AuditLogPath, AuditLogError);
+		return MakeTuple(Decision, bAuditLogAppended, AuditLogPath, AuditLogError);
+	};
+
+	if (Args.Num() == 0)
+	{
+		int32 AllowedCount = 0;
+		int32 BlockedCount = 0;
+		int32 GuestFallbackCount = 0;
+		int32 AuditLogAppendCount = 0;
+		FString LastAuditLogPath;
+
+		auto ConsumeCase = [&AllowedCount, &BlockedCount, &GuestFallbackCount, &AuditLogAppendCount, &LastAuditLogPath](const TTuple<FHCIAbilityKitAgentMockRbacDecision, bool, FString, FString>& ResultTuple)
+		{
+			const FHCIAbilityKitAgentMockRbacDecision& Decision = ResultTuple.Get<0>();
+			if (Decision.bAllowed)
+			{
+				++AllowedCount;
+			}
+			else
+			{
+				++BlockedCount;
+			}
+			if (Decision.bGuestFallback)
+			{
+				++GuestFallbackCount;
+			}
+			if (ResultTuple.Get<1>())
+			{
+				++AuditLogAppendCount;
+			}
+			LastAuditLogPath = ResultTuple.Get<2>();
+		};
+
+		ConsumeCase(RunCase(TEXT("guest_read_only_allowed"), TEXT("req_demo_e7_01"), TEXT("unknown_guest"), TEXT("ScanAssets"), 0));
+		ConsumeCase(RunCase(TEXT("guest_write_blocked"), TEXT("req_demo_e7_02"), TEXT("unknown_guest"), TEXT("RenameAsset"), 1));
+		ConsumeCase(RunCase(TEXT("configured_write_allowed"), TEXT("req_demo_e7_03"), TEXT("artist_a"), TEXT("SetTextureMaxSize"), 3));
+
+		UE_LOG(
+			LogHCIAbilityKitAuditScan,
+			Display,
+			TEXT("[HCIAbilityKit][AgentRBAC] summary total_cases=%d allowed=%d blocked=%d guest_fallback_cases=%d audit_log_appends=%d config_users=%d validation=ok"),
+			3,
+			AllowedCount,
+			BlockedCount,
+			GuestFallbackCount,
+			AuditLogAppendCount,
+			RbacEntries.Num());
+		UE_LOG(
+			LogHCIAbilityKitAuditScan,
+			Display,
+			TEXT("[HCIAbilityKit][AgentRBAC] paths config_path=%s audit_log_path=%s config_created_default=%s"),
+			*ConfigPath,
+			LastAuditLogPath.IsEmpty() ? *HCI_GetAgentExecAuditLogPath() : *LastAuditLogPath,
+			bConfigCreated ? TEXT("true") : TEXT("false"));
+		UE_LOG(
+			LogHCIAbilityKitAuditScan,
+			Display,
+			TEXT("[HCIAbilityKit][AgentRBAC] hint=也可运行 HCIAbilityKit.AgentRbacDemo [user_name] [tool_name] [asset_count>=0]"));
+		return;
+	}
+
+	if (Args.Num() < 3)
+	{
+		UE_LOG(
+			LogHCIAbilityKitAuditScan,
+			Error,
+			TEXT("[HCIAbilityKit][AgentRBAC] invalid_args usage=HCIAbilityKit.AgentRbacDemo [user_name] [tool_name] [asset_count>=0]"));
+		return;
+	}
+
+	int32 AssetCount = 0;
+	if (!HCI_TryParseNonNegativeIntArg(Args[2], AssetCount))
+	{
+		UE_LOG(
+			LogHCIAbilityKitAuditScan,
+			Error,
+			TEXT("[HCIAbilityKit][AgentRBAC] invalid_args reason=asset_count must be integer >= 0"));
+		return;
+	}
+
+	const FString UserName = Args[0].TrimStartAndEnd();
+	const FString ToolName = Args[1].TrimStartAndEnd();
+	if (UserName.IsEmpty() || ToolName.IsEmpty())
+	{
+		UE_LOG(
+			LogHCIAbilityKitAuditScan,
+			Error,
+			TEXT("[HCIAbilityKit][AgentRBAC] invalid_args reason=user_name and tool_name must be non-empty"));
+		return;
+	}
+
+	RunCase(TEXT("custom"), TEXT("req_cli_e7"), UserName, *ToolName, AssetCount);
 }
 
 static void HCI_TryFillTriangleFromTagCached(
@@ -2540,6 +3002,14 @@ void FHCIAbilityKitEditorModule::StartupModule()
 			TEXT("E6 source-control fail-fast/offline demo. Usage: HCIAbilityKit.AgentSourceControlDemo [tool_name] [source_control_enabled 0|1] [checkout_succeeded 0|1]"),
 			FConsoleCommandWithArgsDelegate::CreateStatic(&HCI_RunAbilityKitAgentSourceControlDemoCommand));
 	}
+
+	if (!GHCIAbilityKitAgentRbacDemoCommand.IsValid())
+	{
+		GHCIAbilityKitAgentRbacDemoCommand = MakeUnique<FAutoConsoleCommand>(
+			TEXT("HCIAbilityKit.AgentRbacDemo"),
+			TEXT("E7 local mock RBAC + local audit log demo. Usage: HCIAbilityKit.AgentRbacDemo [user_name] [tool_name] [asset_count>=0]"),
+			FConsoleCommandWithArgsDelegate::CreateStatic(&HCI_RunAbilityKitAgentRbacDemoCommand));
+	}
 }
 
 void FHCIAbilityKitEditorModule::ShutdownModule()
@@ -2576,6 +3046,7 @@ void FHCIAbilityKitEditorModule::ShutdownModule()
 	GHCIAbilityKitAgentBlastRadiusDemoCommand.Reset();
 	GHCIAbilityKitAgentTransactionDemoCommand.Reset();
 	GHCIAbilityKitAgentSourceControlDemoCommand.Reset();
+	GHCIAbilityKitAgentRbacDemoCommand.Reset();
 }
 
 IMPLEMENT_MODULE(FHCIAbilityKitEditorModule, HCIAbilityKitEditor)

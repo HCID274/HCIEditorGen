@@ -16,6 +16,8 @@
 #include "Agent/HCIAbilityKitAgentSimulateExecuteArchiveBundleJsonSerializer.h"
 #include "Agent/HCIAbilityKitAgentSimulateExecuteHandoffEnvelope.h"
 #include "Agent/HCIAbilityKitAgentSimulateExecuteHandoffEnvelopeJsonSerializer.h"
+#include "Agent/HCIAbilityKitAgentStageGExecuteIntent.h"
+#include "Agent/HCIAbilityKitAgentStageGExecuteIntentJsonSerializer.h"
 #include "Agent/HCIAbilityKitAgentExecutor.h"
 #include "Agent/HCIAbilityKitAgentExecutorApplyConfirmBridge.h"
 #include "Agent/HCIAbilityKitAgentExecutorApplyRequestBridge.h"
@@ -25,6 +27,7 @@
 #include "Agent/HCIAbilityKitAgentExecutorSimulateExecuteFinalReportBridge.h"
 #include "Agent/HCIAbilityKitAgentExecutorSimulateExecuteArchiveBundleBridge.h"
 #include "Agent/HCIAbilityKitAgentExecutorSimulateExecuteHandoffEnvelopeBridge.h"
+#include "Agent/HCIAbilityKitAgentExecutorStageGExecuteIntentBridge.h"
 #include "Agent/HCIAbilityKitAgentPlan.h"
 #include "Agent/HCIAbilityKitAgentPlanJsonSerializer.h"
 #include "Agent/HCIAbilityKitAgentPlanner.h"
@@ -56,6 +59,7 @@ static FHCIAbilityKitAgentSimulateExecuteReceipt GHCIAbilityKitAgentSimulateExec
 static FHCIAbilityKitAgentSimulateExecuteFinalReport GHCIAbilityKitAgentSimulateExecuteFinalReportPreviewState;
 static FHCIAbilityKitAgentSimulateExecuteArchiveBundle GHCIAbilityKitAgentSimulateExecuteArchiveBundlePreviewState;
 static FHCIAbilityKitAgentSimulateExecuteHandoffEnvelope GHCIAbilityKitAgentSimulateExecuteHandoffEnvelopePreviewState;
+static FHCIAbilityKitAgentStageGExecuteIntent GHCIAbilityKitAgentStageGExecuteIntentPreviewState;
 
 static FString HCI_JoinConsoleArgsAsText(const TArray<FString>& Args)
 {
@@ -4765,6 +4769,247 @@ static void HCI_RunAbilityKitAgentExecutePlanReviewPrepareSimHandoffEnvelopeJson
 	UE_LOG(LogHCIAbilityKitAgentDemo, Display, TEXT("%s"), *JsonText);
 }
 
+static bool HCI_TryParseStageGExecuteIntentTamperModeArg(const FString& InValue, FString& OutTamperMode)
+{
+	const FString Normalized = InValue.TrimStartAndEnd().ToLower();
+	if (Normalized == TEXT("none") || Normalized == TEXT("digest") || Normalized == TEXT("apply") ||
+		Normalized == TEXT("review") || Normalized == TEXT("confirm") || Normalized == TEXT("receipt") ||
+		Normalized == TEXT("final") || Normalized == TEXT("archive") || Normalized == TEXT("handoff") ||
+		Normalized == TEXT("ready"))
+	{
+		OutTamperMode = Normalized;
+		return true;
+	}
+	return false;
+}
+
+static void HCI_LogAgentExecutorStageGExecuteIntentSummary(const FHCIAbilityKitAgentStageGExecuteIntent& Intent)
+{
+	const FString SummaryLine = FString::Printf(
+		TEXT("[HCIAbilityKit][AgentExecutorStageGExecuteIntent] summary request_id=%s sim_handoff_envelope_id=%s sim_archive_bundle_id=%s sim_final_report_id=%s sim_execute_receipt_id=%s execute_ticket_id=%s confirm_request_id=%s apply_request_id=%s review_request_id=%s selection_digest=%s archive_digest=%s handoff_digest=%s execute_intent_digest=%s execute_target=%s handoff_target=%s user_confirmed=%s ready_to_simulate_execute=%s simulated_dispatch_accepted=%s simulation_completed=%s terminal_status=%s archive_status=%s handoff_status=%s stage_g_status=%s archive_ready=%s handoff_ready=%s write_enabled=%s ready_for_stage_g_entry=%s error_code=%s reason=%s validation=ok"),
+		Intent.RequestId.IsEmpty() ? TEXT("-") : *Intent.RequestId,
+		Intent.SimHandoffEnvelopeId.IsEmpty() ? TEXT("-") : *Intent.SimHandoffEnvelopeId,
+		Intent.SimArchiveBundleId.IsEmpty() ? TEXT("-") : *Intent.SimArchiveBundleId,
+		Intent.SimFinalReportId.IsEmpty() ? TEXT("-") : *Intent.SimFinalReportId,
+		Intent.SimExecuteReceiptId.IsEmpty() ? TEXT("-") : *Intent.SimExecuteReceiptId,
+		Intent.ExecuteTicketId.IsEmpty() ? TEXT("-") : *Intent.ExecuteTicketId,
+		Intent.ConfirmRequestId.IsEmpty() ? TEXT("-") : *Intent.ConfirmRequestId,
+		Intent.ApplyRequestId.IsEmpty() ? TEXT("-") : *Intent.ApplyRequestId,
+		Intent.ReviewRequestId.IsEmpty() ? TEXT("-") : *Intent.ReviewRequestId,
+		Intent.SelectionDigest.IsEmpty() ? TEXT("-") : *Intent.SelectionDigest,
+		Intent.ArchiveDigest.IsEmpty() ? TEXT("-") : *Intent.ArchiveDigest,
+		Intent.HandoffDigest.IsEmpty() ? TEXT("-") : *Intent.HandoffDigest,
+		Intent.ExecuteIntentDigest.IsEmpty() ? TEXT("-") : *Intent.ExecuteIntentDigest,
+		Intent.ExecuteTarget.IsEmpty() ? TEXT("-") : *Intent.ExecuteTarget,
+		Intent.HandoffTarget.IsEmpty() ? TEXT("-") : *Intent.HandoffTarget,
+		Intent.bUserConfirmed ? TEXT("true") : TEXT("false"),
+		Intent.bReadyToSimulateExecute ? TEXT("true") : TEXT("false"),
+		Intent.bSimulatedDispatchAccepted ? TEXT("true") : TEXT("false"),
+		Intent.bSimulationCompleted ? TEXT("true") : TEXT("false"),
+		Intent.TerminalStatus.IsEmpty() ? TEXT("-") : *Intent.TerminalStatus,
+		Intent.ArchiveStatus.IsEmpty() ? TEXT("-") : *Intent.ArchiveStatus,
+		Intent.HandoffStatus.IsEmpty() ? TEXT("-") : *Intent.HandoffStatus,
+		Intent.StageGStatus.IsEmpty() ? TEXT("-") : *Intent.StageGStatus,
+		Intent.bArchiveReady ? TEXT("true") : TEXT("false"),
+		Intent.bHandoffReady ? TEXT("true") : TEXT("false"),
+		Intent.bWriteEnabled ? TEXT("true") : TEXT("false"),
+		Intent.bReadyForStageGEntry ? TEXT("true") : TEXT("false"),
+		Intent.ErrorCode.IsEmpty() ? TEXT("-") : *Intent.ErrorCode,
+		Intent.Reason.IsEmpty() ? TEXT("-") : *Intent.Reason);
+	if (Intent.bReadyForStageGEntry)
+	{
+		UE_LOG(LogHCIAbilityKitAgentDemo, Display, TEXT("%s"), *SummaryLine);
+		return;
+	}
+	UE_LOG(LogHCIAbilityKitAgentDemo, Warning, TEXT("%s"), *SummaryLine);
+}
+
+static void HCI_LogAgentExecutorStageGExecuteIntentRows(const FHCIAbilityKitAgentStageGExecuteIntent& Intent)
+{
+	for (const FHCIAbilityKitAgentApplyRequestItem& Item : Intent.Items)
+	{
+		if (Item.bBlocked)
+		{
+			UE_LOG(
+				LogHCIAbilityKitAgentDemo,
+				Warning,
+				TEXT("[HCIAbilityKit][AgentExecutorStageGExecuteIntent] row=%d tool_name=%s risk=%s blocked=%s skip_reason=%s object_type=%s locate_strategy=%s asset_path=%s field=%s evidence_key=%s actor_path=%s"),
+				Item.RowIndex,
+				Item.ToolName.IsEmpty() ? TEXT("-") : *Item.ToolName,
+				*FHCIAbilityKitDryRunDiff::RiskToString(Item.Risk),
+				TEXT("true"),
+				Item.SkipReason.IsEmpty() ? TEXT("-") : *Item.SkipReason,
+				*FHCIAbilityKitDryRunDiff::ObjectTypeToString(Item.ObjectType),
+				*FHCIAbilityKitDryRunDiff::LocateStrategyToString(Item.LocateStrategy),
+				Item.AssetPath.IsEmpty() ? TEXT("-") : *Item.AssetPath,
+				Item.Field.IsEmpty() ? TEXT("-") : *Item.Field,
+				Item.EvidenceKey.IsEmpty() ? TEXT("-") : *Item.EvidenceKey,
+				Item.ActorPath.IsEmpty() ? TEXT("-") : *Item.ActorPath);
+			continue;
+		}
+
+		UE_LOG(
+			LogHCIAbilityKitAgentDemo,
+			Display,
+			TEXT("[HCIAbilityKit][AgentExecutorStageGExecuteIntent] row=%d tool_name=%s risk=%s blocked=%s skip_reason=%s object_type=%s locate_strategy=%s asset_path=%s field=%s evidence_key=%s actor_path=%s"),
+			Item.RowIndex,
+			Item.ToolName.IsEmpty() ? TEXT("-") : *Item.ToolName,
+			*FHCIAbilityKitDryRunDiff::RiskToString(Item.Risk),
+			TEXT("false"),
+			Item.SkipReason.IsEmpty() ? TEXT("-") : *Item.SkipReason,
+			*FHCIAbilityKitDryRunDiff::ObjectTypeToString(Item.ObjectType),
+			*FHCIAbilityKitDryRunDiff::LocateStrategyToString(Item.LocateStrategy),
+			Item.AssetPath.IsEmpty() ? TEXT("-") : *Item.AssetPath,
+			Item.Field.IsEmpty() ? TEXT("-") : *Item.Field,
+			Item.EvidenceKey.IsEmpty() ? TEXT("-") : *Item.EvidenceKey,
+			Item.ActorPath.IsEmpty() ? TEXT("-") : *Item.ActorPath);
+	}
+}
+
+static bool HCI_TryBuildAgentExecutorStageGExecuteIntentFromLatestPreview(const FString& TamperMode, FHCIAbilityKitAgentStageGExecuteIntent& OutIntent)
+{
+	if (GHCIAbilityKitAgentSimulateExecuteHandoffEnvelopePreviewState.Items.Num() <= 0)
+	{
+		UE_LOG(LogHCIAbilityKitAgentDemo, Warning, TEXT("[HCIAbilityKit][AgentExecutorStageGExecuteIntent] prepare=unavailable reason=no_sim_handoff_envelope_preview_state"));
+		UE_LOG(LogHCIAbilityKitAgentDemo, Display, TEXT("[HCIAbilityKit][AgentExecutorStageGExecuteIntent] suggestion=先运行 HCIAbilityKit.AgentExecutePlanReviewPrepareSimHandoffEnvelope"));
+		return false;
+	}
+	if (GHCIAbilityKitAgentSimulateExecuteArchiveBundlePreviewState.Items.Num() <= 0)
+	{
+		UE_LOG(LogHCIAbilityKitAgentDemo, Warning, TEXT("[HCIAbilityKit][AgentExecutorStageGExecuteIntent] prepare=unavailable reason=no_sim_archive_bundle_preview_state"));
+		UE_LOG(LogHCIAbilityKitAgentDemo, Display, TEXT("[HCIAbilityKit][AgentExecutorStageGExecuteIntent] suggestion=先运行 HCIAbilityKit.AgentExecutePlanReviewPrepareSimArchiveBundle"));
+		return false;
+	}
+	if (GHCIAbilityKitAgentSimulateExecuteFinalReportPreviewState.Items.Num() <= 0)
+	{
+		UE_LOG(LogHCIAbilityKitAgentDemo, Warning, TEXT("[HCIAbilityKit][AgentExecutorStageGExecuteIntent] prepare=unavailable reason=no_sim_final_report_preview_state"));
+		UE_LOG(LogHCIAbilityKitAgentDemo, Display, TEXT("[HCIAbilityKit][AgentExecutorStageGExecuteIntent] suggestion=先运行 HCIAbilityKit.AgentExecutePlanReviewPrepareSimFinalReport"));
+		return false;
+	}
+	if (GHCIAbilityKitAgentSimulateExecuteReceiptPreviewState.Items.Num() <= 0)
+	{
+		UE_LOG(LogHCIAbilityKitAgentDemo, Warning, TEXT("[HCIAbilityKit][AgentExecutorStageGExecuteIntent] prepare=unavailable reason=no_sim_execute_receipt_preview_state"));
+		UE_LOG(LogHCIAbilityKitAgentDemo, Display, TEXT("[HCIAbilityKit][AgentExecutorStageGExecuteIntent] suggestion=先运行 HCIAbilityKit.AgentExecutePlanReviewPrepareSimExecuteReceipt"));
+		return false;
+	}
+	if (GHCIAbilityKitAgentExecuteTicketPreviewState.Items.Num() <= 0)
+	{
+		UE_LOG(LogHCIAbilityKitAgentDemo, Warning, TEXT("[HCIAbilityKit][AgentExecutorStageGExecuteIntent] prepare=unavailable reason=no_execute_ticket_preview_state"));
+		UE_LOG(LogHCIAbilityKitAgentDemo, Display, TEXT("[HCIAbilityKit][AgentExecutorStageGExecuteIntent] suggestion=先运行 HCIAbilityKit.AgentExecutePlanReviewPrepareExecuteTicket"));
+		return false;
+	}
+	if (GHCIAbilityKitAgentApplyConfirmRequestPreviewState.Items.Num() <= 0)
+	{
+		UE_LOG(LogHCIAbilityKitAgentDemo, Warning, TEXT("[HCIAbilityKit][AgentExecutorStageGExecuteIntent] prepare=unavailable reason=no_confirm_request_preview_state"));
+		UE_LOG(LogHCIAbilityKitAgentDemo, Display, TEXT("[HCIAbilityKit][AgentExecutorStageGExecuteIntent] suggestion=先运行 HCIAbilityKit.AgentExecutePlanReviewPrepareConfirm"));
+		return false;
+	}
+	if (GHCIAbilityKitAgentApplyRequestPreviewState.Items.Num() <= 0)
+	{
+		UE_LOG(LogHCIAbilityKitAgentDemo, Warning, TEXT("[HCIAbilityKit][AgentExecutorStageGExecuteIntent] prepare=unavailable reason=no_apply_request_preview_state"));
+		UE_LOG(LogHCIAbilityKitAgentDemo, Display, TEXT("[HCIAbilityKit][AgentExecutorStageGExecuteIntent] suggestion=先运行 HCIAbilityKit.AgentExecutePlanReviewPrepareApply"));
+		return false;
+	}
+	if (GHCIAbilityKitAgentExecutorReviewDiffPreviewState.DiffItems.Num() <= 0)
+	{
+		UE_LOG(LogHCIAbilityKitAgentDemo, Warning, TEXT("[HCIAbilityKit][AgentExecutorStageGExecuteIntent] prepare=unavailable reason=no_review_preview_state"));
+		UE_LOG(LogHCIAbilityKitAgentDemo, Display, TEXT("[HCIAbilityKit][AgentExecutorStageGExecuteIntent] suggestion=先运行 HCIAbilityKit.AgentExecutePlanReviewDemo 或 HCIAbilityKit.AgentExecutePlanReviewSelect"));
+		return false;
+	}
+
+	FHCIAbilityKitAgentSimulateExecuteHandoffEnvelope WorkingHandoff = GHCIAbilityKitAgentSimulateExecuteHandoffEnvelopePreviewState;
+	if (TamperMode == TEXT("digest")) { WorkingHandoff.SelectionDigest += TEXT("_tampered"); }
+	else if (TamperMode == TEXT("apply")) { WorkingHandoff.ApplyRequestId += TEXT("_stale"); }
+	else if (TamperMode == TEXT("review")) { WorkingHandoff.ReviewRequestId += TEXT("_stale"); }
+	else if (TamperMode == TEXT("confirm")) { WorkingHandoff.ConfirmRequestId += TEXT("_stale"); }
+	else if (TamperMode == TEXT("receipt")) { WorkingHandoff.bSimulatedDispatchAccepted = false; }
+	else if (TamperMode == TEXT("final")) { WorkingHandoff.bSimulationCompleted = false; WorkingHandoff.TerminalStatus = TEXT("blocked"); }
+	else if (TamperMode == TEXT("archive")) { WorkingHandoff.bArchiveReady = false; WorkingHandoff.ArchiveStatus = TEXT("blocked"); }
+	else if (TamperMode == TEXT("handoff")) { WorkingHandoff.bHandoffReady = false; WorkingHandoff.HandoffStatus = TEXT("blocked"); }
+	else if (TamperMode == TEXT("ready")) { WorkingHandoff.bReadyToSimulateExecute = false; }
+
+	if (!FHCIAbilityKitAgentExecutorStageGExecuteIntentBridge::BuildStageGExecuteIntent(
+		WorkingHandoff,
+		GHCIAbilityKitAgentSimulateExecuteArchiveBundlePreviewState,
+		GHCIAbilityKitAgentSimulateExecuteFinalReportPreviewState,
+		GHCIAbilityKitAgentSimulateExecuteReceiptPreviewState,
+		GHCIAbilityKitAgentExecuteTicketPreviewState,
+		GHCIAbilityKitAgentApplyConfirmRequestPreviewState,
+		GHCIAbilityKitAgentApplyRequestPreviewState,
+		GHCIAbilityKitAgentExecutorReviewDiffPreviewState,
+		OutIntent))
+	{
+		UE_LOG(LogHCIAbilityKitAgentDemo, Error, TEXT("[HCIAbilityKit][AgentExecutorStageGExecuteIntent] prepare_failed reason=bridge_failed"));
+		return false;
+	}
+
+	GHCIAbilityKitAgentStageGExecuteIntentPreviewState = OutIntent;
+	return true;
+}
+
+static bool HCI_TryParseStageGExecuteIntentCommandArgs(const TArray<FString>& Args, FString& OutTamperMode)
+{
+	OutTamperMode = TEXT("none");
+	if (Args.Num() == 0)
+	{
+		return true;
+	}
+	if (Args.Num() != 1)
+	{
+		return false;
+	}
+	return HCI_TryParseStageGExecuteIntentTamperModeArg(Args[0], OutTamperMode);
+}
+
+static void HCI_RunAbilityKitAgentExecutePlanReviewPrepareStageGExecuteIntentCommand(const TArray<FString>& Args)
+{
+	FString TamperMode;
+	if (!HCI_TryParseStageGExecuteIntentCommandArgs(Args, TamperMode))
+	{
+		UE_LOG(LogHCIAbilityKitAgentDemo, Error, TEXT("[HCIAbilityKit][AgentExecutorStageGExecuteIntent] invalid_args usage=HCIAbilityKit.AgentExecutePlanReviewPrepareStageGExecuteIntent [tamper=none|digest|apply|review|confirm|receipt|final|archive|handoff|ready]"));
+		return;
+	}
+
+	FHCIAbilityKitAgentStageGExecuteIntent Intent;
+	if (!HCI_TryBuildAgentExecutorStageGExecuteIntentFromLatestPreview(TamperMode, Intent))
+	{
+		return;
+	}
+
+	HCI_LogAgentExecutorStageGExecuteIntentSummary(Intent);
+	HCI_LogAgentExecutorStageGExecuteIntentRows(Intent);
+	UE_LOG(LogHCIAbilityKitAgentDemo, Display, TEXT("[HCIAbilityKit][AgentExecutorStageGExecuteIntent] hint=也可运行 HCIAbilityKit.AgentExecutePlanReviewPrepareStageGExecuteIntentJson [tamper] 输出 StageGExecuteIntent JSON"));
+}
+
+static void HCI_RunAbilityKitAgentExecutePlanReviewPrepareStageGExecuteIntentJsonCommand(const TArray<FString>& Args)
+{
+	FString TamperMode;
+	if (!HCI_TryParseStageGExecuteIntentCommandArgs(Args, TamperMode))
+	{
+		UE_LOG(LogHCIAbilityKitAgentDemo, Error, TEXT("[HCIAbilityKit][AgentExecutorStageGExecuteIntent] invalid_args usage=HCIAbilityKit.AgentExecutePlanReviewPrepareStageGExecuteIntentJson [tamper=none|digest|apply|review|confirm|receipt|final|archive|handoff|ready]"));
+		return;
+	}
+
+	FHCIAbilityKitAgentStageGExecuteIntent Intent;
+	if (!HCI_TryBuildAgentExecutorStageGExecuteIntentFromLatestPreview(TamperMode, Intent))
+	{
+		return;
+	}
+
+	HCI_LogAgentExecutorStageGExecuteIntentSummary(Intent);
+	HCI_LogAgentExecutorStageGExecuteIntentRows(Intent);
+
+	FString JsonText;
+	if (!FHCIAbilityKitAgentStageGExecuteIntentJsonSerializer::SerializeToJsonString(Intent, JsonText))
+	{
+		UE_LOG(LogHCIAbilityKitAgentDemo, Error, TEXT("[HCIAbilityKit][AgentExecutorStageGExecuteIntent] json_failed request_id=%s"), Intent.RequestId.IsEmpty() ? TEXT("-") : *Intent.RequestId);
+		return;
+	}
+
+	UE_LOG(LogHCIAbilityKitAgentDemo, Display, TEXT("[HCIAbilityKit][AgentExecutorStageGExecuteIntent] json request_id=%s bytes=%d"), Intent.RequestId.IsEmpty() ? TEXT("-") : *Intent.RequestId, JsonText.Len());
+	UE_LOG(LogHCIAbilityKitAgentDemo, Display, TEXT("%s"), *JsonText);
+}
+
 void FHCIAbilityKitAgentDemoConsoleCommands::Startup()
 {
 	if (!AgentConfirmGateDemoCommand.IsValid())
@@ -5014,6 +5259,22 @@ void FHCIAbilityKitAgentDemoConsoleCommands::Startup()
 			TEXT("F15 Build Stage-G handoff envelope and print JSON. Usage: HCIAbilityKit.AgentExecutePlanReviewPrepareSimHandoffEnvelopeJson [tamper=none|digest|apply|review|confirm|receipt|final|archive|ready]"),
 			FConsoleCommandWithArgsDelegate::CreateStatic(&HCI_RunAbilityKitAgentExecutePlanReviewPrepareSimHandoffEnvelopeJsonCommand));
 	}
+
+	if (!AgentExecutePlanReviewPrepareStageGExecuteIntentCommand.IsValid())
+	{
+		AgentExecutePlanReviewPrepareStageGExecuteIntentCommand = MakeUnique<FAutoConsoleCommand>(
+			TEXT("HCIAbilityKit.AgentExecutePlanReviewPrepareStageGExecuteIntent"),
+			TEXT("G1 Validate latest SimHandoffEnvelope against latest SimArchiveBundle/SimFinalReport/Receipt/ExecuteTicket/Confirm/Apply/Review preview and build Stage-G execute intent (validate-only). Usage: HCIAbilityKit.AgentExecutePlanReviewPrepareStageGExecuteIntent [tamper=none|digest|apply|review|confirm|receipt|final|archive|handoff|ready]"),
+			FConsoleCommandWithArgsDelegate::CreateStatic(&HCI_RunAbilityKitAgentExecutePlanReviewPrepareStageGExecuteIntentCommand));
+	}
+
+	if (!AgentExecutePlanReviewPrepareStageGExecuteIntentJsonCommand.IsValid())
+	{
+		AgentExecutePlanReviewPrepareStageGExecuteIntentJsonCommand = MakeUnique<FAutoConsoleCommand>(
+			TEXT("HCIAbilityKit.AgentExecutePlanReviewPrepareStageGExecuteIntentJson"),
+			TEXT("G1 Build Stage-G execute intent (validate-only) and print JSON. Usage: HCIAbilityKit.AgentExecutePlanReviewPrepareStageGExecuteIntentJson [tamper=none|digest|apply|review|confirm|receipt|final|archive|handoff|ready]"),
+			FConsoleCommandWithArgsDelegate::CreateStatic(&HCI_RunAbilityKitAgentExecutePlanReviewPrepareStageGExecuteIntentJsonCommand));
+	}
 }
 
 void FHCIAbilityKitAgentDemoConsoleCommands::Shutdown()
@@ -5049,6 +5310,8 @@ void FHCIAbilityKitAgentDemoConsoleCommands::Shutdown()
 	AgentExecutePlanReviewPrepareSimArchiveBundleJsonCommand.Reset();
 	AgentExecutePlanReviewPrepareSimHandoffEnvelopeCommand.Reset();
 	AgentExecutePlanReviewPrepareSimHandoffEnvelopeJsonCommand.Reset();
+	AgentExecutePlanReviewPrepareStageGExecuteIntentCommand.Reset();
+	AgentExecutePlanReviewPrepareStageGExecuteIntentJsonCommand.Reset();
 }
 
 

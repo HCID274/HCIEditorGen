@@ -1,0 +1,30 @@
+#pragma once
+
+#include "CoreMinimal.h"
+
+struct FHCIAbilityKitAgentApplyConfirmRequest;
+struct FHCIAbilityKitAgentApplyRequest;
+struct FHCIAbilityKitAgentExecuteTicket;
+struct FHCIAbilityKitAgentSimulateExecuteHandoffEnvelope;
+struct FHCIAbilityKitAgentSimulateExecuteArchiveBundle;
+struct FHCIAbilityKitAgentSimulateExecuteFinalReport;
+struct FHCIAbilityKitAgentSimulateExecuteReceipt;
+struct FHCIAbilityKitAgentStageGExecuteIntent;
+struct FHCIAbilityKitDryRunDiffReport;
+
+class HCIABILITYKITRUNTIME_API FHCIAbilityKitAgentExecutorStageGExecuteIntentBridge
+{
+public:
+	static bool BuildStageGExecuteIntent(
+		const FHCIAbilityKitAgentSimulateExecuteHandoffEnvelope& SimHandoffEnvelope,
+		const FHCIAbilityKitAgentSimulateExecuteArchiveBundle& SimArchiveBundle,
+		const FHCIAbilityKitAgentSimulateExecuteFinalReport& SimFinalReport,
+		const FHCIAbilityKitAgentSimulateExecuteReceipt& SimExecuteReceipt,
+		const FHCIAbilityKitAgentExecuteTicket& CurrentExecuteTicket,
+		const FHCIAbilityKitAgentApplyConfirmRequest& CurrentConfirmRequest,
+		const FHCIAbilityKitAgentApplyRequest& CurrentApplyRequest,
+		const FHCIAbilityKitDryRunDiffReport& CurrentReviewReport,
+		FHCIAbilityKitAgentStageGExecuteIntent& OutIntent);
+};
+
+

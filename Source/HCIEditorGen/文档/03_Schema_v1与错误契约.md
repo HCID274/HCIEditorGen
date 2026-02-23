@@ -1484,6 +1484,91 @@ public:
   - JSON 输出：
     - `[HCIAbilityKit][AgentExecutorSimHandoffEnvelope] json request_id=... bytes=...`
 
+### 14.5.14 StageG-SliceG1 SimHandoffEnvelope（Stage G 输入信封）完整性校验 -> StageGExecuteIntent（Stage G 入口意图包，validate-only）桥接
+
+- 目标：基于 F15 的 `SimHandoffEnvelope` 与最新 `SimArchiveBundle/SimFinalReport/SimExecuteReceipt/ExecuteTicket/ConfirmRequest/ApplyRequest/Review` 预览执行 Stage G 入口准入前完整性校验（`sim_archive_bundle_id + sim_final_report_id + sim_execute_receipt_id + execute_ticket_id + confirm_request_id + apply_request_id + review_request_id + selection_digest + archive_digest + handoff_digest + handoff_ready + handoff_status + user_confirmed`），桥接为 `StageGExecuteIntent` 契约与 JSON；固定 `validate_only` 模式且 `write_enabled=false`，不触发真实资产写入。
+- Runtime 新增桥接器（G1）：
+  - `FHCIAbilityKitAgentExecutorStageGExecuteIntentBridge::BuildStageGExecuteIntent(...)`
+  - 输入：`SimHandoffEnvelope`（F15） + `SimArchiveBundle`（F14） + `SimFinalReport`（F13） + `SimExecuteReceipt`（F12） + `CurrentExecuteTicket`（F11） + `CurrentConfirmRequest`（F10） + `CurrentApplyRequest`（F9） + `CurrentReviewReport`（F6/F8）
+  - 输出：`FHCIAbilityKitAgentStageGExecuteIntent`
+- G1 `StageGExecuteIntent` 顶层字段（最小冻结）：
+  - `request_id`
+  - `sim_handoff_envelope_id`
+  - `sim_archive_bundle_id`
+  - `sim_final_report_id`
+  - `sim_execute_receipt_id`
+  - `execute_ticket_id`
+  - `confirm_request_id`
+  - `apply_request_id`
+  - `review_request_id`
+  - `selection_digest`
+  - `archive_digest`
+  - `handoff_digest`
+  - `execute_intent_digest`
+  - `generated_utc`（值按北京时间 `+08:00` 输出，字段名兼容保留）
+  - `execution_mode`（一期固定：`stage_g_validate_only`）
+  - `execute_target`（一期固定：`stage_g_execute_runtime`）
+  - `handoff_target`
+  - `transaction_mode`
+  - `termination_policy`
+  - `terminal_status`
+  - `archive_status`
+  - `handoff_status`
+  - `stage_g_status`（`ready|blocked`）
+  - `user_confirmed`
+  - `ready_to_simulate_execute`
+  - `simulated_dispatch_accepted`
+  - `simulation_completed`
+  - `archive_ready`
+  - `handoff_ready`
+  - `write_enabled`（一期固定：`false`）
+  - `ready_for_stage_g_entry`
+  - `error_code`（成功可为 `-`）
+  - `reason`
+  - `summary`
+  - `items[]`
+- G1 校验规则（冻结，最小）：
+  - `SimHandoffEnvelope.user_confirmed=false` -> `ready_for_stage_g_entry=false`，`stage_g_status=blocked`，`error_code=E4005`，`reason=user_not_confirmed`
+  - `SimHandoffEnvelope.ready_to_simulate_execute=false` -> `ready_for_stage_g_entry=false`，`stage_g_status=blocked`，`error_code=E4205`，`reason=execute_ticket_not_ready`
+  - `SimHandoffEnvelope.simulated_dispatch_accepted=false` -> `ready_for_stage_g_entry=false`，`stage_g_status=blocked`，`error_code=E4206`，`reason=simulate_execute_receipt_not_accepted`
+  - `SimHandoffEnvelope.simulation_completed=false` 或 `SimHandoffEnvelope.terminal_status!=completed` -> `ready_for_stage_g_entry=false`，`stage_g_status=blocked`，`error_code=E4207`，`reason=simulate_final_report_not_completed`
+  - `SimHandoffEnvelope.archive_ready=false` 或 `SimHandoffEnvelope.archive_status!=ready` -> `ready_for_stage_g_entry=false`，`stage_g_status=blocked`，`error_code=E4208`，`reason=sim_archive_bundle_not_ready`
+  - `SimHandoffEnvelope.handoff_ready=false` 或 `SimHandoffEnvelope.handoff_status!=ready` -> `ready_for_stage_g_entry=false`，`stage_g_status=blocked`，`error_code=E4209`，`reason=sim_handoff_envelope_not_ready`
+  - `CurrentExecuteTicket.ready_to_simulate_execute=false` -> `ready_for_stage_g_entry=false`，`error_code=E4205`，`reason=execute_ticket_not_ready`
+  - `CurrentConfirmRequest.ready_to_execute=false` -> `ready_for_stage_g_entry=false`，`error_code=E4204`，`reason=confirm_request_not_ready`
+  - `SimHandoffEnvelope.sim_archive_bundle_id != SimArchiveBundle.request_id` -> `ready_for_stage_g_entry=false`，`error_code=E4202`，`reason=sim_archive_bundle_id_mismatch`
+  - `SimHandoffEnvelope.sim_final_report_id != SimFinalReport.request_id` -> `ready_for_stage_g_entry=false`，`error_code=E4202`，`reason=sim_final_report_id_mismatch`
+  - `SimHandoffEnvelope.sim_execute_receipt_id != SimExecuteReceipt.request_id` -> `ready_for_stage_g_entry=false`，`error_code=E4202`，`reason=sim_execute_receipt_id_mismatch`
+  - `SimHandoffEnvelope.execute_ticket_id != CurrentExecuteTicket.request_id` -> `ready_for_stage_g_entry=false`，`error_code=E4202`，`reason=execute_ticket_id_mismatch`
+  - `SimHandoffEnvelope.confirm_request_id != CurrentConfirmRequest.request_id` -> `ready_for_stage_g_entry=false`，`error_code=E4202`，`reason=confirm_request_id_mismatch`
+  - `SimHandoffEnvelope.apply_request_id != CurrentApplyRequest.request_id` -> `ready_for_stage_g_entry=false`，`error_code=E4202`，`reason=apply_request_id_mismatch`
+  - `SimHandoffEnvelope.review_request_id != CurrentReviewReport.request_id` -> `ready_for_stage_g_entry=false`，`error_code=E4202`，`reason=review_request_id_mismatch`
+  - `SimHandoffEnvelope.selection_digest` 与 `SimArchiveBundle/SimFinalReport/SimExecuteReceipt/CurrentExecuteTicket/CurrentConfirmRequest/CurrentApplyRequest` 或 `CurrentReviewReport` 重算摘要任一不一致 -> `ready_for_stage_g_entry=false`，`error_code=E4202`，`reason=selection_digest_mismatch`
+  - `SimHandoffEnvelope.archive_digest != SimArchiveBundle.archive_digest` 或为空 -> `ready_for_stage_g_entry=false`，`error_code=E4202`，`reason=archive_digest_mismatch_or_missing`
+  - `SimHandoffEnvelope.handoff_digest` 为空 -> `ready_for_stage_g_entry=false`，`error_code=E4202`，`reason=handoff_digest_missing`
+  - `SimHandoffEnvelope.handoff_target != stage_g_execute` -> `ready_for_stage_g_entry=false`，`error_code=E4202`，`reason=handoff_target_mismatch`
+  - 全部通过 -> `ready_for_stage_g_entry=true`，`stage_g_status=ready`，`write_enabled=false`，`error_code=-`，`reason=stage_g_execute_intent_ready_validate_only`
+- Editor 新增命令（G1）：
+  - `HCIAbilityKit.AgentExecutePlanReviewPrepareStageGExecuteIntent [tamper=none|digest|apply|review|confirm|receipt|final|archive|handoff|ready]`
+  - `HCIAbilityKit.AgentExecutePlanReviewPrepareStageGExecuteIntentJson [tamper=none|digest|apply|review|confirm|receipt|final|archive|handoff|ready]`
+  - 输入来源：F15 “最新 SimHandoffEnvelope 预览状态” + F14/F13/F12/F11/F10/F9/F6-F8 最新预览状态
+  - `tamper` 仅用于 UE 手测模拟：
+    - `none`：正常校验
+    - `digest`：篡改 `selection_digest`（触发 `E4202/selection_digest_mismatch`）
+    - `apply/review/confirm`：篡改对应 id（触发 `E4202/*_mismatch`）
+    - `receipt`：强制 `simulated_dispatch_accepted=false`（触发 `E4206`）
+    - `final`：强制 `simulation_completed=false` 或 `terminal_status=blocked`（触发 `E4207`）
+    - `archive`：强制 `archive_ready=false` 或 `archive_status=blocked`（触发 `E4208`）
+    - `handoff`：强制 `handoff_ready=false` 或 `handoff_status=blocked`（触发 `E4209`）
+    - `ready`：强制 `ready_to_simulate_execute=false`（触发 `E4205`）
+- G1 日志口径（新增，冻结）：
+  - 摘要（Display/Warning）：
+    - `[HCIAbilityKit][AgentExecutorStageGExecuteIntent] summary request_id=... sim_handoff_envelope_id=... sim_archive_bundle_id=... sim_final_report_id=... sim_execute_receipt_id=... execute_ticket_id=... confirm_request_id=... apply_request_id=... review_request_id=... selection_digest=... archive_digest=... handoff_digest=... execute_intent_digest=... execute_target=... handoff_target=... user_confirmed=true|false ready_to_simulate_execute=true|false simulated_dispatch_accepted=true|false simulation_completed=true|false terminal_status=... archive_status=... handoff_status=... stage_g_status=... archive_ready=true|false handoff_ready=true|false write_enabled=true|false ready_for_stage_g_entry=true|false error_code=... reason=... validation=ok`
+  - 行（Display/Warning）：
+    - `row=... tool_name=... risk=... blocked=... skip_reason=... object_type=... locate_strategy=... asset_path=... field=... evidence_key=... actor_path=...`
+  - JSON 输出：
+    - `[HCIAbilityKit][AgentExecutorStageGExecuteIntent] json request_id=... bytes=...`
+
 ### 14.6 一期禁止实现（延期到 Phase 3）
 
 - 记忆门禁与 TTL 细则（Session TTL/SOP 自动提炼触发策略）。

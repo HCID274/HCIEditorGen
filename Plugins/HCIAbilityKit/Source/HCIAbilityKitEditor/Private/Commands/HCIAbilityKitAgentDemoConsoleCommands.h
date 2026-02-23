@@ -44,4 +44,6 @@ private:
 	TUniquePtr<FAutoConsoleCommand> AgentExecutePlanReviewPrepareSimHandoffEnvelopeJsonCommand;
 	TUniquePtr<FAutoConsoleCommand> AgentExecutePlanReviewPrepareStageGExecuteIntentCommand;
 	TUniquePtr<FAutoConsoleCommand> AgentExecutePlanReviewPrepareStageGExecuteIntentJsonCommand;
+	TUniquePtr<FAutoConsoleCommand> AgentExecutePlanReviewPrepareStageGWriteEnableRequestCommand;
+	TUniquePtr<FAutoConsoleCommand> AgentExecutePlanReviewPrepareStageGWriteEnableRequestJsonCommand;
 };

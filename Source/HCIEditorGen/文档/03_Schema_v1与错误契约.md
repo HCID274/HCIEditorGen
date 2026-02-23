@@ -1606,3 +1606,45 @@ public:
 - `NormalizeAssetNamingByMetadata` 必须先读取 `UAssetImportData/AssetUserData` 再生成提案；无法获取足够元数据时返回 `E4012`，禁止盲改。
 - 命名提案必须满足前缀约束：`UStaticMesh -> SM_`，`UTexture* -> T_`；归档目标路径必须以 `/Game/` 开头。
 - 命名与归档写操作必须先产出 Dry-Run Diff，未确认不得执行。
+
+### 14.5.15 StageG-SliceG2 StageGExecuteIntent（validate-only 入口意图包）完整性校验 + Stage G 写权限二次确认 -> StageGWriteEnableRequest（写权限启用请求，dry-run）桥接
+
+- 目标：基于 G1 的 `StageGExecuteIntent` 与最新 `SimHandoffEnvelope/SimArchiveBundle/SimFinalReport/SimExecuteReceipt/ExecuteTicket/ConfirmRequest/ApplyRequest/Review` 预览执行完整性校验，并增加 `write_enable_confirmed` 二次确认门禁，桥接为 `StageGWriteEnableRequest` 契约与 JSON；仍为 dry-run，不触发真实资产写入。
+- Runtime 桥接接口：`FHCIAbilityKitAgentExecutorStageGWriteEnableRequestBridge::BuildStageGWriteEnableRequest(...)`
+- 输出：`FHCIAbilityKitAgentStageGWriteEnableRequest`
+
+- G2 顶层字段（最小冻结）：
+  - `request_id/stage_g_execute_intent_id`
+  - `sim_handoff_envelope_id/sim_archive_bundle_id/sim_final_report_id/sim_execute_receipt_id`
+  - `execute_ticket_id/confirm_request_id/apply_request_id/review_request_id`
+  - `selection_digest/archive_digest/handoff_digest/execute_intent_digest/stage_g_write_enable_digest`
+  - `execute_target/handoff_target`
+  - `terminal_status/archive_status/handoff_status/stage_g_status/stage_g_write_status`
+  - `user_confirmed/ready_to_simulate_execute/simulated_dispatch_accepted/simulation_completed/archive_ready/handoff_ready`
+  - `write_enabled/ready_for_stage_g_entry/write_enable_confirmed/ready_for_stage_g_execute`
+  - `error_code/reason`
+  - `summary/items`（保留 `blocked/skip_reason/object_type/locate_strategy/evidence_key/actor_path`）
+
+- 成功口径（G2）：
+  - `write_enable_confirmed=true`
+  - `ready_for_stage_g_execute=true`
+  - `write_enabled=true`
+  - `stage_g_write_status=ready`
+  - `error_code=-`
+  - `reason=stage_g_write_enable_request_ready`
+
+- 错误码与原因（新增/延续）：
+  - `E4005 / user_not_confirmed`
+  - `E4005 / stage_g_write_enable_not_confirmed`
+  - `E4210 / stage_g_execute_intent_not_ready`
+  - `E4209 / sim_handoff_envelope_not_ready`
+  - `E4208 / sim_archive_bundle_not_ready`
+  - `E4207 / simulate_final_report_not_completed`
+  - `E4206 / simulate_execute_receipt_not_accepted`
+  - `E4205 / execute_ticket_not_ready`
+  - `E4204 / confirm_request_not_ready`
+  - `E4202 / *_mismatch`
+
+- UE 控制台命令（G2）：
+  - `HCIAbilityKit.AgentExecutePlanReviewPrepareStageGWriteEnableRequest [write_enable_confirmed=0|1] [tamper=none|digest|intent|handoff|ready]`
+  - `HCIAbilityKit.AgentExecutePlanReviewPrepareStageGWriteEnableRequestJson [write_enable_confirmed=0|1] [tamper=none|digest|intent|handoff|ready]`

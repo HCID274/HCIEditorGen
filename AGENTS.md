@@ -254,8 +254,9 @@ Scope: whole repo.
   - `Stage F-SliceF15` 已通过：SimArchiveBundle 最终模拟存证包完整性校验 -> SimHandoffEnvelope（Stage G 输入信封）桥接（校验 `sim_archive_bundle_id + sim_final_report_id + sim_execute_receipt_id + execute_ticket_id + confirm_request_id + apply_request_id + review_request_id + selection_digest + archive_digest + archive_ready + archive_status + user_confirmed`，输出 `SimHandoffEnvelope` 契约与 JSON；仍为 `simulate_dry_run`）已接入并通过 UE 手测。
   - `Stage F` 当前状态：`已收官（F1~F15 全部通过）`
   - `Stage G-SliceG1` 已通过：SimHandoffEnvelope（Stage G 输入信封）完整性校验 -> StageGExecuteIntent（Stage G 入口意图包，validate-only）桥接（校验 `sim_archive_bundle_id + sim_final_report_id + sim_execute_receipt_id + execute_ticket_id + confirm_request_id + apply_request_id + review_request_id + selection_digest + archive_digest + handoff_digest + handoff_ready + handoff_status + user_confirmed`，输出 `StageGExecuteIntent` 契约与 JSON；固定 `write_enabled=false`）已接入并通过 UE 手测。
-  - 当前切片：`Stage G-SliceG2`（待定义/待冻结）
-  - 下一切片：`Stage G-SliceG3`（待定义；G2 通过后冻结）
+  - `Stage G-SliceG2` 已通过：StageGExecuteIntent（validate-only 入口意图包）完整性校验 + Stage G 写权限二次确认 -> StageGWriteEnableRequest（写权限启用请求，dry-run）桥接（新增 `write_enable_confirmed` 二次确认门禁，输出 `stage_g_write_enable_digest/stage_g_write_status/ready_for_stage_g_execute`；用户在 UE 手测中发现并推动修复 `intent` 篡改未拦截漏洞，现已命中 `E4202/stage_g_execute_intent_id_mismatch`，且正常场景回归通过）已接入并通过 UE 手测。
+  - 当前切片：`Stage G-SliceG3`（待定义/待冻结）
+  - 下一切片：`Stage G-SliceG4`（待定义；G3 通过后冻结）
   - 兼容性说明（时间字符串）：对外日志/JSON 的时间值已统一改为北京时间 `+08:00` 输出；字段名（如 `updated_utc/generated_utc/timestamp_utc`）暂保持不变以兼容既有门禁与测试。
   - D 段收尾后续主线：`Stage E`（安全执行：Dry-Run/Confirm/Transaction/SC）-> `Stage F`（NL->Plan->Executor）。
   - B3 最新状态：

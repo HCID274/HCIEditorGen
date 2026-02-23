@@ -1283,6 +1283,66 @@ public:
   - JSON 输出：
     - `[HCIAbilityKit][AgentExecutorSimExecuteReceipt] json request_id=... bytes=...`
 
+### 14.5.11 StageF-SliceF13 SimExecuteReceipt 回执后完整性校验 -> SimFinalReport 最终模拟执行报告桥接
+
+- 目标：基于 F12 的 `SimExecuteReceipt` 与最新 `ExecuteTicket/ConfirmRequest/ApplyRequest/Review` 预览执行回执后完整性校验（`execute_ticket_id + confirm_request_id + apply_request_id + review_request_id + selection_digest + ready_to_simulate_execute + simulated_dispatch_accepted + user_confirmed`），桥接为 `SimFinalReport` 契约与 JSON；仍为 `simulate_dry_run`。
+- Runtime 新增桥接器（F13）：
+  - `FHCIAbilityKitAgentExecutorSimulateExecuteFinalReportBridge::BuildSimulateExecuteFinalReport(...)`
+  - 输入：`SimExecuteReceipt`（F12） + `CurrentExecuteTicket`（F11） + `CurrentConfirmRequest`（F10） + `CurrentApplyRequest`（F9） + `CurrentReviewReport`（F6/F8）
+  - 输出：`FHCIAbilityKitAgentSimulateExecuteFinalReport`
+- F13 `SimFinalReport` 顶层字段（最小冻结）：
+  - `request_id`
+  - `sim_execute_receipt_id`
+  - `execute_ticket_id`
+  - `confirm_request_id`
+  - `apply_request_id`
+  - `review_request_id`
+  - `selection_digest`
+  - `generated_utc`（值按北京时间 `+08:00` 输出，字段名兼容保留）
+  - `execution_mode`（一期固定：`simulate_dry_run_final_report`）
+  - `transaction_mode`（沿用 F11/F12：`all_or_nothing`）
+  - `termination_policy`（沿用 F11/F12）
+  - `terminal_status`（`completed|blocked`）
+  - `user_confirmed`
+  - `ready_to_simulate_execute`
+  - `simulated_dispatch_accepted`
+  - `simulation_completed`
+  - `error_code`（成功可为 `-`）
+  - `reason`
+  - `summary`
+  - `items[]`
+- F13 校验规则（冻结）：
+  - `SimExecuteReceipt.user_confirmed=false` -> `simulation_completed=false`，`error_code=E4005`，`reason=user_not_confirmed`
+  - `SimExecuteReceipt.ready_to_simulate_execute=false` -> `simulation_completed=false`，`error_code=E4205`，`reason=execute_ticket_not_ready`
+  - `SimExecuteReceipt.simulated_dispatch_accepted=false` -> `simulation_completed=false`，`error_code=E4206`，`reason=simulate_execute_receipt_not_accepted`
+  - `CurrentExecuteTicket.ready_to_simulate_execute=false` -> `simulation_completed=false`，`error_code=E4205`，`reason=execute_ticket_not_ready`
+  - `CurrentConfirmRequest.ready_to_execute=false` -> `simulation_completed=false`，`error_code=E4204`，`reason=confirm_request_not_ready`
+  - `SimExecuteReceipt.execute_ticket_id != CurrentExecuteTicket.request_id` -> `simulation_completed=false`，`error_code=E4202`，`reason=execute_ticket_id_mismatch`
+  - `SimExecuteReceipt.confirm_request_id != CurrentConfirmRequest.request_id` -> `simulation_completed=false`，`error_code=E4202`，`reason=confirm_request_id_mismatch`
+  - `SimExecuteReceipt.apply_request_id != CurrentApplyRequest.request_id` -> `simulation_completed=false`，`error_code=E4202`，`reason=apply_request_id_mismatch`
+  - `SimExecuteReceipt.review_request_id != CurrentReviewReport.request_id` -> `simulation_completed=false`，`error_code=E4202`，`reason=review_request_id_mismatch`
+  - `SimExecuteReceipt.selection_digest` 与 `CurrentExecuteTicket/CurrentConfirmRequest/CurrentApplyRequest` 或 `CurrentReviewReport` 重算摘要任一不一致 -> `simulation_completed=false`，`error_code=E4202`，`reason=selection_digest_mismatch`
+  - 全部通过 -> `simulation_completed=true`，`terminal_status=completed`，`error_code=-`，`reason=simulate_execute_final_report_ready`
+- Editor 新增命令（F13）：
+  - `HCIAbilityKit.AgentExecutePlanReviewPrepareSimFinalReport [tamper=none|digest|apply|review|confirm|receipt|ready]`
+  - `HCIAbilityKit.AgentExecutePlanReviewPrepareSimFinalReportJson [tamper=none|digest|apply|review|confirm|receipt|ready]`
+  - 输入来源：F12 “最新 SimExecuteReceipt 预览状态” + F11/F10/F9/F6-F8 最新预览状态
+  - `tamper` 仅用于 UE 手测模拟：
+    - `none`：正常校验
+    - `digest`：篡改 `selection_digest`（触发 `E4202/selection_digest_mismatch`）
+    - `apply`：篡改 `apply_request_id`（触发 `E4202/apply_request_id_mismatch`）
+    - `review`：篡改 `review_request_id`（触发 `E4202/review_request_id_mismatch`）
+    - `confirm`：篡改 `confirm_request_id`（触发 `E4202/confirm_request_id_mismatch`）
+    - `receipt`：强制 `simulated_dispatch_accepted=false`（触发 `E4206/simulate_execute_receipt_not_accepted`）
+    - `ready`：强制 `ready_to_simulate_execute=false`（触发 `E4205/execute_ticket_not_ready`）
+- F13 日志口径（新增，冻结）：
+  - 摘要（Display/Warning）：
+    - `[HCIAbilityKit][AgentExecutorSimFinalReport] summary request_id=... sim_execute_receipt_id=... execute_ticket_id=... confirm_request_id=... apply_request_id=... review_request_id=... selection_digest=... user_confirmed=true|false ready_to_simulate_execute=true|false simulated_dispatch_accepted=true|false simulation_completed=true|false terminal_status=... error_code=... reason=... validation=ok`
+  - 行（Display/Warning）：
+    - `row=... tool_name=... risk=... blocked=... skip_reason=... object_type=... locate_strategy=... asset_path=... field=... evidence_key=... actor_path=...`
+  - JSON 输出：
+    - `[HCIAbilityKit][AgentExecutorSimFinalReport] json request_id=... bytes=...`
+
 ### 14.6 一期禁止实现（延期到 Phase 3）
 
 - 记忆门禁与 TTL 细则（Session TTL/SOP 自动提炼触发策略）。

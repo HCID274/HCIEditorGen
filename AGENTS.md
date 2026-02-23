@@ -249,8 +249,9 @@ Scope: whole repo.
   - `Stage F-SliceF10` 已通过：ApplyRequest 确认前校验 -> ConfirmRequest 执行确认申请桥接（校验 `review_request_id + selection_digest + ready + user_confirmed`，输出 `ConfirmRequest` 契约与 JSON；仍为 `simulate_dry_run`）已接入并通过 UE 手测。
   - `Stage F-SliceF11` 已通过：ConfirmRequest 确认后校验 -> ExecuteTicket 执行票据桥接（校验 `apply_request_id + review_request_id + selection_digest + ready_to_execute + user_confirmed`，输出 `ExecuteTicket` 契约与 JSON；仍为 `simulate_dry_run`）已接入并通过 UE 手测。
   - `Stage F-SliceF12` 已通过：ExecuteTicket 执行前投递校验 -> SimExecuteReceipt 模拟执行回执桥接（校验 `confirm_request_id + apply_request_id + review_request_id + selection_digest + ready_to_simulate_execute + user_confirmed`，输出 `SimExecuteReceipt` 契约与 JSON；仍为 `simulate_dry_run`）已接入并通过 UE 手测。
-  - 当前切片：`Stage F-SliceF13`（待定义/待冻结）
-  - 下一切片：`Stage F-SliceF14`（待定义；F13 通过后冻结）
+  - `Stage F-SliceF13` 已通过：SimExecuteReceipt 回执后完整性校验 -> SimFinalReport 最终模拟执行报告桥接（校验 `execute_ticket_id + confirm_request_id + apply_request_id + review_request_id + selection_digest + ready_to_simulate_execute + simulated_dispatch_accepted + user_confirmed`，输出 `SimFinalReport` 契约与 JSON；仍为 `simulate_dry_run`）已接入并通过 UE 手测。
+  - 当前切片：`Stage F-SliceF14`（待定义/待冻结）
+  - 下一切片：`Stage F-SliceF15`（待定义；F14 通过后冻结）
   - 兼容性说明（时间字符串）：对外日志/JSON 的时间值已统一改为北京时间 `+08:00` 输出；字段名（如 `updated_utc/generated_utc/timestamp_utc`）暂保持不变以兼容既有门禁与测试。
   - D 段收尾后续主线：`Stage E`（安全执行：Dry-Run/Confirm/Transaction/SC）-> `Stage F`（NL->Plan->Executor）。
   - B3 最新状态：

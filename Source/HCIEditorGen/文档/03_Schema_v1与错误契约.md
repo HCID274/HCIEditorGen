@@ -916,6 +916,72 @@ public:
   - `HCIAbilityKit.AgentExecutePlanPreflightDemo [ok|fail_confirm|fail_blast|fail_rbac|fail_sc|fail_lod]`
     - 用于单案例验证某个门禁在 Executor 预检链路中的收敛口径
 
+### 14.5.4 StageF-SliceF6 Executor -> Dry-Run Diff 审阅桥接（执行结果进入审阅契约）
+
+- 目标：将 `FHCIAbilityKitAgentExecutorRunResult(step_results[])` 转换为 Stage E2 已冻结的 `FHCIAbilityKitDryRunDiffReport`，打通 `计划 -> 执行 -> 审阅` 的最小闭环（仍为 `simulate_dry_run`，不触发真实资产写入）。
+- Runtime 新增桥接器（F6）：
+  - `FHCIAbilityKitAgentExecutorDryRunBridge::BuildDryRunDiffReport(...)`
+  - 输入：`FHCIAbilityKitAgentExecutorRunResult`
+  - 输出：`FHCIAbilityKitDryRunDiffReport`
+- F6 映射规则（冻结）：
+  - 顶层：
+    - `report.request_id <- run_result.request_id`
+    - `report.summary <- 通过 FHCIAbilityKitDryRunDiff::NormalizeAndFinalize(...) 统一计算`
+  - 行级（`step_result -> diff_item`）：
+    - `tool_name <- step_result.tool_name`
+    - `risk <- step_result.risk_level` 映射到 `read_only|write|destructive`
+    - `field <- "step:<step_id>"`（缺失 `step_id` 时退化为 `executor_step_status`）
+    - `asset_path` 优先级：
+      1. `evidence.actor_path`（同时设置 `actor_path`，并令 `object_type=actor`）
+      2. `evidence.asset_path`
+      3. `"-"`（占位）
+    - `evidence_key`：
+      - Actor 行：`actor_path`
+      - Asset 行：`asset_path`
+      - 无路径证据：`result`
+    - `before/after`：
+      - 优先使用 `evidence.before/evidence.after`
+      - 若缺失 `after`，退化为 `step_result.status`
+    - `skip_reason`（仅失败/跳过行写入）：
+      - 收敛 `error_code/failure_phase/preflight_gate/reason`
+      - 用于审阅列表标记“阻断/跳过原因”
+  - 定位策略：
+    - 仍由 `FHCIAbilityKitDryRunDiff::NormalizeAndFinalize(...)` 推导：
+      - `object_type=actor -> camera_focus`
+      - `object_type=asset -> sync_browser`
+- 兼容性要求（F6）：
+  - 不修改 F3/F4/F5 `AgentExecutor summary + row=` 既有字段口径（仅新增 F6 专用命令输出）。
+  - 不修改 E2 `DryRunDiff` JSON 核心字段名（F6 复用 `request_id/summary/diff_items[]` 契约与 `locate_strategy/evidence_key`）。
+- Editor UE 手测入口（控制台）：
+  - `HCIAbilityKit.AgentExecutePlanReviewDemo`
+    - 默认输出 3 案例：`ok_naming / ok_level_risk / fail_confirm`
+    - 每案例输出：
+      - `AgentExecutor summary + row=`（原 F3/F4/F5 收敛日志）
+      - `AgentExecutorReview summary + row=`（桥接后的 Dry-Run Diff 审阅日志）
+    - 总摘要字段（F6 最小门禁）：
+      - `summary total_cases=...`
+      - `bridge_ok_cases=...`
+      - `failed_cases=...`
+      - `execution_mode=simulate_dry_run`
+      - `review_contract=dry_run_diff`
+      - `validation=ok`
+  - `HCIAbilityKit.AgentExecutePlanReviewDemo [ok_naming|ok_level_risk|fail_confirm|fail_lod]`
+    - 用于单案例验证审阅桥接结果（Actor 定位 / 预检阻断映射等）
+  - `HCIAbilityKit.AgentExecutePlanReviewJson [ok_naming|ok_level_risk|fail_confirm|fail_lod]`
+    - 输出桥接后的 `DryRunDiff` JSON（复用 E2 序列化器）
+- F6 审阅日志字段（新增要求）：
+  - `summary` 行至少包含：
+    - `request_id`
+    - `total_candidates/modifiable/skipped`
+    - `executor_terminal_status`
+    - `executor_failed_gate`
+    - `execution_mode`
+    - `bridge_ok=true`
+  - `row=` 行至少包含：
+    - `asset_path/field/before/after/tool_name/risk/skip_reason`
+    - `object_type/locate_strategy/evidence_key`
+    - `actor_path`（Actor 行存在）
+
 ### 14.6 一期禁止实现（延期到 Phase 3）
 
 - 记忆门禁与 TTL 细则（Session TTL/SOP 自动提炼触发策略）。

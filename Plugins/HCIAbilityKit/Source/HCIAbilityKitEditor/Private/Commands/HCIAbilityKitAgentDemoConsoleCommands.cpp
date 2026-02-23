@@ -2,10 +2,13 @@
 
 #include "Agent/HCIAbilityKitAgentExecutionGate.h"
 #include "Agent/HCIAbilityKitAgentExecutor.h"
+#include "Agent/HCIAbilityKitAgentExecutorDryRunBridge.h"
 #include "Agent/HCIAbilityKitAgentPlan.h"
 #include "Agent/HCIAbilityKitAgentPlanJsonSerializer.h"
 #include "Agent/HCIAbilityKitAgentPlanner.h"
 #include "Agent/HCIAbilityKitAgentPlanValidator.h"
+#include "Agent/HCIAbilityKitDryRunDiff.h"
+#include "Agent/HCIAbilityKitDryRunDiffJsonSerializer.h"
 #include "Agent/HCIAbilityKitToolRegistry.h"
 #include "Common/HCIAbilityKitTimeFormat.h"
 #include "Dom/JsonObject.h"
@@ -22,6 +25,7 @@
 DEFINE_LOG_CATEGORY_STATIC(LogHCIAbilityKitAgentDemo, Log, All);
 
 static FHCIAbilityKitAgentPlan GHCIAbilityKitAgentPlanPreviewState;
+static FHCIAbilityKitDryRunDiffReport GHCIAbilityKitAgentExecutorReviewDiffPreviewState;
 
 static FString HCI_JoinConsoleArgsAsText(const TArray<FString>& Args)
 {
@@ -2366,6 +2370,310 @@ static void HCI_RunAbilityKitAgentExecutePlanPreflightDemoCommand(const TArray<F
 	}
 }
 
+static void HCI_LogAgentExecutorReviewDiffSummary(
+	const TCHAR* CaseName,
+	const FHCIAbilityKitAgentExecutorRunResult& RunResult,
+	const FHCIAbilityKitDryRunDiffReport& Report)
+{
+	const bool bUseWarning = Report.Summary.Skipped > 0 || !RunResult.bCompleted;
+	if (bUseWarning)
+	{
+		UE_LOG(
+			LogHCIAbilityKitAgentDemo,
+			Warning,
+			TEXT("[HCIAbilityKit][AgentExecutorReview] case=%s summary request_id=%s total_candidates=%d modifiable=%d skipped=%d executor_terminal_status=%s executor_failed_gate=%s execution_mode=%s bridge_ok=true"),
+			CaseName,
+			Report.RequestId.IsEmpty() ? TEXT("-") : *Report.RequestId,
+			Report.Summary.TotalCandidates,
+			Report.Summary.Modifiable,
+			Report.Summary.Skipped,
+			RunResult.TerminalStatus.IsEmpty() ? TEXT("-") : *RunResult.TerminalStatus,
+			RunResult.FailedGate.IsEmpty() ? TEXT("-") : *RunResult.FailedGate,
+			RunResult.ExecutionMode.IsEmpty() ? TEXT("-") : *RunResult.ExecutionMode);
+		return;
+	}
+
+	UE_LOG(
+		LogHCIAbilityKitAgentDemo,
+		Display,
+		TEXT("[HCIAbilityKit][AgentExecutorReview] case=%s summary request_id=%s total_candidates=%d modifiable=%d skipped=%d executor_terminal_status=%s executor_failed_gate=%s execution_mode=%s bridge_ok=true"),
+		CaseName,
+		Report.RequestId.IsEmpty() ? TEXT("-") : *Report.RequestId,
+		Report.Summary.TotalCandidates,
+		Report.Summary.Modifiable,
+		Report.Summary.Skipped,
+		RunResult.TerminalStatus.IsEmpty() ? TEXT("-") : *RunResult.TerminalStatus,
+		RunResult.FailedGate.IsEmpty() ? TEXT("-") : *RunResult.FailedGate,
+		RunResult.ExecutionMode.IsEmpty() ? TEXT("-") : *RunResult.ExecutionMode);
+}
+
+static void HCI_LogAgentExecutorReviewDiffRows(const TCHAR* CaseName, const FHCIAbilityKitDryRunDiffReport& Report)
+{
+	for (int32 Index = 0; Index < Report.DiffItems.Num(); ++Index)
+	{
+		const FHCIAbilityKitDryRunDiffItem& Item = Report.DiffItems[Index];
+		const bool bBlockedOrSkipped = !Item.SkipReason.IsEmpty();
+		if (bBlockedOrSkipped)
+		{
+			UE_LOG(
+				LogHCIAbilityKitAgentDemo,
+				Warning,
+				TEXT("[HCIAbilityKit][AgentExecutorReview] case=%s row=%d asset_path=%s field=%s before=%s after=%s tool_name=%s risk=%s skip_reason=%s object_type=%s locate_strategy=%s evidence_key=%s actor_path=%s"),
+				CaseName,
+				Index,
+				Item.AssetPath.IsEmpty() ? TEXT("-") : *Item.AssetPath,
+				Item.Field.IsEmpty() ? TEXT("-") : *Item.Field,
+				Item.Before.IsEmpty() ? TEXT("-") : *Item.Before,
+				Item.After.IsEmpty() ? TEXT("-") : *Item.After,
+				Item.ToolName.IsEmpty() ? TEXT("-") : *Item.ToolName,
+				*FHCIAbilityKitDryRunDiff::RiskToString(Item.Risk),
+				Item.SkipReason.IsEmpty() ? TEXT("-") : *Item.SkipReason,
+				*FHCIAbilityKitDryRunDiff::ObjectTypeToString(Item.ObjectType),
+				*FHCIAbilityKitDryRunDiff::LocateStrategyToString(Item.LocateStrategy),
+				Item.EvidenceKey.IsEmpty() ? TEXT("-") : *Item.EvidenceKey,
+				Item.ActorPath.IsEmpty() ? TEXT("-") : *Item.ActorPath);
+		}
+		else
+		{
+			UE_LOG(
+				LogHCIAbilityKitAgentDemo,
+				Display,
+				TEXT("[HCIAbilityKit][AgentExecutorReview] case=%s row=%d asset_path=%s field=%s before=%s after=%s tool_name=%s risk=%s skip_reason=%s object_type=%s locate_strategy=%s evidence_key=%s actor_path=%s"),
+				CaseName,
+				Index,
+				Item.AssetPath.IsEmpty() ? TEXT("-") : *Item.AssetPath,
+				Item.Field.IsEmpty() ? TEXT("-") : *Item.Field,
+				Item.Before.IsEmpty() ? TEXT("-") : *Item.Before,
+				Item.After.IsEmpty() ? TEXT("-") : *Item.After,
+				Item.ToolName.IsEmpty() ? TEXT("-") : *Item.ToolName,
+				*FHCIAbilityKitDryRunDiff::RiskToString(Item.Risk),
+				Item.SkipReason.IsEmpty() ? TEXT("-") : *Item.SkipReason,
+				*FHCIAbilityKitDryRunDiff::ObjectTypeToString(Item.ObjectType),
+				*FHCIAbilityKitDryRunDiff::LocateStrategyToString(Item.LocateStrategy),
+				Item.EvidenceKey.IsEmpty() ? TEXT("-") : *Item.EvidenceKey,
+				Item.ActorPath.IsEmpty() ? TEXT("-") : *Item.ActorPath);
+		}
+	}
+}
+
+static bool HCI_BuildAgentExecutorReviewDemoCaseConfig(
+	const FString& CaseKey,
+	FHCIAbilityKitAgentPlan& OutPlan,
+	FHCIAbilityKitAgentExecutorOptions& OutOptions,
+	FString& OutDescription,
+	FString& OutInputText)
+{
+	OutOptions = FHCIAbilityKitAgentExecutorOptions();
+	OutOptions.bValidatePlanBeforeExecute = true;
+	OutOptions.bDryRun = true;
+	OutOptions.TerminationPolicy = EHCIAbilityKitAgentExecutorTerminationPolicy::StopOnFirstFailure;
+	OutOptions.bEnablePreflightGates = false;
+	OutOptions.bUserConfirmedWriteSteps = true;
+	OutOptions.MockUserName = TEXT("artist_a");
+	OutOptions.MockResolvedRole = TEXT("Artist");
+	OutOptions.bMockUserMatchedWhitelist = true;
+	OutOptions.MockAllowedCapabilities = {TEXT("read_only"), TEXT("write")};
+	OutOptions.bSourceControlEnabled = false;
+	OutOptions.bSourceControlCheckoutSucceeded = false;
+	OutOptions.SimulatedLodTargetObjectClass = TEXT("UStaticMesh");
+	OutOptions.bSimulatedLodTargetNaniteEnabled = false;
+
+	FHCIAbilityKitToolRegistry& Registry = FHCIAbilityKitToolRegistry::Get();
+
+	if (CaseKey == TEXT("ok_naming"))
+	{
+		OutDescription = TEXT("executor_success_naming_review_bridge");
+		OutInputText = TEXT("整理临时目录资产，按规范命名并归档");
+		FString RouteReason;
+		FString BuildError;
+		return HCI_BuildAgentPlanDemoPlan(OutInputText, TEXT("req_cli_f6_ok_naming"), OutPlan, RouteReason, BuildError);
+	}
+
+	if (CaseKey == TEXT("ok_level_risk"))
+	{
+		OutDescription = TEXT("executor_success_level_risk_review_bridge");
+		OutInputText = TEXT("检查当前关卡选中物体的碰撞和默认材质");
+		FString RouteReason;
+		FString BuildError;
+		return HCI_BuildAgentPlanDemoPlan(OutInputText, TEXT("req_cli_f6_ok_level"), OutPlan, RouteReason, BuildError);
+	}
+
+	if (CaseKey == TEXT("fail_confirm"))
+	{
+		OutDescription = TEXT("preflight_confirm_blocked_review_bridge");
+		OutInputText = TEXT("-");
+		OutPlan = HCI_BuildAgentExecutorF5TexturePlan(TEXT("req_cli_f6_fail_confirm"), 3);
+		OutOptions.bEnablePreflightGates = true;
+		OutOptions.bUserConfirmedWriteSteps = false;
+		return true;
+	}
+
+	if (CaseKey == TEXT("fail_lod"))
+	{
+		OutDescription = TEXT("preflight_lod_nanite_blocked_review_bridge");
+		OutInputText = TEXT("-");
+		OutPlan = HCI_BuildAgentExecutorF4TwoStepPlan(TEXT("req_cli_f6_fail_lod"));
+		OutOptions.bEnablePreflightGates = true;
+		OutOptions.SimulatedLodTargetObjectClass = TEXT("UStaticMesh");
+		OutOptions.bSimulatedLodTargetNaniteEnabled = true;
+		return true;
+	}
+
+	return false;
+}
+
+static bool HCI_RunAgentExecutorReviewDemoCase(
+	const TCHAR* CaseName,
+	const FString& CaseKey,
+	FHCIAbilityKitToolRegistry& Registry,
+	int32& OutBridgeOkCases,
+	int32& OutFailedBuildOrBridgeCases)
+{
+	FHCIAbilityKitAgentPlan Plan;
+	FHCIAbilityKitAgentExecutorOptions Options;
+	FString Description;
+	FString InputText;
+	if (!HCI_BuildAgentExecutorReviewDemoCaseConfig(CaseKey, Plan, Options, Description, InputText))
+	{
+		UE_LOG(LogHCIAbilityKitAgentDemo, Error, TEXT("[HCIAbilityKit][AgentExecutorReview] case=%s build_failed reason=unknown_or_invalid_case key=%s"), CaseName, *CaseKey);
+		++OutFailedBuildOrBridgeCases;
+		return false;
+	}
+
+	GHCIAbilityKitAgentPlanPreviewState = Plan;
+
+	FHCIAbilityKitAgentExecutorRunResult RunResult;
+	FHCIAbilityKitAgentExecutor::ExecutePlan(
+		Plan,
+		Registry,
+		FHCIAbilityKitAgentPlanValidationContext(),
+		Options,
+		RunResult);
+
+	FHCIAbilityKitDryRunDiffReport Report;
+	if (!FHCIAbilityKitAgentExecutorDryRunBridge::BuildDryRunDiffReport(RunResult, Report))
+	{
+		UE_LOG(LogHCIAbilityKitAgentDemo, Error, TEXT("[HCIAbilityKit][AgentExecutorReview] case=%s bridge_failed request_id=%s"), CaseName, *RunResult.RequestId);
+		++OutFailedBuildOrBridgeCases;
+		return false;
+	}
+
+	GHCIAbilityKitAgentExecutorReviewDiffPreviewState = Report;
+	++OutBridgeOkCases;
+
+	UE_LOG(
+		LogHCIAbilityKitAgentDemo,
+		Display,
+		TEXT("[HCIAbilityKit][AgentExecutorReview] case=%s case_key=%s description=%s input=%s"),
+		CaseName,
+		*CaseKey,
+		Description.IsEmpty() ? TEXT("-") : *Description,
+		InputText.IsEmpty() ? TEXT("-") : *InputText);
+	HCI_LogAgentExecutorSummary(CaseName, RunResult);
+	HCI_LogAgentExecutorRows(CaseName, RunResult);
+	HCI_LogAgentExecutorReviewDiffSummary(CaseName, RunResult, Report);
+	HCI_LogAgentExecutorReviewDiffRows(CaseName, Report);
+	return true;
+}
+
+static void HCI_RunAbilityKitAgentExecutePlanReviewDemoCommand(const TArray<FString>& Args)
+{
+	FHCIAbilityKitToolRegistry& Registry = FHCIAbilityKitToolRegistry::Get();
+	Registry.ResetToDefaults();
+
+	if (Args.Num() == 0)
+	{
+		const TArray<FString> CaseKeys = {
+			TEXT("ok_naming"),
+			TEXT("ok_level_risk"),
+			TEXT("fail_confirm"),
+		};
+
+		int32 BridgeOkCases = 0;
+		int32 FailedCases = 0;
+		for (int32 Index = 0; Index < CaseKeys.Num(); ++Index)
+		{
+			const FString CaseName = FString::Printf(TEXT("demo_%02d"), Index + 1);
+			HCI_RunAgentExecutorReviewDemoCase(*CaseName, CaseKeys[Index], Registry, BridgeOkCases, FailedCases);
+		}
+
+		UE_LOG(
+			LogHCIAbilityKitAgentDemo,
+			Display,
+			TEXT("[HCIAbilityKit][AgentExecutorReview] summary total_cases=%d bridge_ok_cases=%d failed_cases=%d execution_mode=%s review_contract=%s validation=ok"),
+			CaseKeys.Num(),
+			BridgeOkCases,
+			FailedCases,
+			TEXT("simulate_dry_run"),
+			TEXT("dry_run_diff"));
+		UE_LOG(
+			LogHCIAbilityKitAgentDemo,
+			Display,
+			TEXT("[HCIAbilityKit][AgentExecutorReview] hint=也可运行 HCIAbilityKit.AgentExecutePlanReviewDemo [ok_naming|ok_level_risk|fail_confirm|fail_lod]"));
+		return;
+	}
+
+	if (Args.Num() != 1)
+	{
+		UE_LOG(
+			LogHCIAbilityKitAgentDemo,
+			Error,
+			TEXT("[HCIAbilityKit][AgentExecutorReview] invalid_args usage=HCIAbilityKit.AgentExecutePlanReviewDemo [ok_naming|ok_level_risk|fail_confirm|fail_lod]"));
+		return;
+	}
+
+	const FString CaseKey = Args[0].TrimStartAndEnd();
+	int32 BridgeOkCases = 0;
+	int32 FailedCases = 0;
+	if (CaseKey.IsEmpty() || !HCI_RunAgentExecutorReviewDemoCase(TEXT("custom"), CaseKey, Registry, BridgeOkCases, FailedCases))
+	{
+		UE_LOG(
+			LogHCIAbilityKitAgentDemo,
+			Error,
+			TEXT("[HCIAbilityKit][AgentExecutorReview] invalid_args reason=unknown case_key key=%s allowed=ok_naming|ok_level_risk|fail_confirm|fail_lod"),
+			*CaseKey);
+	}
+}
+
+static void HCI_RunAbilityKitAgentExecutePlanReviewJsonCommand(const TArray<FString>& Args)
+{
+	FHCIAbilityKitToolRegistry& Registry = FHCIAbilityKitToolRegistry::Get();
+	Registry.ResetToDefaults();
+
+	FString CaseKey = TEXT("fail_confirm");
+	if (Args.Num() > 0)
+	{
+		CaseKey = Args[0].TrimStartAndEnd();
+	}
+
+	int32 BridgeOkCases = 0;
+	int32 FailedCases = 0;
+	if (CaseKey.IsEmpty() || !HCI_RunAgentExecutorReviewDemoCase(TEXT("json_preview"), CaseKey, Registry, BridgeOkCases, FailedCases))
+	{
+		UE_LOG(
+			LogHCIAbilityKitAgentDemo,
+			Error,
+			TEXT("[HCIAbilityKit][AgentExecutorReview] invalid_args usage=HCIAbilityKit.AgentExecutePlanReviewJson [ok_naming|ok_level_risk|fail_confirm|fail_lod]"));
+		return;
+	}
+
+	FString JsonText;
+	if (!FHCIAbilityKitDryRunDiffJsonSerializer::SerializeToJsonString(GHCIAbilityKitAgentExecutorReviewDiffPreviewState, JsonText))
+	{
+		UE_LOG(LogHCIAbilityKitAgentDemo, Error, TEXT("[HCIAbilityKit][AgentExecutorReview] json_failed request_id=%s"), *GHCIAbilityKitAgentExecutorReviewDiffPreviewState.RequestId);
+		return;
+	}
+
+	UE_LOG(
+		LogHCIAbilityKitAgentDemo,
+		Display,
+		TEXT("[HCIAbilityKit][AgentExecutorReview] json case=%s request_id=%s bytes=%d"),
+		*CaseKey,
+		GHCIAbilityKitAgentExecutorReviewDiffPreviewState.RequestId.IsEmpty() ? TEXT("-") : *GHCIAbilityKitAgentExecutorReviewDiffPreviewState.RequestId,
+		JsonText.Len());
+	UE_LOG(LogHCIAbilityKitAgentDemo, Display, TEXT("%s"), *JsonText);
+}
+
 static void HCI_RunAbilityKitAgentExecutePlanDemoCommand(const TArray<FString>& Args)
 {
 	FHCIAbilityKitToolRegistry& Registry = FHCIAbilityKitToolRegistry::Get();
@@ -2534,6 +2842,22 @@ void FHCIAbilityKitAgentDemoConsoleCommands::Startup()
 			TEXT("F5 Executor preflight gate-chain demo (Confirm/BlastRadius/RBAC/SourceControl/LOD Safety). Usage: HCIAbilityKit.AgentExecutePlanPreflightDemo [ok|fail_confirm|fail_blast|fail_rbac|fail_sc|fail_lod]"),
 			FConsoleCommandWithArgsDelegate::CreateStatic(&HCI_RunAbilityKitAgentExecutePlanPreflightDemoCommand));
 	}
+
+	if (!AgentExecutePlanReviewDemoCommand.IsValid())
+	{
+		AgentExecutePlanReviewDemoCommand = MakeUnique<FAutoConsoleCommand>(
+			TEXT("HCIAbilityKit.AgentExecutePlanReviewDemo"),
+			TEXT("F6 Executor -> Dry-Run Diff review bridge demo. Usage: HCIAbilityKit.AgentExecutePlanReviewDemo [ok_naming|ok_level_risk|fail_confirm|fail_lod]"),
+			FConsoleCommandWithArgsDelegate::CreateStatic(&HCI_RunAbilityKitAgentExecutePlanReviewDemoCommand));
+	}
+
+	if (!AgentExecutePlanReviewJsonCommand.IsValid())
+	{
+		AgentExecutePlanReviewJsonCommand = MakeUnique<FAutoConsoleCommand>(
+			TEXT("HCIAbilityKit.AgentExecutePlanReviewJson"),
+			TEXT("F6 Executor -> Dry-Run Diff review bridge JSON preview. Usage: HCIAbilityKit.AgentExecutePlanReviewJson [ok_naming|ok_level_risk|fail_confirm|fail_lod]"),
+			FConsoleCommandWithArgsDelegate::CreateStatic(&HCI_RunAbilityKitAgentExecutePlanReviewJsonCommand));
+	}
 }
 
 void FHCIAbilityKitAgentDemoConsoleCommands::Shutdown()
@@ -2550,4 +2874,6 @@ void FHCIAbilityKitAgentDemoConsoleCommands::Shutdown()
 	AgentExecutePlanDemoCommand.Reset();
 	AgentExecutePlanFailDemoCommand.Reset();
 	AgentExecutePlanPreflightDemoCommand.Reset();
+	AgentExecutePlanReviewDemoCommand.Reset();
+	AgentExecutePlanReviewJsonCommand.Reset();
 }

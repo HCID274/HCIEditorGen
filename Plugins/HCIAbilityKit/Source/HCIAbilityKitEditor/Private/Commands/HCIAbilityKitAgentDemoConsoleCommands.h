@@ -23,4 +23,6 @@ private:
 	TUniquePtr<FAutoConsoleCommand> AgentExecutePlanDemoCommand;
 	TUniquePtr<FAutoConsoleCommand> AgentExecutePlanFailDemoCommand;
 	TUniquePtr<FAutoConsoleCommand> AgentExecutePlanPreflightDemoCommand;
+	TUniquePtr<FAutoConsoleCommand> AgentExecutePlanReviewDemoCommand;
+	TUniquePtr<FAutoConsoleCommand> AgentExecutePlanReviewJsonCommand;
 };

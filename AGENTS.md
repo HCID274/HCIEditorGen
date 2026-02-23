@@ -62,7 +62,7 @@ Scope: whole repo.
 - 错误信息必须可定位（文件/字段/原因/建议）。
 - 未通过验证的结论不得标记为“完成”。
 
-## 8. 当前进度快照（2026-02-22）
+## 8. 当前进度快照（2026-02-23）
 
 - Step 1（结构迁移）已关闭：
   - Slice1：插件双模块骨架落地并通过。
@@ -227,8 +227,16 @@ Scope: whole repo.
     - 已完成：Editor 新增 `HCIAbilityKit.AgentPlanValidateDemo [case_key]` 控制台命令（默认 7 案例 + 自定义单案例）用于 UE 手测验证。
     - 已完成：新增自动化测试 `HCIAbilityKit.Editor.AgentPlanValidation`（7/7：成功路径 + `E4001/E4002/E4004/E4009/E4011/E4012`），本地通过；`AgentPlan`（3/3）与 `AgentTools`（3/3）回归通过。
     - 已完成：用户 UE 手测通过（无参摘要命中 `total_cases=7 supports_checks=schema|whitelist|risk|threshold|special_cases validation=ok`；无参案例完整覆盖 `ok_naming + E4001/E4002/E4004/E4009/E4011/E4012`；`fail_unknown_tool` 命中 `E4002/tool_not_whitelisted`；`fail_level_scope` 命中 `E4011 field=steps[0].args.scope`；`fail_naming_metadata` 命中 `E4012/naming_metadata_insufficient_no_safe_proposal`）。
-  - 当前切片：`Stage F-SliceF3`（计划执行骨架与收敛日志）
-  - 下一切片：`Stage F-SliceF4`（失败收敛：步骤级错误码与终止策略）
+  - F3 前结构重构已通过：
+    - `Refactor-R1`：`ContentBrowser MenuRegistrar` 抽离（菜单注册/反注册生命周期成对管理）。
+    - `Refactor-R2`：`Agent*Demo` 控制台命令抽离到 `Private/Commands/HCIAbilityKitAgentDemoConsoleCommands.*`，`EditorModule` 收敛为装配入口。
+  - `Stage F-SliceF3` 已通过：计划执行骨架与收敛日志。
+    - 已完成：Runtime 新增 `FHCIAbilityKitAgentExecutor`（默认 `simulate_dry_run`，执行前复用 `PlanValidator`，输出 `FHCIAbilityKitAgentExecutorRunResult + step_results[]`）。
+    - 已完成：Editor 新增 `HCIAbilityKit.AgentExecutePlanDemo [自然语言文本...]`（默认三案例 + 自定义文本）输出 `route_reason + summary + row=` 收敛日志。
+    - 已完成：新增自动化测试 `HCIAbilityKit.Editor.AgentExecutor`（3/3：成功执行、预检拒绝、证据键覆盖），并完成 `AgentPlan`（3/3）与 `AgentPlanValidation`（8/8）回归。
+    - 已完成：用户 UE 手测通过（`AgentExecutePlanDemo` 无参/命名归档/关卡排雷三条命令均无异常；`summary` 与 `row=` 字段完整；命名归档命中 `NormalizeAssetNamingByMetadata`，关卡排雷命中 `ScanLevelMeshRisks` 且证据键覆盖 `actor_path|issue|evidence`）。
+  - 当前切片：`Stage F-SliceF4`（待开发）
+  - 下一切片：`Stage F-SliceF5`（待定义，按 `05_开发执行总方案_资产审计.md` 推进）
   - 兼容性说明（时间字符串）：对外日志/JSON 的时间值已统一改为北京时间 `+08:00` 输出；字段名（如 `updated_utc/generated_utc/timestamp_utc`）暂保持不变以兼容既有门禁与测试。
   - D 段收尾后续主线：`Stage E`（安全执行：Dry-Run/Confirm/Transaction/SC）-> `Stage F`（NL->Plan->Executor）。
   - B3 最新状态：

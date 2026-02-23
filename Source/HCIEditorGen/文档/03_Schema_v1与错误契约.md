@@ -749,6 +749,56 @@ public:
   - `allowed/error_code/reason`
   - `audit_log_appended/audit_log_path/audit_log_error`
 
+### 14.5.1 StageF-SliceF3 执行器骨架与收敛日志（最小落地）
+
+- 目标：在不触发真实资产写操作的前提下，完成 `Plan -> Executor -> 收敛结果日志` 最小闭环。
+- Runtime 新增执行器骨架：`FHCIAbilityKitAgentExecutor`
+  - 输入：
+    - `plan`（`FHCIAbilityKitAgentPlan`）
+    - `tool_registry`
+    - `validation_context`（复用 F2，可选）
+    - `options`
+      - `bValidatePlanBeforeExecute`（一期默认 `true`）
+      - `bDryRun`（一期默认 `true`）
+  - 输出：`FHCIAbilityKitAgentExecutorRunResult`
+    - 顶层字段（一期冻结最小集）：
+      - `request_id/intent/plan_version`
+      - `execution_mode`（一期默认 `simulate_dry_run`）
+      - `accepted/completed`
+      - `total_steps/executed_steps/succeeded_steps/failed_steps`
+      - `terminal_status/terminal_reason`
+      - `error_code/reason`
+      - `started_utc/finished_utc`（字符串值按北京时间 `+08:00` 输出）
+      - `step_results[]`
+    - `step_results[]` 字段（一期冻结最小集）：
+      - `step_index/step_id/tool_name`
+      - `capability/risk_level/write_like`
+      - `attempted/succeeded/status`
+      - `target_count_estimate`
+      - `evidence_keys[]`
+      - `evidence`（键值映射；一期为模拟证据）
+      - `error_code/reason`
+- 判定/执行口径（一期最小实现）：
+  - 预检阶段：
+    - 默认先调用 `FHCIAbilityKitAgentPlanValidator`。
+    - 若预检失败：返回 `accepted=false, completed=false`，`terminal_status=rejected_precheck`，并透传 `error_code/reason`（例如 `E4002`）。
+  - 执行阶段（模拟骨架）：
+    - 不调用真实 UE 写操作工具，仅按 `ToolRegistry` 能力与 `expected_evidence` 生成模拟成功结果；
+    - 默认所有步骤 `status=succeeded`，`terminal_status=completed`；
+    - `execution_mode=simulate_dry_run`，用于后续 F4/F5 与真实门禁链路联调。
+- Editor UE 手测入口（控制台）：
+  - `HCIAbilityKit.AgentExecutePlanDemo`
+    - 默认输出 3 案例（命名溯源整理 / 关卡排雷 / 资产规范合规）
+    - 每案例输出：
+      - `route_reason + summary`
+      - `row=`（逐步执行结果）
+    - 摘要输出：`summary total_cases=... completed_cases=... rejected_cases=... execution_mode=simulate_dry_run ... validation=ok`
+  - `HCIAbilityKit.AgentExecutePlanDemo [自然语言文本...]`
+    - 用于单案例验证 NL -> Plan -> Executor 收敛日志链路
+- 一期说明（与 F4 边界）：
+  - F3 仅做“成功路径骨架 + 预检拒绝路径”；
+  - 步骤级失败错误码收敛与终止策略扩展放到 `StageF-SliceF4`。
+
 ### 14.6 一期禁止实现（延期到 Phase 3）
 
 - 记忆门禁与 TTL 细则（Session TTL/SOP 自动提炼触发策略）。

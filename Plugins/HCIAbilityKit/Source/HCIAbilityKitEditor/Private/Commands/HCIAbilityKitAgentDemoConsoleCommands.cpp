@@ -1,6 +1,7 @@
 #include "Commands/HCIAbilityKitAgentDemoConsoleCommands.h"
 
 #include "Agent/HCIAbilityKitAgentExecutionGate.h"
+#include "Agent/HCIAbilityKitAgentExecutor.h"
 #include "Agent/HCIAbilityKitAgentPlan.h"
 #include "Agent/HCIAbilityKitAgentPlanJsonSerializer.h"
 #include "Agent/HCIAbilityKitAgentPlanner.h"
@@ -1706,6 +1707,260 @@ static void HCI_RunAbilityKitAgentPlanValidateDemoCommand(const TArray<FString>&
 	HCI_LogAgentPlanValidationDecision(TEXT("custom"), Description, ExpectedCode, Result);
 }
 
+static FString HCI_FormatStringMapForLog(const TMap<FString, FString>& Map)
+{
+	if (Map.Num() == 0)
+	{
+		return TEXT("-");
+	}
+
+	TArray<FString> Keys;
+	Map.GetKeys(Keys);
+	Keys.Sort();
+
+	TArray<FString> Tokens;
+	Tokens.Reserve(Keys.Num());
+	for (const FString& Key : Keys)
+	{
+		const FString* Value = Map.Find(Key);
+		Tokens.Add(FString::Printf(TEXT("%s=%s"), *Key, Value ? *(*Value) : TEXT("-")));
+	}
+	return FString::Join(Tokens, TEXT("|"));
+}
+
+static void HCI_LogAgentExecutorRows(const TCHAR* CaseName, const FHCIAbilityKitAgentExecutorRunResult& RunResult)
+{
+	for (int32 Index = 0; Index < RunResult.StepResults.Num(); ++Index)
+	{
+		const FHCIAbilityKitAgentExecutorStepResult& Row = RunResult.StepResults[Index];
+		if (Row.bSucceeded)
+		{
+			UE_LOG(
+				LogHCIAbilityKitAuditScan,
+				Display,
+				TEXT("[HCIAbilityKit][AgentExecutor] case=%s row=%d step_id=%s tool_name=%s capability=%s risk_level=%s write_like=%s status=%s attempted=%s succeeded=%s target_count_estimate=%d evidence_keys=%s evidence=%s error_code=%s reason=%s"),
+				CaseName,
+				Index,
+				Row.StepId.IsEmpty() ? TEXT("-") : *Row.StepId,
+				Row.ToolName.IsEmpty() ? TEXT("-") : *Row.ToolName,
+				Row.Capability.IsEmpty() ? TEXT("-") : *Row.Capability,
+				Row.RiskLevel.IsEmpty() ? TEXT("-") : *Row.RiskLevel,
+				Row.bWriteLike ? TEXT("true") : TEXT("false"),
+				Row.Status.IsEmpty() ? TEXT("-") : *Row.Status,
+				Row.bAttempted ? TEXT("true") : TEXT("false"),
+				Row.bSucceeded ? TEXT("true") : TEXT("false"),
+				Row.TargetCountEstimate,
+				*FString::Join(Row.EvidenceKeys, TEXT("|")),
+				*HCI_FormatStringMapForLog(Row.Evidence),
+				Row.ErrorCode.IsEmpty() ? TEXT("-") : *Row.ErrorCode,
+				Row.Reason.IsEmpty() ? TEXT("-") : *Row.Reason);
+		}
+		else
+		{
+			UE_LOG(
+				LogHCIAbilityKitAuditScan,
+				Warning,
+				TEXT("[HCIAbilityKit][AgentExecutor] case=%s row=%d step_id=%s tool_name=%s capability=%s risk_level=%s write_like=%s status=%s attempted=%s succeeded=%s target_count_estimate=%d evidence_keys=%s evidence=%s error_code=%s reason=%s"),
+				CaseName,
+				Index,
+				Row.StepId.IsEmpty() ? TEXT("-") : *Row.StepId,
+				Row.ToolName.IsEmpty() ? TEXT("-") : *Row.ToolName,
+				Row.Capability.IsEmpty() ? TEXT("-") : *Row.Capability,
+				Row.RiskLevel.IsEmpty() ? TEXT("-") : *Row.RiskLevel,
+				Row.bWriteLike ? TEXT("true") : TEXT("false"),
+				Row.Status.IsEmpty() ? TEXT("-") : *Row.Status,
+				Row.bAttempted ? TEXT("true") : TEXT("false"),
+				Row.bSucceeded ? TEXT("true") : TEXT("false"),
+				Row.TargetCountEstimate,
+				*FString::Join(Row.EvidenceKeys, TEXT("|")),
+				*HCI_FormatStringMapForLog(Row.Evidence),
+				Row.ErrorCode.IsEmpty() ? TEXT("-") : *Row.ErrorCode,
+				Row.Reason.IsEmpty() ? TEXT("-") : *Row.Reason);
+		}
+	}
+}
+
+static void HCI_LogAgentExecutorSummary(const TCHAR* CaseName, const FHCIAbilityKitAgentExecutorRunResult& RunResult)
+{
+	if (RunResult.bCompleted)
+	{
+		UE_LOG(
+			LogHCIAbilityKitAuditScan,
+			Display,
+			TEXT("[HCIAbilityKit][AgentExecutor] case=%s summary request_id=%s intent=%s plan_version=%d execution_mode=%s accepted=%s completed=%s total_steps=%d executed_steps=%d succeeded_steps=%d failed_steps=%d terminal_status=%s terminal_reason=%s error_code=%s reason=%s started_utc=%s finished_utc=%s"),
+			CaseName,
+			RunResult.RequestId.IsEmpty() ? TEXT("-") : *RunResult.RequestId,
+			RunResult.Intent.IsEmpty() ? TEXT("-") : *RunResult.Intent,
+			RunResult.PlanVersion,
+			RunResult.ExecutionMode.IsEmpty() ? TEXT("-") : *RunResult.ExecutionMode,
+			RunResult.bAccepted ? TEXT("true") : TEXT("false"),
+			RunResult.bCompleted ? TEXT("true") : TEXT("false"),
+			RunResult.TotalSteps,
+			RunResult.ExecutedSteps,
+			RunResult.SucceededSteps,
+			RunResult.FailedSteps,
+			RunResult.TerminalStatus.IsEmpty() ? TEXT("-") : *RunResult.TerminalStatus,
+			RunResult.TerminalReason.IsEmpty() ? TEXT("-") : *RunResult.TerminalReason,
+			RunResult.ErrorCode.IsEmpty() ? TEXT("-") : *RunResult.ErrorCode,
+			RunResult.Reason.IsEmpty() ? TEXT("-") : *RunResult.Reason,
+			RunResult.StartedAtUtc.IsEmpty() ? TEXT("-") : *RunResult.StartedAtUtc,
+			RunResult.FinishedAtUtc.IsEmpty() ? TEXT("-") : *RunResult.FinishedAtUtc);
+	}
+	else
+	{
+		UE_LOG(
+			LogHCIAbilityKitAuditScan,
+			Warning,
+			TEXT("[HCIAbilityKit][AgentExecutor] case=%s summary request_id=%s intent=%s plan_version=%d execution_mode=%s accepted=%s completed=%s total_steps=%d executed_steps=%d succeeded_steps=%d failed_steps=%d terminal_status=%s terminal_reason=%s error_code=%s reason=%s started_utc=%s finished_utc=%s"),
+			CaseName,
+			RunResult.RequestId.IsEmpty() ? TEXT("-") : *RunResult.RequestId,
+			RunResult.Intent.IsEmpty() ? TEXT("-") : *RunResult.Intent,
+			RunResult.PlanVersion,
+			RunResult.ExecutionMode.IsEmpty() ? TEXT("-") : *RunResult.ExecutionMode,
+			RunResult.bAccepted ? TEXT("true") : TEXT("false"),
+			RunResult.bCompleted ? TEXT("true") : TEXT("false"),
+			RunResult.TotalSteps,
+			RunResult.ExecutedSteps,
+			RunResult.SucceededSteps,
+			RunResult.FailedSteps,
+			RunResult.TerminalStatus.IsEmpty() ? TEXT("-") : *RunResult.TerminalStatus,
+			RunResult.TerminalReason.IsEmpty() ? TEXT("-") : *RunResult.TerminalReason,
+			RunResult.ErrorCode.IsEmpty() ? TEXT("-") : *RunResult.ErrorCode,
+			RunResult.Reason.IsEmpty() ? TEXT("-") : *RunResult.Reason,
+			RunResult.StartedAtUtc.IsEmpty() ? TEXT("-") : *RunResult.StartedAtUtc,
+			RunResult.FinishedAtUtc.IsEmpty() ? TEXT("-") : *RunResult.FinishedAtUtc);
+	}
+}
+
+static bool HCI_RunAgentExecutorDemoCase(
+	const TCHAR* CaseName,
+	const FString& UserText,
+	const FString& RequestId,
+	FHCIAbilityKitToolRegistry& Registry,
+	int32& OutCompletedCases,
+	int32& OutRejectedCases)
+{
+	FHCIAbilityKitAgentPlan Plan;
+	FString RouteReason;
+	FString BuildError;
+	if (!HCI_BuildAgentPlanDemoPlan(UserText, RequestId, Plan, RouteReason, BuildError))
+	{
+		UE_LOG(
+			LogHCIAbilityKitAuditScan,
+			Error,
+			TEXT("[HCIAbilityKit][AgentExecutor] case=%s build_failed input=%s reason=%s"),
+			CaseName,
+			*UserText,
+			*BuildError);
+		return false;
+	}
+
+	GHCIAbilityKitAgentPlanPreviewState = Plan;
+
+	FHCIAbilityKitAgentExecutorOptions Options;
+	Options.bValidatePlanBeforeExecute = true;
+	Options.bDryRun = true;
+
+	FHCIAbilityKitAgentExecutorRunResult RunResult;
+	FHCIAbilityKitAgentExecutor::ExecutePlan(
+		Plan,
+		Registry,
+		FHCIAbilityKitAgentPlanValidationContext(),
+		Options,
+		RunResult);
+
+	if (RunResult.bCompleted)
+	{
+		++OutCompletedCases;
+	}
+	if (!RunResult.bAccepted || !RunResult.bCompleted)
+	{
+		++OutRejectedCases;
+	}
+
+	UE_LOG(
+		LogHCIAbilityKitAuditScan,
+		Display,
+		TEXT("[HCIAbilityKit][AgentExecutor] case=%s route_reason=%s input=%s"),
+		CaseName,
+		*RouteReason,
+		*UserText);
+	HCI_LogAgentExecutorSummary(CaseName, RunResult);
+	HCI_LogAgentExecutorRows(CaseName, RunResult);
+	return true;
+}
+
+static void HCI_RunAbilityKitAgentExecutePlanDemoCommand(const TArray<FString>& Args)
+{
+	FHCIAbilityKitToolRegistry& Registry = FHCIAbilityKitToolRegistry::Get();
+	Registry.ResetToDefaults();
+
+	if (Args.Num() == 0)
+	{
+		struct FDemoExecCase
+		{
+			const TCHAR* CaseName;
+			const TCHAR* RequestId;
+			const TCHAR* UserText;
+		};
+
+		const TArray<FDemoExecCase> Cases{
+			{TEXT("exec_naming_archive_temp_assets"), TEXT("req_demo_f3_01"), TEXT("整理临时目录资产，按规范命名并归档")},
+			{TEXT("exec_level_mesh_risk_scan"), TEXT("req_demo_f3_02"), TEXT("检查当前关卡选中物体的碰撞和默认材质")},
+			{TEXT("exec_asset_compliance_fix"), TEXT("req_demo_f3_03"), TEXT("检查贴图分辨率并处理LOD")}};
+
+		int32 BuiltAndCompletedCases = 0;
+		int32 RejectedCases = 0;
+		int32 TotalStepRows = 0;
+
+		for (const FDemoExecCase& DemoCase : Cases)
+		{
+			const int32 CompletedBefore = BuiltAndCompletedCases;
+			if (HCI_RunAgentExecutorDemoCase(
+					DemoCase.CaseName,
+					DemoCase.UserText,
+					DemoCase.RequestId,
+					Registry,
+					BuiltAndCompletedCases,
+					RejectedCases))
+			{
+				// Rebuild plan only for counting is unnecessary; use preview state set by helper.
+				TotalStepRows += GHCIAbilityKitAgentPlanPreviewState.Steps.Num();
+				if (BuiltAndCompletedCases == CompletedBefore)
+				{
+					// Case executed but not completed is already counted in RejectedCases.
+				}
+			}
+		}
+
+		UE_LOG(
+			LogHCIAbilityKitAuditScan,
+			Display,
+			TEXT("[HCIAbilityKit][AgentExecutor] summary total_cases=%d completed_cases=%d rejected_cases=%d execution_mode=%s total_step_rows=%d validation=ok"),
+			Cases.Num(),
+			BuiltAndCompletedCases,
+			RejectedCases,
+			TEXT("simulate_dry_run"),
+			TotalStepRows);
+		UE_LOG(
+			LogHCIAbilityKitAuditScan,
+			Display,
+			TEXT("[HCIAbilityKit][AgentExecutor] hint=也可运行 HCIAbilityKit.AgentExecutePlanDemo [自然语言文本...]"));
+		return;
+	}
+
+	const FString UserText = HCI_JoinConsoleArgsAsText(Args);
+	if (UserText.IsEmpty())
+	{
+		UE_LOG(LogHCIAbilityKitAuditScan, Error, TEXT("[HCIAbilityKit][AgentExecutor] invalid_args reason=empty input text"));
+		return;
+	}
+
+	int32 CompletedCases = 0;
+	int32 RejectedCases = 0;
+	HCI_RunAgentExecutorDemoCase(TEXT("custom"), UserText, TEXT("req_cli_f3"), Registry, CompletedCases, RejectedCases);
+}
+
 void FHCIAbilityKitAgentDemoConsoleCommands::Startup()
 {
 	if (!AgentConfirmGateDemoCommand.IsValid())
@@ -1779,6 +2034,14 @@ void FHCIAbilityKitAgentDemoConsoleCommands::Startup()
 			TEXT("F2 Plan validator demo. Usage: HCIAbilityKit.AgentPlanValidateDemo [case_key]"),
 			FConsoleCommandWithArgsDelegate::CreateStatic(&HCI_RunAbilityKitAgentPlanValidateDemoCommand));
 	}
+
+	if (!AgentExecutePlanDemoCommand.IsValid())
+	{
+		AgentExecutePlanDemoCommand = MakeUnique<FAutoConsoleCommand>(
+			TEXT("HCIAbilityKit.AgentExecutePlanDemo"),
+			TEXT("F3 Executor skeleton demo (validate + simulate execute + convergence logs). Usage: HCIAbilityKit.AgentExecutePlanDemo [natural language text...]"),
+			FConsoleCommandWithArgsDelegate::CreateStatic(&HCI_RunAbilityKitAgentExecutePlanDemoCommand));
+	}
 }
 
 void FHCIAbilityKitAgentDemoConsoleCommands::Shutdown()
@@ -1792,4 +2055,5 @@ void FHCIAbilityKitAgentDemoConsoleCommands::Shutdown()
 	AgentPlanDemoCommand.Reset();
 	AgentPlanDemoJsonCommand.Reset();
 	AgentPlanValidateDemoCommand.Reset();
+	AgentExecutePlanDemoCommand.Reset();
 }

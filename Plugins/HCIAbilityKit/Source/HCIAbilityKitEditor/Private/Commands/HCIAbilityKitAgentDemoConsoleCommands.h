@@ -1,0 +1,23 @@
+#pragma once
+
+#include "CoreMinimal.h"
+#include "HAL/IConsoleManager.h"
+#include "Templates/UniquePtr.h"
+
+class FHCIAbilityKitAgentDemoConsoleCommands
+{
+public:
+	void Startup();
+	void Shutdown();
+
+private:
+	TUniquePtr<FAutoConsoleCommand> AgentConfirmGateDemoCommand;
+	TUniquePtr<FAutoConsoleCommand> AgentBlastRadiusDemoCommand;
+	TUniquePtr<FAutoConsoleCommand> AgentTransactionDemoCommand;
+	TUniquePtr<FAutoConsoleCommand> AgentSourceControlDemoCommand;
+	TUniquePtr<FAutoConsoleCommand> AgentRbacDemoCommand;
+	TUniquePtr<FAutoConsoleCommand> AgentLodSafetyDemoCommand;
+	TUniquePtr<FAutoConsoleCommand> AgentPlanDemoCommand;
+	TUniquePtr<FAutoConsoleCommand> AgentPlanDemoJsonCommand;
+	TUniquePtr<FAutoConsoleCommand> AgentPlanValidateDemoCommand;
+};

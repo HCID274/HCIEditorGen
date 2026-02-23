@@ -4,6 +4,7 @@
 #include "Templates/UniquePtr.h"
 
 class FHCIAbilityKitContentBrowserMenuRegistrar;
+class FHCIAbilityKitAgentDemoConsoleCommands;
 
 /**
  * HCIAbilityKit Editor 模块类
@@ -19,4 +20,5 @@ public:
 
 private:
 	TUniquePtr<FHCIAbilityKitContentBrowserMenuRegistrar> ContentBrowserMenuRegistrar;
+	TUniquePtr<FHCIAbilityKitAgentDemoConsoleCommands> AgentDemoConsoleCommands;
 };

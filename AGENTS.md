@@ -245,8 +245,9 @@ Scope: whole repo.
   - `Stage F-SliceF6` 已通过：`Executor -> Dry-Run Diff` 审阅桥接（`RunResult(step_results[]) -> DryRunDiffReport`）已接入并通过 UE 手测，复用 E2 `DryRunDiff` JSON 契约与定位策略。
   - `Stage F-SliceF7` 已通过：ExecutorReview 定位闭环（F6 审阅桥接结果按行定位，`AgentExecutePlanReviewLocate` 打通 `计划 -> 执行 -> 审阅 -> 定位` 最小交互闭环）已接入并通过 UE 手测。
   - `Stage F-SliceF8` 已通过：ExecutorReview 逐项采纳选择契约与过滤预览（在最新审阅预览上按 `row_index` 列表去重/校验/过滤，输出已采纳子集 `DryRunDiffReport` 与 JSON；仍为 `simulate_dry_run`，不触发真实资产写入）已接入并通过 UE 手测。
-  - 当前切片：`Stage F-SliceF9`（待定义/待冻结）
-  - 下一切片：`Stage F-SliceF10`（待定义；F9 通过后冻结）
+  - `Stage F-SliceF9` 已通过：ExecutorReview 采纳子集 -> ApplyRequest 执行申请包桥接（将 F8 已采纳审阅子集 `DryRunDiffReport` 转换为 `ApplyRequest` 契约与 JSON，输出 `selection_digest/ready/blocked_rows` 等收敛字段；仍为 `simulate_dry_run`，不触发真实资产写入）已接入并通过 UE 手测。
+  - 当前切片：`Stage F-SliceF10`（待定义/待冻结）
+  - 下一切片：`Stage F-SliceF11`（待定义；F10 通过后冻结）
   - 兼容性说明（时间字符串）：对外日志/JSON 的时间值已统一改为北京时间 `+08:00` 输出；字段名（如 `updated_utc/generated_utc/timestamp_utc`）暂保持不变以兼容既有门禁与测试。
   - D 段收尾后续主线：`Stage E`（安全执行：Dry-Run/Confirm/Transaction/SC）-> `Stage F`（NL->Plan->Executor）。
   - B3 最新状态：

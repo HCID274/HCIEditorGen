@@ -2,7 +2,10 @@
 #include "Commands/HCIAbilityKitAgentExecutorReviewLocateUtils.h"
 
 #include "Agent/HCIAbilityKitAgentExecutionGate.h"
+#include "Agent/HCIAbilityKitAgentApplyRequest.h"
+#include "Agent/HCIAbilityKitAgentApplyRequestJsonSerializer.h"
 #include "Agent/HCIAbilityKitAgentExecutor.h"
+#include "Agent/HCIAbilityKitAgentExecutorApplyRequestBridge.h"
 #include "Agent/HCIAbilityKitAgentExecutorDryRunBridge.h"
 #include "Agent/HCIAbilityKitAgentPlan.h"
 #include "Agent/HCIAbilityKitAgentPlanJsonSerializer.h"
@@ -28,6 +31,7 @@ DEFINE_LOG_CATEGORY_STATIC(LogHCIAbilityKitAgentDemo, Log, All);
 
 static FHCIAbilityKitAgentPlan GHCIAbilityKitAgentPlanPreviewState;
 static FHCIAbilityKitDryRunDiffReport GHCIAbilityKitAgentExecutorReviewDiffPreviewState;
+static FHCIAbilityKitAgentApplyRequest GHCIAbilityKitAgentApplyRequestPreviewState;
 
 static FString HCI_JoinConsoleArgsAsText(const TArray<FString>& Args)
 {
@@ -2966,6 +2970,174 @@ static void HCI_RunAbilityKitAgentExecutePlanReviewSelectJsonCommand(const TArra
 	UE_LOG(LogHCIAbilityKitAgentDemo, Display, TEXT("%s"), *JsonText);
 }
 
+static void HCI_LogAgentExecutorApplySummary(const FHCIAbilityKitAgentApplyRequest& ApplyRequest)
+{
+	const bool bUseWarning = !ApplyRequest.bReady;
+	if (bUseWarning)
+	{
+		UE_LOG(
+			LogHCIAbilityKitAgentDemo,
+			Warning,
+			TEXT("[HCIAbilityKit][AgentExecutorApply] summary request_id=%s review_request_id=%s selection_digest=%s total_rows=%d modifiable_rows=%d blocked_rows=%d ready=%s validation=ok"),
+			ApplyRequest.RequestId.IsEmpty() ? TEXT("-") : *ApplyRequest.RequestId,
+			ApplyRequest.ReviewRequestId.IsEmpty() ? TEXT("-") : *ApplyRequest.ReviewRequestId,
+			ApplyRequest.SelectionDigest.IsEmpty() ? TEXT("-") : *ApplyRequest.SelectionDigest,
+			ApplyRequest.Summary.TotalRows,
+			ApplyRequest.Summary.ModifiableRows,
+			ApplyRequest.Summary.BlockedRows,
+			ApplyRequest.bReady ? TEXT("true") : TEXT("false"));
+		return;
+	}
+
+	UE_LOG(
+		LogHCIAbilityKitAgentDemo,
+		Display,
+		TEXT("[HCIAbilityKit][AgentExecutorApply] summary request_id=%s review_request_id=%s selection_digest=%s total_rows=%d modifiable_rows=%d blocked_rows=%d ready=%s validation=ok"),
+		ApplyRequest.RequestId.IsEmpty() ? TEXT("-") : *ApplyRequest.RequestId,
+		ApplyRequest.ReviewRequestId.IsEmpty() ? TEXT("-") : *ApplyRequest.ReviewRequestId,
+		ApplyRequest.SelectionDigest.IsEmpty() ? TEXT("-") : *ApplyRequest.SelectionDigest,
+		ApplyRequest.Summary.TotalRows,
+		ApplyRequest.Summary.ModifiableRows,
+		ApplyRequest.Summary.BlockedRows,
+		ApplyRequest.bReady ? TEXT("true") : TEXT("false"));
+}
+
+static void HCI_LogAgentExecutorApplyRows(const FHCIAbilityKitAgentApplyRequest& ApplyRequest)
+{
+	for (const FHCIAbilityKitAgentApplyRequestItem& Item : ApplyRequest.Items)
+	{
+		if (Item.bBlocked)
+		{
+			UE_LOG(
+				LogHCIAbilityKitAgentDemo,
+				Warning,
+				TEXT("[HCIAbilityKit][AgentExecutorApply] row=%d tool_name=%s risk=%s blocked=%s skip_reason=%s object_type=%s locate_strategy=%s asset_path=%s field=%s evidence_key=%s actor_path=%s"),
+				Item.RowIndex,
+				Item.ToolName.IsEmpty() ? TEXT("-") : *Item.ToolName,
+				*FHCIAbilityKitDryRunDiff::RiskToString(Item.Risk),
+				TEXT("true"),
+				Item.SkipReason.IsEmpty() ? TEXT("-") : *Item.SkipReason,
+				*FHCIAbilityKitDryRunDiff::ObjectTypeToString(Item.ObjectType),
+				*FHCIAbilityKitDryRunDiff::LocateStrategyToString(Item.LocateStrategy),
+				Item.AssetPath.IsEmpty() ? TEXT("-") : *Item.AssetPath,
+				Item.Field.IsEmpty() ? TEXT("-") : *Item.Field,
+				Item.EvidenceKey.IsEmpty() ? TEXT("-") : *Item.EvidenceKey,
+				Item.ActorPath.IsEmpty() ? TEXT("-") : *Item.ActorPath);
+		}
+		else
+		{
+			UE_LOG(
+				LogHCIAbilityKitAgentDemo,
+				Display,
+				TEXT("[HCIAbilityKit][AgentExecutorApply] row=%d tool_name=%s risk=%s blocked=%s skip_reason=%s object_type=%s locate_strategy=%s asset_path=%s field=%s evidence_key=%s actor_path=%s"),
+				Item.RowIndex,
+				Item.ToolName.IsEmpty() ? TEXT("-") : *Item.ToolName,
+				*FHCIAbilityKitDryRunDiff::RiskToString(Item.Risk),
+				TEXT("false"),
+				Item.SkipReason.IsEmpty() ? TEXT("-") : *Item.SkipReason,
+				*FHCIAbilityKitDryRunDiff::ObjectTypeToString(Item.ObjectType),
+				*FHCIAbilityKitDryRunDiff::LocateStrategyToString(Item.LocateStrategy),
+				Item.AssetPath.IsEmpty() ? TEXT("-") : *Item.AssetPath,
+				Item.Field.IsEmpty() ? TEXT("-") : *Item.Field,
+				Item.EvidenceKey.IsEmpty() ? TEXT("-") : *Item.EvidenceKey,
+				Item.ActorPath.IsEmpty() ? TEXT("-") : *Item.ActorPath);
+		}
+	}
+}
+
+static bool HCI_TryBuildAgentExecutorApplyRequestFromLatestReview(FHCIAbilityKitAgentApplyRequest& OutApplyRequest)
+{
+	if (GHCIAbilityKitAgentExecutorReviewDiffPreviewState.DiffItems.Num() <= 0)
+	{
+		UE_LOG(LogHCIAbilityKitAgentDemo, Warning, TEXT("[HCIAbilityKit][AgentExecutorApply] prepare=unavailable reason=no_review_preview_state"));
+		UE_LOG(
+			LogHCIAbilityKitAgentDemo,
+			Display,
+			TEXT("[HCIAbilityKit][AgentExecutorApply] suggestion=先运行 HCIAbilityKit.AgentExecutePlanReviewDemo 或 HCIAbilityKit.AgentExecutePlanReviewSelect"));
+		return false;
+	}
+
+	if (!FHCIAbilityKitAgentExecutorApplyRequestBridge::BuildApplyRequest(
+			GHCIAbilityKitAgentExecutorReviewDiffPreviewState,
+			OutApplyRequest))
+	{
+		UE_LOG(
+			LogHCIAbilityKitAgentDemo,
+			Error,
+			TEXT("[HCIAbilityKit][AgentExecutorApply] prepare_failed reason=bridge_failed review_request_id=%s"),
+			GHCIAbilityKitAgentExecutorReviewDiffPreviewState.RequestId.IsEmpty() ? TEXT("-") : *GHCIAbilityKitAgentExecutorReviewDiffPreviewState.RequestId);
+		return false;
+	}
+
+	GHCIAbilityKitAgentApplyRequestPreviewState = OutApplyRequest;
+	return true;
+}
+
+static void HCI_RunAbilityKitAgentExecutePlanReviewPrepareApplyCommand(const TArray<FString>& Args)
+{
+	if (Args.Num() > 0)
+	{
+		UE_LOG(
+			LogHCIAbilityKitAgentDemo,
+			Error,
+			TEXT("[HCIAbilityKit][AgentExecutorApply] invalid_args usage=HCIAbilityKit.AgentExecutePlanReviewPrepareApply"));
+		return;
+	}
+
+	FHCIAbilityKitAgentApplyRequest ApplyRequest;
+	if (!HCI_TryBuildAgentExecutorApplyRequestFromLatestReview(ApplyRequest))
+	{
+		return;
+	}
+
+	HCI_LogAgentExecutorApplySummary(ApplyRequest);
+	HCI_LogAgentExecutorApplyRows(ApplyRequest);
+	UE_LOG(
+		LogHCIAbilityKitAgentDemo,
+		Display,
+		TEXT("[HCIAbilityKit][AgentExecutorApply] hint=也可运行 HCIAbilityKit.AgentExecutePlanReviewPrepareApplyJson 输出 ApplyRequest JSON"));
+}
+
+static void HCI_RunAbilityKitAgentExecutePlanReviewPrepareApplyJsonCommand(const TArray<FString>& Args)
+{
+	if (Args.Num() > 0)
+	{
+		UE_LOG(
+			LogHCIAbilityKitAgentDemo,
+			Error,
+			TEXT("[HCIAbilityKit][AgentExecutorApply] invalid_args usage=HCIAbilityKit.AgentExecutePlanReviewPrepareApplyJson"));
+		return;
+	}
+
+	FHCIAbilityKitAgentApplyRequest ApplyRequest;
+	if (!HCI_TryBuildAgentExecutorApplyRequestFromLatestReview(ApplyRequest))
+	{
+		return;
+	}
+
+	HCI_LogAgentExecutorApplySummary(ApplyRequest);
+	HCI_LogAgentExecutorApplyRows(ApplyRequest);
+
+	FString JsonText;
+	if (!FHCIAbilityKitAgentApplyRequestJsonSerializer::SerializeToJsonString(ApplyRequest, JsonText))
+	{
+		UE_LOG(
+			LogHCIAbilityKitAgentDemo,
+			Error,
+			TEXT("[HCIAbilityKit][AgentExecutorApply] json_failed request_id=%s"),
+			ApplyRequest.RequestId.IsEmpty() ? TEXT("-") : *ApplyRequest.RequestId);
+		return;
+	}
+
+	UE_LOG(
+		LogHCIAbilityKitAgentDemo,
+		Display,
+		TEXT("[HCIAbilityKit][AgentExecutorApply] json request_id=%s bytes=%d"),
+		ApplyRequest.RequestId.IsEmpty() ? TEXT("-") : *ApplyRequest.RequestId,
+		JsonText.Len());
+	UE_LOG(LogHCIAbilityKitAgentDemo, Display, TEXT("%s"), *JsonText);
+}
+
 static void HCI_RunAbilityKitAgentExecutePlanDemoCommand(const TArray<FString>& Args)
 {
 	FHCIAbilityKitToolRegistry& Registry = FHCIAbilityKitToolRegistry::Get();
@@ -3174,6 +3346,22 @@ void FHCIAbilityKitAgentDemoConsoleCommands::Startup()
 			TEXT("F8 Select review rows and print selected DryRunDiff JSON. Usage: HCIAbilityKit.AgentExecutePlanReviewSelectJson [row_indices_csv]"),
 			FConsoleCommandWithArgsDelegate::CreateStatic(&HCI_RunAbilityKitAgentExecutePlanReviewSelectJsonCommand));
 	}
+
+	if (!AgentExecutePlanReviewPrepareApplyCommand.IsValid())
+	{
+		AgentExecutePlanReviewPrepareApplyCommand = MakeUnique<FAutoConsoleCommand>(
+			TEXT("HCIAbilityKit.AgentExecutePlanReviewPrepareApply"),
+			TEXT("F9 Build ApplyRequest package from latest selected ExecutorReview preview. Usage: HCIAbilityKit.AgentExecutePlanReviewPrepareApply"),
+			FConsoleCommandWithArgsDelegate::CreateStatic(&HCI_RunAbilityKitAgentExecutePlanReviewPrepareApplyCommand));
+	}
+
+	if (!AgentExecutePlanReviewPrepareApplyJsonCommand.IsValid())
+	{
+		AgentExecutePlanReviewPrepareApplyJsonCommand = MakeUnique<FAutoConsoleCommand>(
+			TEXT("HCIAbilityKit.AgentExecutePlanReviewPrepareApplyJson"),
+			TEXT("F9 Build ApplyRequest package from latest selected ExecutorReview preview and print JSON. Usage: HCIAbilityKit.AgentExecutePlanReviewPrepareApplyJson"),
+			FConsoleCommandWithArgsDelegate::CreateStatic(&HCI_RunAbilityKitAgentExecutePlanReviewPrepareApplyJsonCommand));
+	}
 }
 
 void FHCIAbilityKitAgentDemoConsoleCommands::Shutdown()
@@ -3195,4 +3383,6 @@ void FHCIAbilityKitAgentDemoConsoleCommands::Shutdown()
 	AgentExecutePlanReviewLocateCommand.Reset();
 	AgentExecutePlanReviewSelectCommand.Reset();
 	AgentExecutePlanReviewSelectJsonCommand.Reset();
+	AgentExecutePlanReviewPrepareApplyCommand.Reset();
+	AgentExecutePlanReviewPrepareApplyJsonCommand.Reset();
 }

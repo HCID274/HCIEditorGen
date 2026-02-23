@@ -1060,6 +1060,67 @@ public:
   - 不修改 F6 `AgentExecutePlanReviewDemo/Json` 与 F7 `AgentExecutePlanReviewLocate` 的既有日志字段口径。
   - F8 仅新增“选择过滤”命令与 Runtime 过滤器；输出 JSON 仍复用 E2 `DryRunDiff` 契约字段名（`request_id/summary/diff_items[]`）。
 
+### 14.5.7 StageF-SliceF9 ExecutorReview 采纳子集 -> ApplyRequest 执行申请包桥接
+
+- 目标：将 F8 生成的“已采纳子集”`FHCIAbilityKitDryRunDiffReport` 桥接为可确认、可追踪的 `ApplyRequest` 契约与 JSON，为后续 F10“确认后执行”提供稳定输入（仍为 `simulate_dry_run`，不触发真实资产写入）。
+- Runtime 新增桥接器（F9）：
+  - `FHCIAbilityKitAgentExecutorApplyRequestBridge::BuildApplyRequest(...)`
+  - 输入：`SelectedReviewReport (DryRunDiffReport)`
+  - 输出：`FHCIAbilityKitAgentApplyRequest`
+- F9 `ApplyRequest` 顶层字段（最小冻结）：
+  - `request_id`：F9 申请包请求号（可与审阅请求号不同）
+  - `review_request_id`：来源审阅预览请求号（来自 F6/F8 `DryRunDiffReport.request_id`）
+  - `selection_digest`：对已采纳子集行内容生成的稳定摘要（用于后续确认执行时校验“审阅未被篡改”）
+  - `generated_utc`：时间字符串（值按北京时间 `+08:00` 输出，字段名兼容保留）
+  - `execution_mode`：一期固定 `simulate_dry_run_apply_request`
+  - `ready`：是否可进入确认执行（`blocked_rows==0` 时为 `true`）
+  - `summary`
+  - `items[]`
+- F9 `summary` 字段（最小冻结）：
+  - `total_rows`
+  - `modifiable_rows`
+  - `blocked_rows`
+  - `read_only_rows`
+  - `write_rows`
+  - `destructive_rows`
+  - `selected_rows`
+- F9 `items[]` 字段（最小冻结）：
+  - `row_index`
+  - `tool_name`
+  - `risk`
+  - `asset_path`
+  - `field`
+  - `skip_reason`
+  - `blocked`
+  - `object_type`
+  - `locate_strategy`
+  - `evidence_key`
+  - `actor_path`（可选）
+- F9 桥接规则（冻结）：
+  - `DryRunDiffItem.skip_reason` 非空 -> `blocked=true`
+  - `blocked_rows > 0` -> `ready=false`
+  - `blocked_rows == 0` -> `ready=true`
+  - `selection_digest` 必须对“行顺序 + 核心字段”稳定计算；相同输入报告应生成相同摘要值
+- Editor 新增命令（F9）：
+  - `HCIAbilityKit.AgentExecutePlanReviewPrepareApply`
+  - `HCIAbilityKit.AgentExecutePlanReviewPrepareApplyJson`
+  - 输入来源：F6/F7/F8 “最新审阅预览状态” `GHCIAbilityKitAgentExecutorReviewDiffPreviewState`
+  - 成功后：缓存“最新 ApplyRequest 预览状态”（供后续 F10 使用）
+- F9 日志口径（新增，冻结）：
+  - 无预览状态（Warning + 指引）：
+    - `[HCIAbilityKit][AgentExecutorApply] prepare=unavailable reason=no_review_preview_state`
+    - `suggestion=先运行 HCIAbilityKit.AgentExecutePlanReviewDemo / ...ReviewSelect`
+  - 申请包摘要（Display/Warning）：
+    - `[HCIAbilityKit][AgentExecutorApply] summary request_id=... review_request_id=... selection_digest=... total_rows=... modifiable_rows=... blocked_rows=... ready=true|false validation=ok`
+  - 申请包行（Display/Warning）：
+    - `row=... tool_name=... risk=... blocked=true|false skip_reason=... object_type=... locate_strategy=... asset_path=... field=... evidence_key=... actor_path=...`
+  - JSON 输出：
+    - `[HCIAbilityKit][AgentExecutorApply] json request_id=... bytes=...`
+    - 后续输出 JSON 文本（F9 `ApplyRequest` 契约）
+- 兼容性要求（F9）：
+  - 不修改 F6/F7/F8 现有命令与日志字段口径。
+  - F9 仅做“审阅采纳子集 -> 执行申请包”桥接与 JSON 输出，不触发真实写资产/事务提交。
+
 ### 14.6 一期禁止实现（延期到 Phase 3）
 
 - 记忆门禁与 TTL 细则（Session TTL/SOP 自动提炼触发策略）。

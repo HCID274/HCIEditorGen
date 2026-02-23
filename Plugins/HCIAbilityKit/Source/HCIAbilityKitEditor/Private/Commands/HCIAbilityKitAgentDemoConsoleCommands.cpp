@@ -6,10 +6,13 @@
 #include "Agent/HCIAbilityKitAgentApplyConfirmRequestJsonSerializer.h"
 #include "Agent/HCIAbilityKitAgentApplyRequest.h"
 #include "Agent/HCIAbilityKitAgentApplyRequestJsonSerializer.h"
+#include "Agent/HCIAbilityKitAgentExecuteTicket.h"
+#include "Agent/HCIAbilityKitAgentExecuteTicketJsonSerializer.h"
 #include "Agent/HCIAbilityKitAgentExecutor.h"
 #include "Agent/HCIAbilityKitAgentExecutorApplyConfirmBridge.h"
 #include "Agent/HCIAbilityKitAgentExecutorApplyRequestBridge.h"
 #include "Agent/HCIAbilityKitAgentExecutorDryRunBridge.h"
+#include "Agent/HCIAbilityKitAgentExecutorExecuteTicketBridge.h"
 #include "Agent/HCIAbilityKitAgentPlan.h"
 #include "Agent/HCIAbilityKitAgentPlanJsonSerializer.h"
 #include "Agent/HCIAbilityKitAgentPlanner.h"
@@ -36,6 +39,7 @@ static FHCIAbilityKitAgentPlan GHCIAbilityKitAgentPlanPreviewState;
 static FHCIAbilityKitDryRunDiffReport GHCIAbilityKitAgentExecutorReviewDiffPreviewState;
 static FHCIAbilityKitAgentApplyRequest GHCIAbilityKitAgentApplyRequestPreviewState;
 static FHCIAbilityKitAgentApplyConfirmRequest GHCIAbilityKitAgentApplyConfirmRequestPreviewState;
+static FHCIAbilityKitAgentExecuteTicket GHCIAbilityKitAgentExecuteTicketPreviewState;
 
 static FString HCI_JoinConsoleArgsAsText(const TArray<FString>& Args)
 {
@@ -3385,6 +3389,254 @@ static void HCI_RunAbilityKitAgentExecutePlanReviewPrepareConfirmJsonCommand(con
 	UE_LOG(LogHCIAbilityKitAgentDemo, Display, TEXT("%s"), *JsonText);
 }
 
+static bool HCI_TryParseExecuteTicketTamperModeArg(const FString& InValue, FString& OutTamperMode)
+{
+	const FString Trimmed = InValue.TrimStartAndEnd();
+	if (Trimmed.Equals(TEXT("none"), ESearchCase::IgnoreCase))
+	{
+		OutTamperMode = TEXT("none");
+		return true;
+	}
+	if (Trimmed.Equals(TEXT("digest"), ESearchCase::IgnoreCase))
+	{
+		OutTamperMode = TEXT("digest");
+		return true;
+	}
+	if (Trimmed.Equals(TEXT("apply"), ESearchCase::IgnoreCase))
+	{
+		OutTamperMode = TEXT("apply");
+		return true;
+	}
+	if (Trimmed.Equals(TEXT("review"), ESearchCase::IgnoreCase))
+	{
+		OutTamperMode = TEXT("review");
+		return true;
+	}
+	return false;
+}
+
+static void HCI_LogAgentExecutorExecuteTicketSummary(const FHCIAbilityKitAgentExecuteTicket& ExecuteTicket)
+{
+	const bool bUseWarning = !ExecuteTicket.bReadyToSimulateExecute;
+	if (bUseWarning)
+	{
+		UE_LOG(
+			LogHCIAbilityKitAgentDemo,
+			Warning,
+			TEXT("[HCIAbilityKit][AgentExecutorExecuteTicket] summary request_id=%s confirm_request_id=%s apply_request_id=%s review_request_id=%s selection_digest=%s user_confirmed=%s ready_to_simulate_execute=%s error_code=%s reason=%s validation=ok"),
+			ExecuteTicket.RequestId.IsEmpty() ? TEXT("-") : *ExecuteTicket.RequestId,
+			ExecuteTicket.ConfirmRequestId.IsEmpty() ? TEXT("-") : *ExecuteTicket.ConfirmRequestId,
+			ExecuteTicket.ApplyRequestId.IsEmpty() ? TEXT("-") : *ExecuteTicket.ApplyRequestId,
+			ExecuteTicket.ReviewRequestId.IsEmpty() ? TEXT("-") : *ExecuteTicket.ReviewRequestId,
+			ExecuteTicket.SelectionDigest.IsEmpty() ? TEXT("-") : *ExecuteTicket.SelectionDigest,
+			ExecuteTicket.bUserConfirmed ? TEXT("true") : TEXT("false"),
+			ExecuteTicket.bReadyToSimulateExecute ? TEXT("true") : TEXT("false"),
+			ExecuteTicket.ErrorCode.IsEmpty() ? TEXT("-") : *ExecuteTicket.ErrorCode,
+			ExecuteTicket.Reason.IsEmpty() ? TEXT("-") : *ExecuteTicket.Reason);
+		return;
+	}
+
+	UE_LOG(
+		LogHCIAbilityKitAgentDemo,
+		Display,
+		TEXT("[HCIAbilityKit][AgentExecutorExecuteTicket] summary request_id=%s confirm_request_id=%s apply_request_id=%s review_request_id=%s selection_digest=%s user_confirmed=%s ready_to_simulate_execute=%s error_code=%s reason=%s validation=ok"),
+		ExecuteTicket.RequestId.IsEmpty() ? TEXT("-") : *ExecuteTicket.RequestId,
+		ExecuteTicket.ConfirmRequestId.IsEmpty() ? TEXT("-") : *ExecuteTicket.ConfirmRequestId,
+		ExecuteTicket.ApplyRequestId.IsEmpty() ? TEXT("-") : *ExecuteTicket.ApplyRequestId,
+		ExecuteTicket.ReviewRequestId.IsEmpty() ? TEXT("-") : *ExecuteTicket.ReviewRequestId,
+		ExecuteTicket.SelectionDigest.IsEmpty() ? TEXT("-") : *ExecuteTicket.SelectionDigest,
+		ExecuteTicket.bUserConfirmed ? TEXT("true") : TEXT("false"),
+		ExecuteTicket.bReadyToSimulateExecute ? TEXT("true") : TEXT("false"),
+		ExecuteTicket.ErrorCode.IsEmpty() ? TEXT("-") : *ExecuteTicket.ErrorCode,
+		ExecuteTicket.Reason.IsEmpty() ? TEXT("-") : *ExecuteTicket.Reason);
+}
+
+static void HCI_LogAgentExecutorExecuteTicketRows(const FHCIAbilityKitAgentExecuteTicket& ExecuteTicket)
+{
+	for (const FHCIAbilityKitAgentApplyRequestItem& Item : ExecuteTicket.Items)
+	{
+		if (Item.bBlocked)
+		{
+			UE_LOG(
+				LogHCIAbilityKitAgentDemo,
+				Warning,
+				TEXT("[HCIAbilityKit][AgentExecutorExecuteTicket] row=%d tool_name=%s risk=%s blocked=%s skip_reason=%s object_type=%s locate_strategy=%s asset_path=%s field=%s evidence_key=%s actor_path=%s"),
+				Item.RowIndex,
+				Item.ToolName.IsEmpty() ? TEXT("-") : *Item.ToolName,
+				*FHCIAbilityKitDryRunDiff::RiskToString(Item.Risk),
+				TEXT("true"),
+				Item.SkipReason.IsEmpty() ? TEXT("-") : *Item.SkipReason,
+				*FHCIAbilityKitDryRunDiff::ObjectTypeToString(Item.ObjectType),
+				*FHCIAbilityKitDryRunDiff::LocateStrategyToString(Item.LocateStrategy),
+				Item.AssetPath.IsEmpty() ? TEXT("-") : *Item.AssetPath,
+				Item.Field.IsEmpty() ? TEXT("-") : *Item.Field,
+				Item.EvidenceKey.IsEmpty() ? TEXT("-") : *Item.EvidenceKey,
+				Item.ActorPath.IsEmpty() ? TEXT("-") : *Item.ActorPath);
+		}
+		else
+		{
+			UE_LOG(
+				LogHCIAbilityKitAgentDemo,
+				Display,
+				TEXT("[HCIAbilityKit][AgentExecutorExecuteTicket] row=%d tool_name=%s risk=%s blocked=%s skip_reason=%s object_type=%s locate_strategy=%s asset_path=%s field=%s evidence_key=%s actor_path=%s"),
+				Item.RowIndex,
+				Item.ToolName.IsEmpty() ? TEXT("-") : *Item.ToolName,
+				*FHCIAbilityKitDryRunDiff::RiskToString(Item.Risk),
+				TEXT("false"),
+				Item.SkipReason.IsEmpty() ? TEXT("-") : *Item.SkipReason,
+				*FHCIAbilityKitDryRunDiff::ObjectTypeToString(Item.ObjectType),
+				*FHCIAbilityKitDryRunDiff::LocateStrategyToString(Item.LocateStrategy),
+				Item.AssetPath.IsEmpty() ? TEXT("-") : *Item.AssetPath,
+				Item.Field.IsEmpty() ? TEXT("-") : *Item.Field,
+				Item.EvidenceKey.IsEmpty() ? TEXT("-") : *Item.EvidenceKey,
+				Item.ActorPath.IsEmpty() ? TEXT("-") : *Item.ActorPath);
+		}
+	}
+}
+
+static bool HCI_TryBuildAgentExecutorExecuteTicketFromLatestPreview(
+	const FString& TamperMode,
+	FHCIAbilityKitAgentExecuteTicket& OutExecuteTicket)
+{
+	if (GHCIAbilityKitAgentApplyConfirmRequestPreviewState.Items.Num() <= 0)
+	{
+		UE_LOG(LogHCIAbilityKitAgentDemo, Warning, TEXT("[HCIAbilityKit][AgentExecutorExecuteTicket] prepare=unavailable reason=no_confirm_request_preview_state"));
+		UE_LOG(
+			LogHCIAbilityKitAgentDemo,
+			Display,
+			TEXT("[HCIAbilityKit][AgentExecutorExecuteTicket] suggestion=先运行 HCIAbilityKit.AgentExecutePlanReviewPrepareConfirm"));
+		return false;
+	}
+
+	if (GHCIAbilityKitAgentApplyRequestPreviewState.Items.Num() <= 0)
+	{
+		UE_LOG(LogHCIAbilityKitAgentDemo, Warning, TEXT("[HCIAbilityKit][AgentExecutorExecuteTicket] prepare=unavailable reason=no_apply_request_preview_state"));
+		UE_LOG(
+			LogHCIAbilityKitAgentDemo,
+			Display,
+			TEXT("[HCIAbilityKit][AgentExecutorExecuteTicket] suggestion=先运行 HCIAbilityKit.AgentExecutePlanReviewPrepareApply"));
+		return false;
+	}
+
+	if (GHCIAbilityKitAgentExecutorReviewDiffPreviewState.DiffItems.Num() <= 0)
+	{
+		UE_LOG(LogHCIAbilityKitAgentDemo, Warning, TEXT("[HCIAbilityKit][AgentExecutorExecuteTicket] prepare=unavailable reason=no_review_preview_state"));
+		UE_LOG(
+			LogHCIAbilityKitAgentDemo,
+			Display,
+			TEXT("[HCIAbilityKit][AgentExecutorExecuteTicket] suggestion=先运行 HCIAbilityKit.AgentExecutePlanReviewDemo 或 HCIAbilityKit.AgentExecutePlanReviewSelect"));
+		return false;
+	}
+
+	FHCIAbilityKitAgentApplyConfirmRequest WorkingConfirmRequest = GHCIAbilityKitAgentApplyConfirmRequestPreviewState;
+	if (TamperMode == TEXT("digest"))
+	{
+		WorkingConfirmRequest.SelectionDigest += TEXT("_tampered");
+	}
+	else if (TamperMode == TEXT("apply"))
+	{
+		WorkingConfirmRequest.ApplyRequestId += TEXT("_stale");
+	}
+	else if (TamperMode == TEXT("review"))
+	{
+		WorkingConfirmRequest.ReviewRequestId += TEXT("_stale");
+	}
+
+	if (!FHCIAbilityKitAgentExecutorExecuteTicketBridge::BuildExecuteTicket(
+			WorkingConfirmRequest,
+			GHCIAbilityKitAgentApplyRequestPreviewState,
+			GHCIAbilityKitAgentExecutorReviewDiffPreviewState,
+			OutExecuteTicket))
+	{
+		UE_LOG(LogHCIAbilityKitAgentDemo, Error, TEXT("[HCIAbilityKit][AgentExecutorExecuteTicket] prepare_failed reason=bridge_failed"));
+		return false;
+	}
+
+	GHCIAbilityKitAgentExecuteTicketPreviewState = OutExecuteTicket;
+	return true;
+}
+
+static bool HCI_TryParseExecuteTicketCommandArgs(const TArray<FString>& Args, FString& OutTamperMode)
+{
+	OutTamperMode = TEXT("none");
+	if (Args.Num() == 0)
+	{
+		return true;
+	}
+	if (Args.Num() != 1)
+	{
+		return false;
+	}
+	return HCI_TryParseExecuteTicketTamperModeArg(Args[0], OutTamperMode);
+}
+
+static void HCI_RunAbilityKitAgentExecutePlanReviewPrepareExecuteTicketCommand(const TArray<FString>& Args)
+{
+	FString TamperMode;
+	if (!HCI_TryParseExecuteTicketCommandArgs(Args, TamperMode))
+	{
+		UE_LOG(
+			LogHCIAbilityKitAgentDemo,
+			Error,
+			TEXT("[HCIAbilityKit][AgentExecutorExecuteTicket] invalid_args usage=HCIAbilityKit.AgentExecutePlanReviewPrepareExecuteTicket [tamper=none|digest|apply|review]"));
+		return;
+	}
+
+	FHCIAbilityKitAgentExecuteTicket ExecuteTicket;
+	if (!HCI_TryBuildAgentExecutorExecuteTicketFromLatestPreview(TamperMode, ExecuteTicket))
+	{
+		return;
+	}
+
+	HCI_LogAgentExecutorExecuteTicketSummary(ExecuteTicket);
+	HCI_LogAgentExecutorExecuteTicketRows(ExecuteTicket);
+	UE_LOG(
+		LogHCIAbilityKitAgentDemo,
+		Display,
+		TEXT("[HCIAbilityKit][AgentExecutorExecuteTicket] hint=也可运行 HCIAbilityKit.AgentExecutePlanReviewPrepareExecuteTicketJson [tamper] 输出 ExecuteTicket JSON"));
+}
+
+static void HCI_RunAbilityKitAgentExecutePlanReviewPrepareExecuteTicketJsonCommand(const TArray<FString>& Args)
+{
+	FString TamperMode;
+	if (!HCI_TryParseExecuteTicketCommandArgs(Args, TamperMode))
+	{
+		UE_LOG(
+			LogHCIAbilityKitAgentDemo,
+			Error,
+			TEXT("[HCIAbilityKit][AgentExecutorExecuteTicket] invalid_args usage=HCIAbilityKit.AgentExecutePlanReviewPrepareExecuteTicketJson [tamper=none|digest|apply|review]"));
+		return;
+	}
+
+	FHCIAbilityKitAgentExecuteTicket ExecuteTicket;
+	if (!HCI_TryBuildAgentExecutorExecuteTicketFromLatestPreview(TamperMode, ExecuteTicket))
+	{
+		return;
+	}
+
+	HCI_LogAgentExecutorExecuteTicketSummary(ExecuteTicket);
+	HCI_LogAgentExecutorExecuteTicketRows(ExecuteTicket);
+
+	FString JsonText;
+	if (!FHCIAbilityKitAgentExecuteTicketJsonSerializer::SerializeToJsonString(ExecuteTicket, JsonText))
+	{
+		UE_LOG(
+			LogHCIAbilityKitAgentDemo,
+			Error,
+			TEXT("[HCIAbilityKit][AgentExecutorExecuteTicket] json_failed request_id=%s"),
+			ExecuteTicket.RequestId.IsEmpty() ? TEXT("-") : *ExecuteTicket.RequestId);
+		return;
+	}
+
+	UE_LOG(
+		LogHCIAbilityKitAgentDemo,
+		Display,
+		TEXT("[HCIAbilityKit][AgentExecutorExecuteTicket] json request_id=%s bytes=%d"),
+		ExecuteTicket.RequestId.IsEmpty() ? TEXT("-") : *ExecuteTicket.RequestId,
+		JsonText.Len());
+	UE_LOG(LogHCIAbilityKitAgentDemo, Display, TEXT("%s"), *JsonText);
+}
+
 static void HCI_RunAbilityKitAgentExecutePlanDemoCommand(const TArray<FString>& Args)
 {
 	FHCIAbilityKitToolRegistry& Registry = FHCIAbilityKitToolRegistry::Get();
@@ -3625,6 +3877,22 @@ void FHCIAbilityKitAgentDemoConsoleCommands::Startup()
 			TEXT("F10 Build ConfirmRequest and print JSON. Usage: HCIAbilityKit.AgentExecutePlanReviewPrepareConfirmJson [user_confirmed=0|1] [tamper=none|digest|review]"),
 			FConsoleCommandWithArgsDelegate::CreateStatic(&HCI_RunAbilityKitAgentExecutePlanReviewPrepareConfirmJsonCommand));
 	}
+
+	if (!AgentExecutePlanReviewPrepareExecuteTicketCommand.IsValid())
+	{
+		AgentExecutePlanReviewPrepareExecuteTicketCommand = MakeUnique<FAutoConsoleCommand>(
+			TEXT("HCIAbilityKit.AgentExecutePlanReviewPrepareExecuteTicket"),
+			TEXT("F11 Validate latest ConfirmRequest against latest Apply/Review preview and build ExecuteTicket. Usage: HCIAbilityKit.AgentExecutePlanReviewPrepareExecuteTicket [tamper=none|digest|apply|review]"),
+			FConsoleCommandWithArgsDelegate::CreateStatic(&HCI_RunAbilityKitAgentExecutePlanReviewPrepareExecuteTicketCommand));
+	}
+
+	if (!AgentExecutePlanReviewPrepareExecuteTicketJsonCommand.IsValid())
+	{
+		AgentExecutePlanReviewPrepareExecuteTicketJsonCommand = MakeUnique<FAutoConsoleCommand>(
+			TEXT("HCIAbilityKit.AgentExecutePlanReviewPrepareExecuteTicketJson"),
+			TEXT("F11 Build ExecuteTicket and print JSON. Usage: HCIAbilityKit.AgentExecutePlanReviewPrepareExecuteTicketJson [tamper=none|digest|apply|review]"),
+			FConsoleCommandWithArgsDelegate::CreateStatic(&HCI_RunAbilityKitAgentExecutePlanReviewPrepareExecuteTicketJsonCommand));
+	}
 }
 
 void FHCIAbilityKitAgentDemoConsoleCommands::Shutdown()
@@ -3650,4 +3918,6 @@ void FHCIAbilityKitAgentDemoConsoleCommands::Shutdown()
 	AgentExecutePlanReviewPrepareApplyJsonCommand.Reset();
 	AgentExecutePlanReviewPrepareConfirmCommand.Reset();
 	AgentExecutePlanReviewPrepareConfirmJsonCommand.Reset();
+	AgentExecutePlanReviewPrepareExecuteTicketCommand.Reset();
+	AgentExecutePlanReviewPrepareExecuteTicketJsonCommand.Reset();
 }

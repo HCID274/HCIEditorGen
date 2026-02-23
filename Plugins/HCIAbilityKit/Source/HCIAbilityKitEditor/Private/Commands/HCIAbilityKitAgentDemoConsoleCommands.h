@@ -32,4 +32,6 @@ private:
 	TUniquePtr<FAutoConsoleCommand> AgentExecutePlanReviewPrepareApplyJsonCommand;
 	TUniquePtr<FAutoConsoleCommand> AgentExecutePlanReviewPrepareConfirmCommand;
 	TUniquePtr<FAutoConsoleCommand> AgentExecutePlanReviewPrepareConfirmJsonCommand;
+	TUniquePtr<FAutoConsoleCommand> AgentExecutePlanReviewPrepareExecuteTicketCommand;
+	TUniquePtr<FAutoConsoleCommand> AgentExecutePlanReviewPrepareExecuteTicketJsonCommand;
 };

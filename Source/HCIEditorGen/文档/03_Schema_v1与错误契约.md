@@ -1183,6 +1183,53 @@ public:
   - 不修改 F6/F7/F8/F9 现有命令与日志字段口径。
   - F10 仅做“确认前校验 + ConfirmRequest 桥接/JSON 输出”，不触发真实写资产/事务提交。
 
+### 14.5.9 StageF-SliceF11 ConfirmRequest 确认后校验 -> ExecuteTicket 执行票据桥接
+
+- 目标：基于 F10 的 `ConfirmRequest` 与最新 `ApplyRequest/Review` 预览执行确认后完整性校验（`apply_request_id + review_request_id + selection_digest + ready_to_execute + user_confirmed`），桥接为可投递给后续执行器的 `ExecuteTicket` 契约与 JSON；仍为 `simulate_dry_run`。
+- Runtime 新增桥接器（F11）：
+  - `FHCIAbilityKitAgentExecutorExecuteTicketBridge::BuildExecuteTicket(...)`
+  - 输入：`ConfirmRequest`（F10） + `CurrentApplyRequest`（F9） + `CurrentReviewReport`（F6/F8）
+  - 输出：`FHCIAbilityKitAgentExecuteTicket`
+- F11 `ExecuteTicket` 顶层字段（最小冻结）：
+  - `request_id`
+  - `confirm_request_id`
+  - `apply_request_id`
+  - `review_request_id`
+  - `selection_digest`
+  - `generated_utc`（值按北京时间 `+08:00` 输出，字段名兼容保留）
+  - `execution_mode`（一期固定：`simulate_dry_run_execute_ticket`）
+  - `transaction_mode`（一期固定：`all_or_nothing`）
+  - `termination_policy`（一期固定：`stop_on_first_failure`）
+  - `user_confirmed`
+  - `ready_to_simulate_execute`
+  - `error_code`（成功可为 `-`）
+  - `reason`
+  - `summary`
+  - `items[]`
+- F11 校验规则（冻结）：
+  - `ConfirmRequest.user_confirmed=false` -> `ready_to_simulate_execute=false`，`error_code=E4005`，`reason=user_not_confirmed`
+  - `ConfirmRequest.ready_to_execute=false` -> `ready_to_simulate_execute=false`，`error_code=E4204`，`reason=confirm_request_not_ready`
+  - `ConfirmRequest.apply_request_id != CurrentApplyRequest.request_id` -> `ready_to_simulate_execute=false`，`error_code=E4202`，`reason=apply_request_id_mismatch`
+  - `ConfirmRequest.review_request_id != CurrentReviewReport.request_id` -> `ready_to_simulate_execute=false`，`error_code=E4202`，`reason=review_request_id_mismatch`
+  - `ConfirmRequest.selection_digest != CurrentApplyRequest.selection_digest` 或与 `CurrentReviewReport` 重算摘要不一致 -> `ready_to_simulate_execute=false`，`error_code=E4202`，`reason=selection_digest_mismatch`
+  - 全部通过 -> `ready_to_simulate_execute=true`，`error_code=-`，`reason=execute_ticket_ready`
+- Editor 新增命令（F11）：
+  - `HCIAbilityKit.AgentExecutePlanReviewPrepareExecuteTicket [tamper=none|digest|apply|review]`
+  - `HCIAbilityKit.AgentExecutePlanReviewPrepareExecuteTicketJson [tamper=none|digest|apply|review]`
+  - 输入来源：F10 “最新 ConfirmRequest 预览状态” + F9 “最新 ApplyRequest 预览状态” + F6/F8 “最新审阅预览状态”
+  - `tamper` 仅用于 UE 手测模拟：
+    - `none`：正常校验
+    - `digest`：篡改 `selection_digest`（触发 `E4202/selection_digest_mismatch`）
+    - `apply`：篡改 `apply_request_id`（触发 `E4202/apply_request_id_mismatch`）
+    - `review`：篡改 `review_request_id`（触发 `E4202/review_request_id_mismatch`）
+- F11 日志口径（新增，冻结）：
+  - 摘要（Display/Warning）：
+    - `[HCIAbilityKit][AgentExecutorExecuteTicket] summary request_id=... confirm_request_id=... apply_request_id=... review_request_id=... selection_digest=... user_confirmed=true|false ready_to_simulate_execute=true|false error_code=... reason=... validation=ok`
+  - 行（Display/Warning）：
+    - `row=... tool_name=... risk=... blocked=... skip_reason=... object_type=... locate_strategy=... asset_path=... field=... evidence_key=... actor_path=...`
+  - JSON 输出：
+    - `[HCIAbilityKit][AgentExecutorExecuteTicket] json request_id=... bytes=...`
+
 ### 14.6 一期禁止实现（延期到 Phase 3）
 
 - 记忆门禁与 TTL 细则（Session TTL/SOP 自动提炼触发策略）。

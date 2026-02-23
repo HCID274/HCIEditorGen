@@ -46,4 +46,6 @@ private:
 	TUniquePtr<FAutoConsoleCommand> AgentExecutePlanReviewPrepareStageGExecuteIntentJsonCommand;
 	TUniquePtr<FAutoConsoleCommand> AgentExecutePlanReviewPrepareStageGWriteEnableRequestCommand;
 	TUniquePtr<FAutoConsoleCommand> AgentExecutePlanReviewPrepareStageGWriteEnableRequestJsonCommand;
+	TUniquePtr<FAutoConsoleCommand> AgentExecutePlanReviewPrepareStageGExecutePermitTicketCommand;
+	TUniquePtr<FAutoConsoleCommand> AgentExecutePlanReviewPrepareStageGExecutePermitTicketJsonCommand;
 };

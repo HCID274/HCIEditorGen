@@ -235,8 +235,14 @@ Scope: whole repo.
     - 已完成：Editor 新增 `HCIAbilityKit.AgentExecutePlanDemo [自然语言文本...]`（默认三案例 + 自定义文本）输出 `route_reason + summary + row=` 收敛日志。
     - 已完成：新增自动化测试 `HCIAbilityKit.Editor.AgentExecutor`（3/3：成功执行、预检拒绝、证据键覆盖），并完成 `AgentPlan`（3/3）与 `AgentPlanValidation`（8/8）回归。
     - 已完成：用户 UE 手测通过（`AgentExecutePlanDemo` 无参/命名归档/关卡排雷三条命令均无异常；`summary` 与 `row=` 字段完整；命名归档命中 `NormalizeAssetNamingByMetadata`，关卡排雷命中 `ScanLevelMeshRisks` 且证据键覆盖 `actor_path|issue|evidence`）。
-  - 当前切片：`Stage F-SliceF4`（待开发）
-  - 下一切片：`Stage F-SliceF5`（待定义，按 `05_开发执行总方案_资产审计.md` 推进）
+  - `Stage F-SliceF4` 已通过：失败收敛（步骤级错误码与终止策略）。
+    - 已完成：Runtime 扩展 `FHCIAbilityKitAgentExecutor`，新增 `termination_policy/skipped_steps` 与失败步骤元数据收敛（`failed_step_index/failed_step_id/failed_tool_name`）。
+    - 已完成：支持两种模拟执行终止策略：`stop_on_first_failure`（后续步骤生成 `status=skipped` 行）与 `continue_on_failure`（继续执行并收敛 `completed_with_failures`）。
+    - 已完成：新增 F4 演示命令 `HCIAbilityKit.AgentExecutePlanFailDemo [ok|fail_stop|fail_continue]`（默认三案例）。
+    - 已完成：自动化测试 `HCIAbilityKit.Editor.AgentExecutor` 扩展至 5/5（含两条 F4 失败收敛用例），并完成 `AgentPlan` 前缀回归与 `AgentPlanValidation`（8/8）回归。
+    - 已完成：用户 UE 手测通过（`AgentExecutePlanFailDemo` 无参摘要命中 `total_cases=3 stop_policy_cases=2 continue_policy_cases=1 ... validation=ok`；`fail_stop` 命中 `terminal_status=failed/E4101` 且含 `status=skipped` 行；`fail_continue` 命中 `completed_with_failures/E4102` 且同时含失败行与成功行）。
+  - 当前切片：`Stage F-SliceF5`（待定义/待冻结）
+  - 下一切片：按 `05_开发执行总方案_资产审计.md` 冻结 `F5` 目标后推进
   - 兼容性说明（时间字符串）：对外日志/JSON 的时间值已统一改为北京时间 `+08:00` 输出；字段名（如 `updated_utc/generated_utc/timestamp_utc`）暂保持不变以兼容既有门禁与测试。
   - D 段收尾后续主线：`Stage E`（安全执行：Dry-Run/Confirm/Transaction/SC）-> `Stage F`（NL->Plan->Executor）。
   - B3 最新状态：

@@ -30,6 +30,47 @@ static FHCIAbilityKitAgentPlan MakeExecutorTexturePlan()
 	Step.Args->SetNumberField(TEXT("max_size"), 1024);
 	return Plan;
 }
+
+static FHCIAbilityKitAgentPlan MakeExecutorTwoStepPlan()
+{
+	FHCIAbilityKitAgentPlan Plan;
+	Plan.PlanVersion = 1;
+	Plan.RequestId = TEXT("req_f4_test");
+	Plan.Intent = TEXT("batch_fix_asset_compliance");
+
+	{
+		FHCIAbilityKitAgentPlanStep& Step = Plan.Steps.AddDefaulted_GetRef();
+		Step.StepId = TEXT("s1");
+		Step.ToolName = TEXT("SetTextureMaxSize");
+		Step.RiskLevel = EHCIAbilityKitAgentPlanRiskLevel::Write;
+		Step.bRequiresConfirm = true;
+		Step.RollbackStrategy = TEXT("all_or_nothing");
+		Step.ExpectedEvidence = {TEXT("asset_path"), TEXT("before"), TEXT("after")};
+		Step.Args = MakeShared<FJsonObject>();
+		TArray<TSharedPtr<FJsonValue>> AssetPaths;
+		AssetPaths.Add(MakeShared<FJsonValueString>(TEXT("/Game/Art/T_Test_A.T_Test_A")));
+		AssetPaths.Add(MakeShared<FJsonValueString>(TEXT("/Game/Art/T_Test_B.T_Test_B")));
+		Step.Args->SetArrayField(TEXT("asset_paths"), AssetPaths);
+		Step.Args->SetNumberField(TEXT("max_size"), 1024);
+	}
+
+	{
+		FHCIAbilityKitAgentPlanStep& Step = Plan.Steps.AddDefaulted_GetRef();
+		Step.StepId = TEXT("s2");
+		Step.ToolName = TEXT("SetMeshLODGroup");
+		Step.RiskLevel = EHCIAbilityKitAgentPlanRiskLevel::Write;
+		Step.bRequiresConfirm = true;
+		Step.RollbackStrategy = TEXT("all_or_nothing");
+		Step.ExpectedEvidence = {TEXT("asset_path"), TEXT("before"), TEXT("after")};
+		Step.Args = MakeShared<FJsonObject>();
+		TArray<TSharedPtr<FJsonValue>> AssetPaths;
+		AssetPaths.Add(MakeShared<FJsonValueString>(TEXT("/Game/Art/SM_Test.SM_Test")));
+		Step.Args->SetArrayField(TEXT("asset_paths"), AssetPaths);
+		Step.Args->SetStringField(TEXT("lod_group"), TEXT("SmallProp"));
+	}
+
+	return Plan;
+}
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
@@ -138,5 +179,115 @@ bool FHCIAbilityKitAgentExecutorLevelRiskEvidenceKeysTest::RunTest(const FString
 	return true;
 }
 
-#endif
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FHCIAbilityKitAgentExecutorStopOnFirstFailureTest,
+	"HCIAbilityKit.Editor.AgentExecutor.StepFailureStopOnFirstPolicyConverges",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
+bool FHCIAbilityKitAgentExecutorStopOnFirstFailureTest::RunTest(const FString& Parameters)
+{
+	FHCIAbilityKitToolRegistry& Registry = FHCIAbilityKitToolRegistry::Get();
+	Registry.ResetToDefaults();
+
+	FHCIAbilityKitAgentPlan Plan = MakeExecutorTwoStepPlan();
+	Plan.RequestId = TEXT("req_f4_stop_on_first");
+
+	FHCIAbilityKitAgentExecutorOptions Options;
+	Options.bValidatePlanBeforeExecute = true;
+	Options.bDryRun = true;
+	Options.TerminationPolicy = EHCIAbilityKitAgentExecutorTerminationPolicy::StopOnFirstFailure;
+	Options.SimulatedFailureStepIndex = 0;
+	Options.SimulatedFailureErrorCode = TEXT("E4101");
+	Options.SimulatedFailureReason = TEXT("simulated_tool_execution_failed");
+
+	FHCIAbilityKitAgentExecutorRunResult RunResult;
+	TestFalse(TEXT("Executor should return false when a step fails"), FHCIAbilityKitAgentExecutor::ExecutePlan(
+		Plan,
+		Registry,
+		FHCIAbilityKitAgentPlanValidationContext(),
+		Options,
+		RunResult));
+
+	TestTrue(TEXT("RunResult should be accepted"), RunResult.bAccepted);
+	TestFalse(TEXT("RunResult should not be completed"), RunResult.bCompleted);
+	TestEqual(TEXT("Termination policy"), RunResult.TerminationPolicy, FString(TEXT("stop_on_first_failure")));
+	TestEqual(TEXT("Terminal status"), RunResult.TerminalStatus, FString(TEXT("failed")));
+	TestEqual(TEXT("Terminal reason"), RunResult.TerminalReason, FString(TEXT("executor_step_failed_stop_on_first_failure")));
+	TestEqual(TEXT("Top-level error code"), RunResult.ErrorCode, FString(TEXT("E4101")));
+	TestEqual(TEXT("Failed step index"), RunResult.FailedStepIndex, 0);
+	TestEqual(TEXT("Executed steps"), RunResult.ExecutedSteps, 1);
+	TestEqual(TEXT("Succeeded steps"), RunResult.SucceededSteps, 0);
+	TestEqual(TEXT("Failed steps"), RunResult.FailedSteps, 1);
+	TestEqual(TEXT("Skipped steps"), RunResult.SkippedSteps, 1);
+	TestEqual(TEXT("Step row count should include skipped rows"), RunResult.StepResults.Num(), 2);
+
+	if (RunResult.StepResults.Num() >= 2)
+	{
+		const FHCIAbilityKitAgentExecutorStepResult& FailedRow = RunResult.StepResults[0];
+		const FHCIAbilityKitAgentExecutorStepResult& SkippedRow = RunResult.StepResults[1];
+
+		TestEqual(TEXT("Failed row status"), FailedRow.Status, FString(TEXT("failed")));
+		TestFalse(TEXT("Failed row should not succeed"), FailedRow.bSucceeded);
+		TestEqual(TEXT("Failed row error code"), FailedRow.ErrorCode, FString(TEXT("E4101")));
+
+		TestEqual(TEXT("Skipped row status"), SkippedRow.Status, FString(TEXT("skipped")));
+		TestFalse(TEXT("Skipped row attempted"), SkippedRow.bAttempted);
+		TestFalse(TEXT("Skipped row succeeded"), SkippedRow.bSucceeded);
+		TestEqual(TEXT("Skipped row reason"), SkippedRow.Reason, FString(TEXT("terminated_by_stop_on_first_failure")));
+	}
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FHCIAbilityKitAgentExecutorContinueOnFailureTest,
+	"HCIAbilityKit.Editor.AgentExecutor.StepFailureContinuePolicyKeepsRunning",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FHCIAbilityKitAgentExecutorContinueOnFailureTest::RunTest(const FString& Parameters)
+{
+	FHCIAbilityKitToolRegistry& Registry = FHCIAbilityKitToolRegistry::Get();
+	Registry.ResetToDefaults();
+
+	FHCIAbilityKitAgentPlan Plan = MakeExecutorTwoStepPlan();
+	Plan.RequestId = TEXT("req_f4_continue");
+
+	FHCIAbilityKitAgentExecutorOptions Options;
+	Options.bValidatePlanBeforeExecute = true;
+	Options.bDryRun = true;
+	Options.TerminationPolicy = EHCIAbilityKitAgentExecutorTerminationPolicy::ContinueOnFailure;
+	Options.SimulatedFailureStepIndex = 0;
+	Options.SimulatedFailureErrorCode = TEXT("E4102");
+	Options.SimulatedFailureReason = TEXT("simulated_first_step_failed_continue");
+
+	FHCIAbilityKitAgentExecutorRunResult RunResult;
+	TestFalse(TEXT("Executor should return false when any step fails"), FHCIAbilityKitAgentExecutor::ExecutePlan(
+		Plan,
+		Registry,
+		FHCIAbilityKitAgentPlanValidationContext(),
+		Options,
+		RunResult));
+
+	TestTrue(TEXT("RunResult should be accepted"), RunResult.bAccepted);
+	TestFalse(TEXT("RunResult should not be completed"), RunResult.bCompleted);
+	TestEqual(TEXT("Termination policy"), RunResult.TerminationPolicy, FString(TEXT("continue_on_failure")));
+	TestEqual(TEXT("Terminal status"), RunResult.TerminalStatus, FString(TEXT("completed_with_failures")));
+	TestEqual(TEXT("Terminal reason"), RunResult.TerminalReason, FString(TEXT("executor_step_failed_continue_on_failure")));
+	TestEqual(TEXT("Executed steps"), RunResult.ExecutedSteps, 2);
+	TestEqual(TEXT("Succeeded steps"), RunResult.SucceededSteps, 1);
+	TestEqual(TEXT("Failed steps"), RunResult.FailedSteps, 1);
+	TestEqual(TEXT("Skipped steps"), RunResult.SkippedSteps, 0);
+	TestEqual(TEXT("Step row count"), RunResult.StepResults.Num(), 2);
+
+	if (RunResult.StepResults.Num() >= 2)
+	{
+		TestEqual(TEXT("Row0 failed"), RunResult.StepResults[0].Status, FString(TEXT("failed")));
+		TestEqual(TEXT("Row1 succeeded"), RunResult.StepResults[1].Status, FString(TEXT("succeeded")));
+		TestTrue(TEXT("Row1 attempted"), RunResult.StepResults[1].bAttempted);
+		TestTrue(TEXT("Row1 succeeded flag"), RunResult.StepResults[1].bSucceeded);
+	}
+
+	return true;
+}
+
+#endif

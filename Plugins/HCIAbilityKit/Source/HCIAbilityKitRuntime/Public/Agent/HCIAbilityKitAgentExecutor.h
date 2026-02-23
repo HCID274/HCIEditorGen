@@ -6,10 +6,22 @@
 #include "Agent/HCIAbilityKitAgentPlanValidator.h"
 #include "Agent/HCIAbilityKitToolRegistry.h"
 
+enum class EHCIAbilityKitAgentExecutorTerminationPolicy : uint8
+{
+	StopOnFirstFailure,
+	ContinueOnFailure
+};
+
 struct HCIABILITYKITRUNTIME_API FHCIAbilityKitAgentExecutorOptions
 {
 	bool bValidatePlanBeforeExecute = true;
 	bool bDryRun = true;
+	EHCIAbilityKitAgentExecutorTerminationPolicy TerminationPolicy = EHCIAbilityKitAgentExecutorTerminationPolicy::StopOnFirstFailure;
+
+	// F4 demo seam: used by tests/console demo to validate step-level failure convergence without real tool execution.
+	int32 SimulatedFailureStepIndex = INDEX_NONE; // 0-based; INDEX_NONE disables simulation
+	FString SimulatedFailureErrorCode = TEXT("E4101");
+	FString SimulatedFailureReason = TEXT("simulated_tool_execution_failed");
 };
 
 struct HCIABILITYKITRUNTIME_API FHCIAbilityKitAgentExecutorStepResult
@@ -45,6 +57,7 @@ struct HCIABILITYKITRUNTIME_API FHCIAbilityKitAgentExecutorRunResult
 	int32 PlanVersion = 0;
 
 	FString ExecutionMode;
+	FString TerminationPolicy;
 	FString TerminalStatus;
 	FString TerminalReason;
 
@@ -52,6 +65,7 @@ struct HCIABILITYKITRUNTIME_API FHCIAbilityKitAgentExecutorRunResult
 	int32 ExecutedSteps = 0;
 	int32 SucceededSteps = 0;
 	int32 FailedSteps = 0;
+	int32 SkippedSteps = 0;
 	int32 FailedStepIndex = INDEX_NONE; // 0-based
 	FString FailedStepId;
 	FString FailedToolName;
@@ -77,4 +91,3 @@ public:
 		const FHCIAbilityKitAgentExecutorOptions& Options,
 		FHCIAbilityKitAgentExecutorRunResult& OutResult);
 };
-

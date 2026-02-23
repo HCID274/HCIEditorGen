@@ -799,6 +799,66 @@ public:
   - F3 仅做“成功路径骨架 + 预检拒绝路径”；
   - 步骤级失败错误码收敛与终止策略扩展放到 `StageF-SliceF4`。
 
+### 14.5.2 StageF-SliceF4 失败收敛（步骤级错误码与终止策略）
+
+- 目标：在 `simulate_dry_run` 执行骨架中补齐步骤级失败收敛、终止策略与可追踪失败证据，不触发真实资产写操作。
+- Runtime 扩展：`FHCIAbilityKitAgentExecutor`
+  - `options` 新增（F4 最小集）：
+    - `termination_policy`
+      - `stop_on_first_failure`
+      - `continue_on_failure`
+    - `SimulatedFailureStepIndex`（测试/演示 seam，`INDEX_NONE` 表示不注入失败）
+    - `SimulatedFailureErrorCode`
+    - `SimulatedFailureReason`
+  - `run_result` 顶层新增字段：
+    - `termination_policy`
+    - `skipped_steps`
+    - `failed_step_index/failed_step_id/failed_tool_name`（F3 已有字段在 F4 要求日志输出）
+- 失败收敛口径（冻结）：
+  - 预检拒绝路径保持 F3 不变：`terminal_status=rejected_precheck`。
+  - 执行阶段单步失败（含模拟失败或运行时工具不可用）：
+    - 步骤行：
+      - `status=failed`
+      - `attempted=true`
+      - `succeeded=false`
+      - `error_code/reason` 必填
+    - 顶层：
+      - 首个失败步骤写入 `failed_step_index/failed_step_id/failed_tool_name`
+      - 顶层 `error_code/reason` 收敛为首个失败步骤错误
+  - `termination_policy=stop_on_first_failure`
+    - 首个失败后立即终止
+    - 后续步骤仍需输出 `row=`，但标记：
+      - `status=skipped`
+      - `attempted=false`
+      - `succeeded=false`
+      - `reason=terminated_by_stop_on_first_failure`
+    - 顶层：
+      - `terminal_status=failed`
+      - `terminal_reason=executor_step_failed_stop_on_first_failure`
+  - `termination_policy=continue_on_failure`
+    - 失败步骤后继续执行后续步骤
+    - 顶层：
+      - `terminal_status=completed_with_failures`
+      - `terminal_reason=executor_step_failed_continue_on_failure`
+      - `executed_steps=total_steps`
+- Editor UE 手测入口（控制台）：
+  - `HCIAbilityKit.AgentExecutePlanFailDemo`
+    - 默认输出三案例：`ok_stop_on_first / fail_step1_stop_on_first / fail_step1_continue`
+    - 输出：
+      - F4 案例摘要（`summary total_cases=... stop_policy_cases=... continue_policy_cases=... validation=ok`）
+      - 每案例 `AgentExecutor` 的 `summary + row=`
+  - `HCIAbilityKit.AgentExecutePlanFailDemo [ok|fail_stop|fail_continue]`
+    - 用于单案例验证步骤级失败与终止策略
+- F4 `AgentExecutor` 日志字段（新增要求）：
+  - `summary` 行新增（至少）：
+    - `termination_policy`
+    - `skipped_steps`
+    - `failed_step_index/failed_step_id/failed_tool_name`
+  - `row=` 行保持 F3 字段不删减，并在失败/跳过场景输出：
+    - `status`
+    - `attempted/succeeded`
+    - `error_code/reason`
+
 ### 14.6 一期禁止实现（延期到 Phase 3）
 
 - 记忆门禁与 TTL 细则（Session TTL/SOP 自动提炼触发策略）。

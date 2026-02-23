@@ -16,6 +16,18 @@ static bool HCI_IsWriteLike(const FHCIAbilityKitToolDescriptor* Tool)
 	return Tool && FHCIAbilityKitAgentExecutionGate::IsWriteLikeCapability(Tool->Capability);
 }
 
+static FString HCI_TerminationPolicyToString(const EHCIAbilityKitAgentExecutorTerminationPolicy Policy)
+{
+	switch (Policy)
+	{
+	case EHCIAbilityKitAgentExecutorTerminationPolicy::ContinueOnFailure:
+		return TEXT("continue_on_failure");
+	case EHCIAbilityKitAgentExecutorTerminationPolicy::StopOnFirstFailure:
+	default:
+		return TEXT("stop_on_first_failure");
+	}
+}
+
 static int32 HCI_GetTargetCountEstimate(const FHCIAbilityKitAgentPlanStep& Step)
 {
 	if (!Step.Args.IsValid())
@@ -104,6 +116,25 @@ static void HCI_InitRunResultBase(const FHCIAbilityKitAgentPlan& Plan, FHCIAbili
 	OutResult.PlanVersion = Plan.PlanVersion;
 	OutResult.TotalSteps = Plan.Steps.Num();
 }
+
+static FHCIAbilityKitAgentExecutorStepResult& HCI_AddStepResultSkeleton(
+	const FHCIAbilityKitAgentPlanStep& Step,
+	const int32 StepIndex,
+	const FHCIAbilityKitToolRegistry& ToolRegistry,
+	FHCIAbilityKitAgentExecutorRunResult& OutResult)
+{
+	const FHCIAbilityKitToolDescriptor* Tool = ToolRegistry.FindTool(Step.ToolName);
+	FHCIAbilityKitAgentExecutorStepResult& StepResult = OutResult.StepResults.AddDefaulted_GetRef();
+	StepResult.StepIndex = StepIndex;
+	StepResult.StepId = Step.StepId;
+	StepResult.ToolName = Step.ToolName.ToString();
+	StepResult.Capability = HCI_GetCapabilityString(Tool);
+	StepResult.RiskLevel = FHCIAbilityKitAgentPlanContract::RiskLevelToString(Step.RiskLevel);
+	StepResult.bWriteLike = HCI_IsWriteLike(Tool);
+	StepResult.TargetCountEstimate = HCI_GetTargetCountEstimate(Step);
+	StepResult.EvidenceKeys = Step.ExpectedEvidence;
+	return StepResult;
+}
 }
 
 bool FHCIAbilityKitAgentExecutor::ExecutePlan(
@@ -125,6 +156,7 @@ bool FHCIAbilityKitAgentExecutor::ExecutePlan(
 {
 	HCI_InitRunResultBase(Plan, OutResult);
 	OutResult.ExecutionMode = Options.bDryRun ? TEXT("simulate_dry_run") : TEXT("simulate_apply");
+	OutResult.TerminationPolicy = HCI_TerminationPolicyToString(Options.TerminationPolicy);
 	OutResult.StartedAtUtc = FHCIAbilityKitTimeFormat::FormatNowBeijingIso8601();
 
 	if (Options.bValidatePlanBeforeExecute)
@@ -148,22 +180,14 @@ bool FHCIAbilityKitAgentExecutor::ExecutePlan(
 
 	OutResult.bAccepted = true;
 	OutResult.StepResults.Reserve(Plan.Steps.Num());
+	bool bSawFailure = false;
 
 	for (int32 StepIndex = 0; StepIndex < Plan.Steps.Num(); ++StepIndex)
 	{
 		const FHCIAbilityKitAgentPlanStep& Step = Plan.Steps[StepIndex];
 		const FHCIAbilityKitToolDescriptor* Tool = ToolRegistry.FindTool(Step.ToolName);
-
-		FHCIAbilityKitAgentExecutorStepResult& StepResult = OutResult.StepResults.AddDefaulted_GetRef();
-		StepResult.StepIndex = StepIndex;
-		StepResult.StepId = Step.StepId;
-		StepResult.ToolName = Step.ToolName.ToString();
-		StepResult.Capability = HCI_GetCapabilityString(Tool);
-		StepResult.RiskLevel = FHCIAbilityKitAgentPlanContract::RiskLevelToString(Step.RiskLevel);
-		StepResult.bWriteLike = HCI_IsWriteLike(Tool);
+		FHCIAbilityKitAgentExecutorStepResult& StepResult = HCI_AddStepResultSkeleton(Step, StepIndex, ToolRegistry, OutResult);
 		StepResult.bAttempted = true;
-		StepResult.TargetCountEstimate = HCI_GetTargetCountEstimate(Step);
-		StepResult.EvidenceKeys = Step.ExpectedEvidence;
 
 		if (Tool == nullptr)
 		{
@@ -171,35 +195,78 @@ bool FHCIAbilityKitAgentExecutor::ExecutePlan(
 			StepResult.Status = TEXT("failed");
 			StepResult.ErrorCode = TEXT("E4002");
 			StepResult.Reason = TEXT("tool_not_whitelisted");
+		}
+		else if (Options.SimulatedFailureStepIndex == StepIndex)
+		{
+			StepResult.bSucceeded = false;
+			StepResult.Status = TEXT("failed");
+			StepResult.ErrorCode = Options.SimulatedFailureErrorCode.IsEmpty() ? TEXT("E4101") : Options.SimulatedFailureErrorCode;
+			StepResult.Reason = Options.SimulatedFailureReason.IsEmpty() ? TEXT("simulated_tool_execution_failed") : Options.SimulatedFailureReason;
+		}
+		else
+		{
+			for (const FString& EvidenceKey : Step.ExpectedEvidence)
+			{
+				StepResult.Evidence.Add(EvidenceKey, HCI_BuildEvidenceValue(EvidenceKey, Step));
+			}
 
-			OutResult.FailedSteps = 1;
+			StepResult.bSucceeded = true;
+			StepResult.Status = TEXT("succeeded");
+			StepResult.Reason = Options.bDryRun ? TEXT("simulated_dry_run_success") : TEXT("simulated_apply_success");
+		}
+
+		if (StepResult.bSucceeded)
+		{
+			OutResult.SucceededSteps += 1;
+			continue;
+		}
+
+		bSawFailure = true;
+		OutResult.FailedSteps += 1;
+		if (OutResult.FailedStepIndex == INDEX_NONE)
+		{
 			OutResult.FailedStepIndex = StepIndex;
 			OutResult.FailedStepId = Step.StepId;
 			OutResult.FailedToolName = Step.ToolName.ToString();
 			OutResult.ErrorCode = StepResult.ErrorCode;
 			OutResult.Reason = StepResult.Reason;
-			OutResult.TerminalStatus = TEXT("failed");
-			OutResult.TerminalReason = TEXT("executor_tool_not_whitelisted");
+		}
+
+		if (Options.TerminationPolicy == EHCIAbilityKitAgentExecutorTerminationPolicy::StopOnFirstFailure)
+		{
 			OutResult.ExecutedSteps = StepIndex + 1;
-			OutResult.SucceededSteps = StepIndex;
+			OutResult.SkippedSteps = FMath::Max(0, Plan.Steps.Num() - OutResult.ExecutedSteps);
+
+			for (int32 RemainingIndex = StepIndex + 1; RemainingIndex < Plan.Steps.Num(); ++RemainingIndex)
+			{
+				const FHCIAbilityKitAgentPlanStep& RemainingStep = Plan.Steps[RemainingIndex];
+				FHCIAbilityKitAgentExecutorStepResult& SkippedRow =
+					HCI_AddStepResultSkeleton(RemainingStep, RemainingIndex, ToolRegistry, OutResult);
+				SkippedRow.bAttempted = false;
+				SkippedRow.bSucceeded = false;
+				SkippedRow.Status = TEXT("skipped");
+				SkippedRow.Reason = TEXT("terminated_by_stop_on_first_failure");
+			}
+
 			OutResult.bCompleted = false;
+			OutResult.TerminalStatus = TEXT("failed");
+			OutResult.TerminalReason = TEXT("executor_step_failed_stop_on_first_failure");
 			OutResult.FinishedAtUtc = FHCIAbilityKitTimeFormat::FormatNowBeijingIso8601();
 			return false;
 		}
-
-		for (const FString& EvidenceKey : Step.ExpectedEvidence)
-		{
-			StepResult.Evidence.Add(EvidenceKey, HCI_BuildEvidenceValue(EvidenceKey, Step));
-		}
-
-		StepResult.bSucceeded = true;
-		StepResult.Status = TEXT("succeeded");
-		StepResult.Reason = Options.bDryRun ? TEXT("simulated_dry_run_success") : TEXT("simulated_apply_success");
 	}
 
 	OutResult.ExecutedSteps = OutResult.TotalSteps;
-	OutResult.SucceededSteps = OutResult.TotalSteps;
-	OutResult.FailedSteps = 0;
+	OutResult.SkippedSteps = 0;
+	if (bSawFailure)
+	{
+		OutResult.bCompleted = false;
+		OutResult.TerminalStatus = TEXT("completed_with_failures");
+		OutResult.TerminalReason = TEXT("executor_step_failed_continue_on_failure");
+		OutResult.FinishedAtUtc = FHCIAbilityKitTimeFormat::FormatNowBeijingIso8601();
+		return false;
+	}
+
 	OutResult.bCompleted = true;
 	OutResult.TerminalStatus = TEXT("completed");
 	OutResult.TerminalReason = Options.bDryRun ? TEXT("executor_skeleton_simulated_dry_run_completed") : TEXT("executor_skeleton_simulated_apply_completed");

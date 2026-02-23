@@ -1,4 +1,5 @@
 #include "Commands/HCIAbilityKitAgentDemoConsoleCommands.h"
+#include "Commands/HCIAbilityKitAgentExecutorReviewLocateUtils.h"
 
 #include "Agent/HCIAbilityKitAgentExecutionGate.h"
 #include "Agent/HCIAbilityKitAgentExecutor.h"
@@ -2674,6 +2675,80 @@ static void HCI_RunAbilityKitAgentExecutePlanReviewJsonCommand(const TArray<FStr
 	UE_LOG(LogHCIAbilityKitAgentDemo, Display, TEXT("%s"), *JsonText);
 }
 
+static void HCI_RunAbilityKitAgentExecutePlanReviewLocateCommand(const TArray<FString>& Args)
+{
+	int32 RowIndex = 0;
+	if (Args.Num() >= 1)
+	{
+		if (!LexTryParseString(RowIndex, *Args[0]) || RowIndex < 0)
+		{
+			UE_LOG(
+				LogHCIAbilityKitAgentDemo,
+				Error,
+				TEXT("[HCIAbilityKit][AgentExecutorReview] locate_invalid_args reason=row_index must be integer >= 0"));
+			return;
+		}
+	}
+
+	FHCIAbilityKitAgentExecutorReviewLocateResolvedRow Resolved;
+	FString ResolveReason;
+	if (!FHCIAbilityKitAgentExecutorReviewLocateUtils::TryResolveRow(
+			GHCIAbilityKitAgentExecutorReviewDiffPreviewState,
+			RowIndex,
+			Resolved,
+			ResolveReason))
+	{
+		if (ResolveReason == TEXT("no_preview_state"))
+		{
+			UE_LOG(LogHCIAbilityKitAgentDemo, Warning, TEXT("[HCIAbilityKit][AgentExecutorReview] locate=unavailable reason=no_preview_state"));
+			UE_LOG(
+				LogHCIAbilityKitAgentDemo,
+				Display,
+				TEXT("[HCIAbilityKit][AgentExecutorReview] suggestion=先运行 HCIAbilityKit.AgentExecutePlanReviewDemo 或 HCIAbilityKit.AgentExecutePlanReviewJson"));
+			return;
+		}
+
+		UE_LOG(
+			LogHCIAbilityKitAgentDemo,
+			Error,
+			TEXT("[HCIAbilityKit][AgentExecutorReview] locate_invalid_args reason=%s row_index=%d total=%d"),
+			*ResolveReason,
+			RowIndex,
+			GHCIAbilityKitAgentExecutorReviewDiffPreviewState.DiffItems.Num());
+		return;
+	}
+
+	FString LocateReason;
+	const bool bLocateOk = FHCIAbilityKitAgentExecutorReviewLocateUtils::TryLocateResolvedRowInEditor(Resolved, LocateReason);
+	if (bLocateOk)
+	{
+		UE_LOG(
+			LogHCIAbilityKitAgentDemo,
+			Display,
+			TEXT("[HCIAbilityKit][AgentExecutorReview] locate row=%d tool_name=%s strategy=%s object_type=%s success=true reason=%s asset_path=%s actor_path=%s"),
+			Resolved.RowIndex,
+			Resolved.ToolName.IsEmpty() ? TEXT("-") : *Resolved.ToolName,
+			*FHCIAbilityKitDryRunDiff::LocateStrategyToString(Resolved.LocateStrategy),
+			*FHCIAbilityKitDryRunDiff::ObjectTypeToString(Resolved.ObjectType),
+			*LocateReason,
+			Resolved.AssetPath.IsEmpty() ? TEXT("-") : *Resolved.AssetPath,
+			Resolved.ActorPath.IsEmpty() ? TEXT("-") : *Resolved.ActorPath);
+		return;
+	}
+
+	UE_LOG(
+		LogHCIAbilityKitAgentDemo,
+		Warning,
+		TEXT("[HCIAbilityKit][AgentExecutorReview] locate row=%d tool_name=%s strategy=%s object_type=%s success=false reason=%s asset_path=%s actor_path=%s"),
+		Resolved.RowIndex,
+		Resolved.ToolName.IsEmpty() ? TEXT("-") : *Resolved.ToolName,
+		*FHCIAbilityKitDryRunDiff::LocateStrategyToString(Resolved.LocateStrategy),
+		*FHCIAbilityKitDryRunDiff::ObjectTypeToString(Resolved.ObjectType),
+		*LocateReason,
+		Resolved.AssetPath.IsEmpty() ? TEXT("-") : *Resolved.AssetPath,
+		Resolved.ActorPath.IsEmpty() ? TEXT("-") : *Resolved.ActorPath);
+}
+
 static void HCI_RunAbilityKitAgentExecutePlanDemoCommand(const TArray<FString>& Args)
 {
 	FHCIAbilityKitToolRegistry& Registry = FHCIAbilityKitToolRegistry::Get();
@@ -2858,6 +2933,14 @@ void FHCIAbilityKitAgentDemoConsoleCommands::Startup()
 			TEXT("F6 Executor -> Dry-Run Diff review bridge JSON preview. Usage: HCIAbilityKit.AgentExecutePlanReviewJson [ok_naming|ok_level_risk|fail_confirm|fail_lod]"),
 			FConsoleCommandWithArgsDelegate::CreateStatic(&HCI_RunAbilityKitAgentExecutePlanReviewJsonCommand));
 	}
+
+	if (!AgentExecutePlanReviewLocateCommand.IsValid())
+	{
+		AgentExecutePlanReviewLocateCommand = MakeUnique<FAutoConsoleCommand>(
+			TEXT("HCIAbilityKit.AgentExecutePlanReviewLocate"),
+			TEXT("F7 Locate a row from the latest ExecutorReview dry-run diff preview. Usage: HCIAbilityKit.AgentExecutePlanReviewLocate [row_index]"),
+			FConsoleCommandWithArgsDelegate::CreateStatic(&HCI_RunAbilityKitAgentExecutePlanReviewLocateCommand));
+	}
 }
 
 void FHCIAbilityKitAgentDemoConsoleCommands::Shutdown()
@@ -2876,4 +2959,5 @@ void FHCIAbilityKitAgentDemoConsoleCommands::Shutdown()
 	AgentExecutePlanPreflightDemoCommand.Reset();
 	AgentExecutePlanReviewDemoCommand.Reset();
 	AgentExecutePlanReviewJsonCommand.Reset();
+	AgentExecutePlanReviewLocateCommand.Reset();
 }

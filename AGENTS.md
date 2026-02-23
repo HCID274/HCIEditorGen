@@ -243,8 +243,9 @@ Scope: whole repo.
     - 已完成：用户 UE 手测通过（`AgentExecutePlanFailDemo` 无参摘要命中 `total_cases=3 stop_policy_cases=2 continue_policy_cases=1 ... validation=ok`；`fail_stop` 命中 `terminal_status=failed/E4101` 且含 `status=skipped` 行；`fail_continue` 命中 `completed_with_failures/E4102` 且同时含失败行与成功行）。
   - `Stage F-SliceF5` 已通过：`Executor` 预检门禁链路接入（`Confirm/BlastRadius/RBAC/SourceControl/LOD Safety`）已接入并通过 UE 手测。
   - `Stage F-SliceF6` 已通过：`Executor -> Dry-Run Diff` 审阅桥接（`RunResult(step_results[]) -> DryRunDiffReport`）已接入并通过 UE 手测，复用 E2 `DryRunDiff` JSON 契约与定位策略。
-  - 当前切片：`Stage F-SliceF7`（待定义/待冻结）
-  - 下一切片：`Stage F-SliceF8`（待定义；F7 通过后冻结）
+  - `Stage F-SliceF7` 已通过：ExecutorReview 定位闭环（F6 审阅桥接结果按行定位，`AgentExecutePlanReviewLocate` 打通 `计划 -> 执行 -> 审阅 -> 定位` 最小交互闭环）已接入并通过 UE 手测。
+  - 当前切片：`Stage F-SliceF8`（待定义/待冻结）
+  - 下一切片：`Stage F-SliceF9`（待定义；F8 通过后冻结）
   - 兼容性说明（时间字符串）：对外日志/JSON 的时间值已统一改为北京时间 `+08:00` 输出；字段名（如 `updated_utc/generated_utc/timestamp_utc`）暂保持不变以兼容既有门禁与测试。
   - D 段收尾后续主线：`Stage E`（安全执行：Dry-Run/Confirm/Transaction/SC）-> `Stage F`（NL->Plan->Executor）。
   - B3 最新状态：

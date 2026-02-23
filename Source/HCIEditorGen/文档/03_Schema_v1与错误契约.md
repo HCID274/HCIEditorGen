@@ -982,6 +982,40 @@ public:
     - `object_type/locate_strategy/evidence_key`
     - `actor_path`（Actor 行存在）
 
+### 14.5.5 StageF-SliceF7 ExecutorReview 定位闭环（审阅桥接结果按行定位）
+
+- 目标：在 F6 生成的 `FHCIAbilityKitDryRunDiffReport`（ExecutorReview 预览状态）上提供按行定位命令，打通 `计划 -> 执行 -> 审阅 -> 定位` 的最小交互闭环（仍为 `simulate_dry_run`，不触发真实资产写入）。
+- Editor 新增命令（F7）：
+  - `HCIAbilityKit.AgentExecutePlanReviewLocate [row_index]`
+  - 输入来源：F6 预览状态 `GHCIAbilityKitAgentExecutorReviewDiffPreviewState`
+- F7 定位解析 helper（可测，冻结）：
+  - `FHCIAbilityKitAgentExecutorReviewLocateUtils::TryResolveRow(...)`
+  - 行为：
+    - `DiffItems.Num()==0` -> `reason=no_preview_state`
+    - `row_index<0 || out_of_range` -> `reason=row_index_out_of_range`
+    - 成功 -> 输出解析后的 `row_index/asset_path/actor_path/tool_name/object_type/locate_strategy`
+- F7 实际定位行为（Editor）：
+  - `locate_strategy=camera_focus`：
+    - 优先定位 `actor_path`
+    - 若 `actor_path` 为空则回退使用 `asset_path`
+    - 失败原因示例：`g_editor_unavailable / editor_world_unavailable / actor_not_found`
+  - `locate_strategy=sync_browser`：
+    - 尝试 `FSoftObjectPath.ResolveObject()`，失败后 `TryLoad()`
+    - 成功后 `GEditor->SyncBrowserToObjects(...)`
+    - 失败原因示例：`g_editor_unavailable / asset_load_failed`
+- F7 日志口径（新增，冻结）：
+  - 无预览状态（Warning + 指引）：
+    - `[HCIAbilityKit][AgentExecutorReview] locate=unavailable reason=no_preview_state`
+    - `suggestion=先运行 HCIAbilityKit.AgentExecutePlanReviewDemo 或 HCIAbilityKit.AgentExecutePlanReviewJson`
+  - 非法参数（Error）：
+    - `locate_invalid_args reason=row_index must be integer >= 0`
+    - 或 `locate_invalid_args reason=row_index_out_of_range row_index=... total=...`
+  - 定位结果（Display/Warning）：
+    - `locate row=... tool_name=... strategy=... object_type=... success=true|false reason=... asset_path=... actor_path=...`
+- 兼容性要求（F7）：
+  - 不修改 F6 `AgentExecutePlanReviewDemo/Json` 的既有 `summary + row=` 字段口径。
+  - F7 仅新增 `Locate` 命令与辅助 util，不改变 F6 桥接 JSON 契约。
+
 ### 14.6 一期禁止实现（延期到 Phase 3）
 
 - 记忆门禁与 TTL 细则（Session TTL/SOP 自动提炼触发策略）。

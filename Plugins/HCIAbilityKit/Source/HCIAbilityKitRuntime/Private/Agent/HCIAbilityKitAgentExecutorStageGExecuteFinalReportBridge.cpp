@@ -22,7 +22,7 @@
 
 namespace
 {
-static FString HCI_BuildSelectionDigestFromReviewReport_G7(const FHCIAbilityKitDryRunDiffReport& Report)
+static FString HCI_BuildSelectionDigestFromReviewReport_G8(const FHCIAbilityKitDryRunDiffReport& Report)
 {
 	FString Canonical;
 	Canonical.Reserve(Report.DiffItems.Num() * 96);
@@ -424,7 +424,7 @@ bool FHCIAbilityKitAgentExecutorStageGExecuteFinalReportBridge::BuildStageGExecu
 		OutReceipt.Reason = TEXT("selection_digest_mismatch");
 		return FinalizeAndReturn();
 	}
-	if (StageGExecuteCommitReceipt.SelectionDigest != HCI_BuildSelectionDigestFromReviewReport_G7(CurrentReviewReport))
+	if (StageGExecuteCommitReceipt.SelectionDigest != HCI_BuildSelectionDigestFromReviewReport_G8(CurrentReviewReport))
 	{
 		OutReceipt.ErrorCode = TEXT("E4202");
 		OutReceipt.Reason = TEXT("selection_digest_mismatch");

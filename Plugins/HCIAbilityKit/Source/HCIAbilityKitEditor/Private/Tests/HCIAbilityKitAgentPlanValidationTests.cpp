@@ -195,6 +195,42 @@ bool FHCIAbilityKitAgentPlanValidatorLevelRiskInvalidScopeReturnsE4011Test::RunT
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FHCIAbilityKitAgentPlanValidatorLevelRiskDuplicateChecksReturnsE4011Test,
+	"HCIAbilityKit.Editor.AgentPlanValidation.LevelRiskDuplicateChecksReturnsE4011",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FHCIAbilityKitAgentPlanValidatorLevelRiskDuplicateChecksReturnsE4011Test::RunTest(const FString& Parameters)
+{
+	FHCIAbilityKitToolRegistry& Registry = FHCIAbilityKitToolRegistry::Get();
+	Registry.ResetToDefaults();
+
+	FHCIAbilityKitAgentPlan Plan;
+	FString RouteReason;
+	FString Error;
+	TestTrue(
+		TEXT("Planner should build level risk plan"),
+		FHCIAbilityKitAgentPlanner::BuildPlanFromNaturalLanguage(
+			TEXT("检查当前关卡选中物体的碰撞和默认材质"),
+			TEXT("req_f2_level_dup"),
+			Registry,
+			Plan,
+			RouteReason,
+			Error));
+
+	TArray<TSharedPtr<FJsonValue>> DuplicateChecks;
+	DuplicateChecks.Add(MakeShared<FJsonValueString>(TEXT("missing_collision")));
+	DuplicateChecks.Add(MakeShared<FJsonValueString>(TEXT("missing_collision")));
+	Plan.Steps[0].Args->SetArrayField(TEXT("checks"), DuplicateChecks);
+
+	FHCIAbilityKitAgentPlanValidationResult Result;
+	TestFalse(TEXT("Duplicate checks should fail for subset-of-enum arg"), FHCIAbilityKitAgentPlanValidator::ValidatePlan(Plan, Registry, Result));
+	TestEqual(TEXT("Error code"), Result.ErrorCode, FString(TEXT("E4011")));
+	TestTrue(TEXT("Field should mention checks"), Result.Field.Contains(TEXT("checks")));
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FHCIAbilityKitAgentPlanValidatorNamingMetadataInsufficientReturnsE4012Test,
 	"HCIAbilityKit.Editor.AgentPlanValidation.NamingMetadataInsufficientReturnsE4012",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)

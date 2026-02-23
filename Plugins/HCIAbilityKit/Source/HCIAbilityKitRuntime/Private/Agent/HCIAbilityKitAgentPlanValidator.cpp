@@ -252,6 +252,7 @@ static bool HCI_ValidateArgsAgainstSchema(
 			}
 
 			const TArray<TSharedPtr<FJsonValue>>& ArrayValues = Value->AsArray();
+			TSet<FString> SeenStringValues;
 			if (Schema.MinArrayLength != INDEX_NONE && ArrayValues.Num() < Schema.MinArrayLength)
 			{
 				return HCI_Fail(
@@ -319,6 +320,21 @@ static bool HCI_ValidateArgsAgainstSchema(
 						TEXT("enum_value_not_allowed"),
 						StepIndex,
 						&Step);
+				}
+
+				if (Schema.bStringArrayAllowsSubsetOfEnum)
+				{
+					if (SeenStringValues.Contains(Parsed))
+					{
+						return HCI_Fail(
+							OutResult,
+							HCI_SelectParamErrorCode(Tool.ToolName, ArgKey),
+							FString::Printf(TEXT("%s[%d]"), *HCI_MakeArgFieldPath(StepIndex, ArgKey), ArrayIndex),
+							TEXT("duplicate_value_not_allowed_for_subset_enum"),
+							StepIndex,
+							&Step);
+					}
+					SeenStringValues.Add(Parsed);
 				}
 			}
 			break;
@@ -531,4 +547,3 @@ bool FHCIAbilityKitAgentPlanValidator::ValidatePlan(
 	OutResult.Reason = TEXT("ok");
 	return true;
 }
-

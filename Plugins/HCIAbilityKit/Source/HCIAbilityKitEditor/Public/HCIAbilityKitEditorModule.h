@@ -13,4 +13,7 @@ public:
 	virtual void StartupModule() override;
 	/** 模块卸载时的回调函数，用于清理资源 */
 	virtual void ShutdownModule() override;
+
+private:
+	void RegisterMenus();
 };

@@ -40,4 +40,6 @@ private:
 	TUniquePtr<FAutoConsoleCommand> AgentExecutePlanReviewPrepareSimFinalReportJsonCommand;
 	TUniquePtr<FAutoConsoleCommand> AgentExecutePlanReviewPrepareSimArchiveBundleCommand;
 	TUniquePtr<FAutoConsoleCommand> AgentExecutePlanReviewPrepareSimArchiveBundleJsonCommand;
+	TUniquePtr<FAutoConsoleCommand> AgentExecutePlanReviewPrepareSimHandoffEnvelopeCommand;
+	TUniquePtr<FAutoConsoleCommand> AgentExecutePlanReviewPrepareSimHandoffEnvelopeJsonCommand;
 };

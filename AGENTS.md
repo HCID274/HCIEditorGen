@@ -241,8 +241,9 @@ Scope: whole repo.
     - 已完成：新增 F4 演示命令 `HCIAbilityKit.AgentExecutePlanFailDemo [ok|fail_stop|fail_continue]`（默认三案例）。
     - 已完成：自动化测试 `HCIAbilityKit.Editor.AgentExecutor` 扩展至 5/5（含两条 F4 失败收敛用例），并完成 `AgentPlan` 前缀回归与 `AgentPlanValidation`（8/8）回归。
     - 已完成：用户 UE 手测通过（`AgentExecutePlanFailDemo` 无参摘要命中 `total_cases=3 stop_policy_cases=2 continue_policy_cases=1 ... validation=ok`；`fail_stop` 命中 `terminal_status=failed/E4101` 且含 `status=skipped` 行；`fail_continue` 命中 `completed_with_failures/E4102` 且同时含失败行与成功行）。
-  - 当前切片：`Stage F-SliceF5`（待定义/待冻结）
-  - 下一切片：按 `05_开发执行总方案_资产审计.md` 冻结 `F5` 目标后推进
+  - `Stage F-SliceF5` 已通过：`Executor` 预检门禁链路接入（`Confirm/BlastRadius/RBAC/SourceControl/LOD Safety`）已接入并通过 UE 手测。
+  - 当前切片：`Stage F-SliceF6`（待定义/待冻结）
+  - 下一切片：`Stage F-SliceF7`（待定义；F6 通过后冻结）
   - 兼容性说明（时间字符串）：对外日志/JSON 的时间值已统一改为北京时间 `+08:00` 输出；字段名（如 `updated_utc/generated_utc/timestamp_utc`）暂保持不变以兼容既有门禁与测试。
   - D 段收尾后续主线：`Stage E`（安全执行：Dry-Run/Confirm/Transaction/SC）-> `Stage F`（NL->Plan->Executor）。
   - B3 最新状态：

@@ -71,6 +71,23 @@ static FHCIAbilityKitAgentPlan MakeExecutorTwoStepPlan()
 
 	return Plan;
 }
+
+static FHCIAbilityKitAgentPlan MakeExecutorTexturePlanWithAssetCount(const int32 AssetCount)
+{
+	FHCIAbilityKitAgentPlan Plan = MakeExecutorTexturePlan();
+	Plan.RequestId = TEXT("req_f5_asset_count");
+	Plan.Steps[0].Args = MakeShared<FJsonObject>();
+
+	TArray<TSharedPtr<FJsonValue>> AssetPaths;
+	AssetPaths.Reserve(FMath::Max(0, AssetCount));
+	for (int32 Index = 0; Index < AssetCount; ++Index)
+	{
+		AssetPaths.Add(MakeShared<FJsonValueString>(FString::Printf(TEXT("/Game/Art/T_Batch_%03d.T_Batch_%03d"), Index, Index)));
+	}
+	Plan.Steps[0].Args->SetArrayField(TEXT("asset_paths"), AssetPaths);
+	Plan.Steps[0].Args->SetNumberField(TEXT("max_size"), 1024);
+	return Plan;
+}
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
@@ -287,6 +304,178 @@ bool FHCIAbilityKitAgentExecutorContinueOnFailureTest::RunTest(const FString& Pa
 		TestTrue(TEXT("Row1 succeeded flag"), RunResult.StepResults[1].bSucceeded);
 	}
 
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FHCIAbilityKitAgentExecutorPreflightConfirmGateTest,
+	"HCIAbilityKit.Editor.AgentExecutor.PreflightBlocksUnconfirmedWriteWithE4005",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FHCIAbilityKitAgentExecutorPreflightConfirmGateTest::RunTest(const FString& Parameters)
+{
+	FHCIAbilityKitToolRegistry& Registry = FHCIAbilityKitToolRegistry::Get();
+	Registry.ResetToDefaults();
+
+	FHCIAbilityKitAgentExecutorOptions Options;
+	Options.bEnablePreflightGates = true;
+	Options.bUserConfirmedWriteSteps = false;
+	Options.bDryRun = true;
+
+	FHCIAbilityKitAgentExecutorRunResult RunResult;
+	TestFalse(TEXT("Preflight confirm gate should block unconfirmed write"), FHCIAbilityKitAgentExecutor::ExecutePlan(
+		MakeExecutorTexturePlan(),
+		Registry,
+		FHCIAbilityKitAgentPlanValidationContext(),
+		Options,
+		RunResult));
+
+	TestTrue(TEXT("Run should be accepted after validator"), RunResult.bAccepted);
+	TestEqual(TEXT("Failed gate"), RunResult.FailedGate, FString(TEXT("confirm_gate")));
+	TestEqual(TEXT("Top-level error code"), RunResult.ErrorCode, FString(TEXT("E4005")));
+	TestEqual(TEXT("Terminal reason"), RunResult.TerminalReason, FString(TEXT("executor_preflight_gate_failed_stop_on_first_failure")));
+	TestEqual(TEXT("Preflight blocked steps"), RunResult.PreflightBlockedSteps, 1);
+	if (RunResult.StepResults.Num() > 0)
+	{
+		TestEqual(TEXT("Row failure phase"), RunResult.StepResults[0].FailurePhase, FString(TEXT("preflight")));
+		TestEqual(TEXT("Row preflight gate"), RunResult.StepResults[0].PreflightGate, FString(TEXT("confirm_gate")));
+	}
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FHCIAbilityKitAgentExecutorPreflightBlastRadiusTest,
+	"HCIAbilityKit.Editor.AgentExecutor.PreflightBlocksOverLimitWithE4004",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FHCIAbilityKitAgentExecutorPreflightBlastRadiusTest::RunTest(const FString& Parameters)
+{
+	FHCIAbilityKitToolRegistry& Registry = FHCIAbilityKitToolRegistry::Get();
+	Registry.ResetToDefaults();
+
+	FHCIAbilityKitAgentExecutorOptions Options;
+	Options.bEnablePreflightGates = true;
+	Options.bUserConfirmedWriteSteps = true;
+	Options.bValidatePlanBeforeExecute = false; // let F5 preflight blast-radius gate own the failure instead of F2 validator
+
+	FHCIAbilityKitAgentExecutorRunResult RunResult;
+	TestFalse(TEXT("Preflight blast radius should block >50 assets"), FHCIAbilityKitAgentExecutor::ExecutePlan(
+		MakeExecutorTexturePlanWithAssetCount(51),
+		Registry,
+		FHCIAbilityKitAgentPlanValidationContext(),
+		Options,
+		RunResult));
+
+	TestEqual(TEXT("Failed gate"), RunResult.FailedGate, FString(TEXT("blast_radius")));
+	TestEqual(TEXT("Top-level error code"), RunResult.ErrorCode, FString(TEXT("E4004")));
+	TestTrue(TEXT("Should produce at least one row"), RunResult.StepResults.Num() > 0);
+	if (RunResult.StepResults.Num() > 0)
+	{
+		TestEqual(TEXT("Row target count estimate"), RunResult.StepResults[0].TargetCountEstimate, 51);
+		TestEqual(TEXT("Row failure phase"), RunResult.StepResults[0].FailurePhase, FString(TEXT("preflight")));
+	}
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FHCIAbilityKitAgentExecutorPreflightSourceControlTest,
+	"HCIAbilityKit.Editor.AgentExecutor.PreflightBlocksSourceControlFailFastWithE4006",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FHCIAbilityKitAgentExecutorPreflightSourceControlTest::RunTest(const FString& Parameters)
+{
+	FHCIAbilityKitToolRegistry& Registry = FHCIAbilityKitToolRegistry::Get();
+	Registry.ResetToDefaults();
+
+	FHCIAbilityKitAgentExecutorOptions Options;
+	Options.bEnablePreflightGates = true;
+	Options.bSourceControlEnabled = true;
+	Options.bSourceControlCheckoutSucceeded = false;
+
+	FHCIAbilityKitAgentExecutorRunResult RunResult;
+	TestFalse(TEXT("Preflight source control fail-fast should block"), FHCIAbilityKitAgentExecutor::ExecutePlan(
+		MakeExecutorTexturePlan(),
+		Registry,
+		FHCIAbilityKitAgentPlanValidationContext(),
+		Options,
+		RunResult));
+
+	TestEqual(TEXT("Failed gate"), RunResult.FailedGate, FString(TEXT("source_control")));
+	TestEqual(TEXT("Top-level error code"), RunResult.ErrorCode, FString(TEXT("E4006")));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FHCIAbilityKitAgentExecutorPreflightLodSafetyTest,
+	"HCIAbilityKit.Editor.AgentExecutor.PreflightBlocksNaniteLodToolWithE4010",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FHCIAbilityKitAgentExecutorPreflightLodSafetyTest::RunTest(const FString& Parameters)
+{
+	FHCIAbilityKitToolRegistry& Registry = FHCIAbilityKitToolRegistry::Get();
+	Registry.ResetToDefaults();
+
+	FHCIAbilityKitAgentExecutorOptions Options;
+	Options.bEnablePreflightGates = true;
+	Options.bSimulatedLodTargetNaniteEnabled = true;
+	Options.SimulatedLodTargetObjectClass = TEXT("UStaticMesh");
+
+	FHCIAbilityKitAgentExecutorRunResult RunResult;
+	TestFalse(TEXT("Preflight LOD safety should block nanite mesh"), FHCIAbilityKitAgentExecutor::ExecutePlan(
+		MakeExecutorTwoStepPlan(),
+		Registry,
+		FHCIAbilityKitAgentPlanValidationContext(),
+		Options,
+		RunResult));
+
+	TestEqual(TEXT("Failed step should be second step (0-based index 1)"), RunResult.FailedStepIndex, 1);
+	TestEqual(TEXT("Failed gate"), RunResult.FailedGate, FString(TEXT("lod_safety")));
+	TestEqual(TEXT("Top-level error code"), RunResult.ErrorCode, FString(TEXT("E4010")));
+	if (RunResult.StepResults.Num() >= 2)
+	{
+		TestEqual(TEXT("First row preflight passed"), RunResult.StepResults[0].PreflightGate, FString(TEXT("passed")));
+		TestEqual(TEXT("Second row preflight gate"), RunResult.StepResults[1].PreflightGate, FString(TEXT("lod_safety")));
+	}
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FHCIAbilityKitAgentExecutorPreflightPassesAuthorizedWriteTest,
+	"HCIAbilityKit.Editor.AgentExecutor.PreflightAuthorizedWritePassesAndMarksRow",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FHCIAbilityKitAgentExecutorPreflightPassesAuthorizedWriteTest::RunTest(const FString& Parameters)
+{
+	FHCIAbilityKitToolRegistry& Registry = FHCIAbilityKitToolRegistry::Get();
+	Registry.ResetToDefaults();
+
+	FHCIAbilityKitAgentExecutorOptions Options;
+	Options.bEnablePreflightGates = true;
+	Options.bDryRun = true;
+	Options.bUserConfirmedWriteSteps = true;
+	Options.bSourceControlEnabled = false; // offline local mode path
+	Options.MockUserName = TEXT("artist_a");
+	Options.MockResolvedRole = TEXT("Artist");
+	Options.bMockUserMatchedWhitelist = true;
+	Options.MockAllowedCapabilities = {TEXT("read_only"), TEXT("write")};
+
+	FHCIAbilityKitAgentExecutorRunResult RunResult;
+	TestTrue(TEXT("Authorized write should pass preflight and succeed"), FHCIAbilityKitAgentExecutor::ExecutePlan(
+		MakeExecutorTexturePlan(),
+		Registry,
+		FHCIAbilityKitAgentPlanValidationContext(),
+		Options,
+		RunResult));
+
+	TestTrue(TEXT("Preflight enabled flag"), RunResult.bPreflightEnabled);
+	TestEqual(TEXT("Preflight blocked steps"), RunResult.PreflightBlockedSteps, 0);
+	TestEqual(TEXT("Failed gate empty"), RunResult.FailedGate, FString(TEXT("")));
+	if (RunResult.StepResults.Num() > 0)
+	{
+		TestEqual(TEXT("Row preflight gate"), RunResult.StepResults[0].PreflightGate, FString(TEXT("passed")));
+		TestEqual(TEXT("Row failure phase"), RunResult.StepResults[0].FailurePhase, FString(TEXT("-")));
+	}
 	return true;
 }
 

@@ -1738,7 +1738,7 @@ static void HCI_LogAgentExecutorRows(const TCHAR* CaseName, const FHCIAbilityKit
 			UE_LOG(
 				LogHCIAbilityKitAgentDemo,
 				Display,
-				TEXT("[HCIAbilityKit][AgentExecutor] case=%s row=%d step_id=%s tool_name=%s capability=%s risk_level=%s write_like=%s status=%s attempted=%s succeeded=%s target_count_estimate=%d evidence_keys=%s evidence=%s error_code=%s reason=%s"),
+				TEXT("[HCIAbilityKit][AgentExecutor] case=%s row=%d step_id=%s tool_name=%s capability=%s risk_level=%s write_like=%s status=%s attempted=%s succeeded=%s target_count_estimate=%d evidence_keys=%s evidence=%s error_code=%s reason=%s failure_phase=%s preflight_gate=%s"),
 				CaseName,
 				Index,
 				Row.StepId.IsEmpty() ? TEXT("-") : *Row.StepId,
@@ -1753,14 +1753,16 @@ static void HCI_LogAgentExecutorRows(const TCHAR* CaseName, const FHCIAbilityKit
 				*FString::Join(Row.EvidenceKeys, TEXT("|")),
 				*HCI_FormatStringMapForLog(Row.Evidence),
 				Row.ErrorCode.IsEmpty() ? TEXT("-") : *Row.ErrorCode,
-				Row.Reason.IsEmpty() ? TEXT("-") : *Row.Reason);
+				Row.Reason.IsEmpty() ? TEXT("-") : *Row.Reason,
+				Row.FailurePhase.IsEmpty() ? TEXT("-") : *Row.FailurePhase,
+				Row.PreflightGate.IsEmpty() ? TEXT("-") : *Row.PreflightGate);
 		}
 		else
 		{
 			UE_LOG(
 				LogHCIAbilityKitAgentDemo,
 				Warning,
-				TEXT("[HCIAbilityKit][AgentExecutor] case=%s row=%d step_id=%s tool_name=%s capability=%s risk_level=%s write_like=%s status=%s attempted=%s succeeded=%s target_count_estimate=%d evidence_keys=%s evidence=%s error_code=%s reason=%s"),
+				TEXT("[HCIAbilityKit][AgentExecutor] case=%s row=%d step_id=%s tool_name=%s capability=%s risk_level=%s write_like=%s status=%s attempted=%s succeeded=%s target_count_estimate=%d evidence_keys=%s evidence=%s error_code=%s reason=%s failure_phase=%s preflight_gate=%s"),
 				CaseName,
 				Index,
 				Row.StepId.IsEmpty() ? TEXT("-") : *Row.StepId,
@@ -1775,7 +1777,9 @@ static void HCI_LogAgentExecutorRows(const TCHAR* CaseName, const FHCIAbilityKit
 				*FString::Join(Row.EvidenceKeys, TEXT("|")),
 				*HCI_FormatStringMapForLog(Row.Evidence),
 				Row.ErrorCode.IsEmpty() ? TEXT("-") : *Row.ErrorCode,
-				Row.Reason.IsEmpty() ? TEXT("-") : *Row.Reason);
+				Row.Reason.IsEmpty() ? TEXT("-") : *Row.Reason,
+				Row.FailurePhase.IsEmpty() ? TEXT("-") : *Row.FailurePhase,
+				Row.PreflightGate.IsEmpty() ? TEXT("-") : *Row.PreflightGate);
 		}
 	}
 }
@@ -1787,13 +1791,14 @@ static void HCI_LogAgentExecutorSummary(const TCHAR* CaseName, const FHCIAbility
 		UE_LOG(
 			LogHCIAbilityKitAgentDemo,
 			Display,
-			TEXT("[HCIAbilityKit][AgentExecutor] case=%s summary request_id=%s intent=%s plan_version=%d execution_mode=%s termination_policy=%s accepted=%s completed=%s total_steps=%d executed_steps=%d succeeded_steps=%d failed_steps=%d skipped_steps=%d failed_step_index=%d failed_step_id=%s failed_tool_name=%s terminal_status=%s terminal_reason=%s error_code=%s reason=%s started_utc=%s finished_utc=%s"),
+			TEXT("[HCIAbilityKit][AgentExecutor] case=%s summary request_id=%s intent=%s plan_version=%d execution_mode=%s termination_policy=%s preflight_enabled=%s accepted=%s completed=%s total_steps=%d executed_steps=%d succeeded_steps=%d failed_steps=%d skipped_steps=%d preflight_blocked_steps=%d failed_step_index=%d failed_step_id=%s failed_tool_name=%s failed_gate=%s terminal_status=%s terminal_reason=%s error_code=%s reason=%s started_utc=%s finished_utc=%s"),
 			CaseName,
 			RunResult.RequestId.IsEmpty() ? TEXT("-") : *RunResult.RequestId,
 			RunResult.Intent.IsEmpty() ? TEXT("-") : *RunResult.Intent,
 			RunResult.PlanVersion,
 			RunResult.ExecutionMode.IsEmpty() ? TEXT("-") : *RunResult.ExecutionMode,
 			RunResult.TerminationPolicy.IsEmpty() ? TEXT("-") : *RunResult.TerminationPolicy,
+			RunResult.bPreflightEnabled ? TEXT("true") : TEXT("false"),
 			RunResult.bAccepted ? TEXT("true") : TEXT("false"),
 			RunResult.bCompleted ? TEXT("true") : TEXT("false"),
 			RunResult.TotalSteps,
@@ -1801,9 +1806,11 @@ static void HCI_LogAgentExecutorSummary(const TCHAR* CaseName, const FHCIAbility
 			RunResult.SucceededSteps,
 			RunResult.FailedSteps,
 			RunResult.SkippedSteps,
+			RunResult.PreflightBlockedSteps,
 			RunResult.FailedStepIndex,
 			RunResult.FailedStepId.IsEmpty() ? TEXT("-") : *RunResult.FailedStepId,
 			RunResult.FailedToolName.IsEmpty() ? TEXT("-") : *RunResult.FailedToolName,
+			RunResult.FailedGate.IsEmpty() ? TEXT("-") : *RunResult.FailedGate,
 			RunResult.TerminalStatus.IsEmpty() ? TEXT("-") : *RunResult.TerminalStatus,
 			RunResult.TerminalReason.IsEmpty() ? TEXT("-") : *RunResult.TerminalReason,
 			RunResult.ErrorCode.IsEmpty() ? TEXT("-") : *RunResult.ErrorCode,
@@ -1816,13 +1823,14 @@ static void HCI_LogAgentExecutorSummary(const TCHAR* CaseName, const FHCIAbility
 		UE_LOG(
 			LogHCIAbilityKitAgentDemo,
 			Warning,
-			TEXT("[HCIAbilityKit][AgentExecutor] case=%s summary request_id=%s intent=%s plan_version=%d execution_mode=%s termination_policy=%s accepted=%s completed=%s total_steps=%d executed_steps=%d succeeded_steps=%d failed_steps=%d skipped_steps=%d failed_step_index=%d failed_step_id=%s failed_tool_name=%s terminal_status=%s terminal_reason=%s error_code=%s reason=%s started_utc=%s finished_utc=%s"),
+			TEXT("[HCIAbilityKit][AgentExecutor] case=%s summary request_id=%s intent=%s plan_version=%d execution_mode=%s termination_policy=%s preflight_enabled=%s accepted=%s completed=%s total_steps=%d executed_steps=%d succeeded_steps=%d failed_steps=%d skipped_steps=%d preflight_blocked_steps=%d failed_step_index=%d failed_step_id=%s failed_tool_name=%s failed_gate=%s terminal_status=%s terminal_reason=%s error_code=%s reason=%s started_utc=%s finished_utc=%s"),
 			CaseName,
 			RunResult.RequestId.IsEmpty() ? TEXT("-") : *RunResult.RequestId,
 			RunResult.Intent.IsEmpty() ? TEXT("-") : *RunResult.Intent,
 			RunResult.PlanVersion,
 			RunResult.ExecutionMode.IsEmpty() ? TEXT("-") : *RunResult.ExecutionMode,
 			RunResult.TerminationPolicy.IsEmpty() ? TEXT("-") : *RunResult.TerminationPolicy,
+			RunResult.bPreflightEnabled ? TEXT("true") : TEXT("false"),
 			RunResult.bAccepted ? TEXT("true") : TEXT("false"),
 			RunResult.bCompleted ? TEXT("true") : TEXT("false"),
 			RunResult.TotalSteps,
@@ -1830,9 +1838,11 @@ static void HCI_LogAgentExecutorSummary(const TCHAR* CaseName, const FHCIAbility
 			RunResult.SucceededSteps,
 			RunResult.FailedSteps,
 			RunResult.SkippedSteps,
+			RunResult.PreflightBlockedSteps,
 			RunResult.FailedStepIndex,
 			RunResult.FailedStepId.IsEmpty() ? TEXT("-") : *RunResult.FailedStepId,
 			RunResult.FailedToolName.IsEmpty() ? TEXT("-") : *RunResult.FailedToolName,
+			RunResult.FailedGate.IsEmpty() ? TEXT("-") : *RunResult.FailedGate,
 			RunResult.TerminalStatus.IsEmpty() ? TEXT("-") : *RunResult.TerminalStatus,
 			RunResult.TerminalReason.IsEmpty() ? TEXT("-") : *RunResult.TerminalReason,
 			RunResult.ErrorCode.IsEmpty() ? TEXT("-") : *RunResult.ErrorCode,
@@ -2116,6 +2126,246 @@ static void HCI_RunAbilityKitAgentExecutePlanFailDemoCommand(const TArray<FStrin
 		*CaseKey);
 }
 
+static FHCIAbilityKitAgentPlan HCI_BuildAgentExecutorF5TexturePlan(const FString& RequestId, const int32 AssetCount)
+{
+	FHCIAbilityKitAgentPlan Plan;
+	Plan.PlanVersion = 1;
+	Plan.RequestId = RequestId;
+	Plan.Intent = TEXT("batch_fix_asset_compliance");
+
+	FHCIAbilityKitAgentPlanStep& Step = Plan.Steps.AddDefaulted_GetRef();
+	Step.StepId = TEXT("s1");
+	Step.ToolName = TEXT("SetTextureMaxSize");
+	Step.RiskLevel = EHCIAbilityKitAgentPlanRiskLevel::Write;
+	Step.bRequiresConfirm = true;
+	Step.RollbackStrategy = TEXT("all_or_nothing");
+	Step.ExpectedEvidence = {TEXT("asset_path"), TEXT("before"), TEXT("after")};
+	Step.Args = MakeShared<FJsonObject>();
+
+	TArray<TSharedPtr<FJsonValue>> AssetPaths;
+	for (int32 Index = 0; Index < FMath::Max(0, AssetCount); ++Index)
+	{
+		AssetPaths.Add(MakeShared<FJsonValueString>(FString::Printf(TEXT("/Game/Art/T_F5_%03d.T_F5_%03d"), Index, Index)));
+	}
+	Step.Args->SetArrayField(TEXT("asset_paths"), AssetPaths);
+	Step.Args->SetNumberField(TEXT("max_size"), 1024);
+	return Plan;
+}
+
+static bool HCI_RunAgentExecutorPreflightDemoCase(
+	const TCHAR* CaseName,
+	const TCHAR* Description,
+	FHCIAbilityKitAgentPlan Plan,
+	const FHCIAbilityKitAgentExecutorOptions& Options,
+	FHCIAbilityKitToolRegistry& Registry,
+	int32& OutPassedCases,
+	int32& OutBlockedCases,
+	TMap<FString, int32>& OutBlockedByGateCounts)
+{
+	GHCIAbilityKitAgentPlanPreviewState = Plan;
+
+	FHCIAbilityKitAgentExecutorRunResult RunResult;
+	const bool bOk = FHCIAbilityKitAgentExecutor::ExecutePlan(
+		Plan,
+		Registry,
+		FHCIAbilityKitAgentPlanValidationContext(),
+		Options,
+		RunResult);
+
+	if (bOk && RunResult.bCompleted)
+	{
+		++OutPassedCases;
+	}
+	else
+	{
+		++OutBlockedCases;
+		if (!RunResult.FailedGate.IsEmpty())
+		{
+			int32& Count = OutBlockedByGateCounts.FindOrAdd(RunResult.FailedGate);
+			Count += 1;
+		}
+	}
+
+	UE_LOG(
+		LogHCIAbilityKitAgentDemo,
+		Display,
+		TEXT("[HCIAbilityKit][AgentExecutorPreflight] case=%s description=%s preflight_enabled=%s"),
+		CaseName,
+		Description ? Description : TEXT("-"),
+		Options.bEnablePreflightGates ? TEXT("true") : TEXT("false"));
+	HCI_LogAgentExecutorSummary(CaseName, RunResult);
+	HCI_LogAgentExecutorRows(CaseName, RunResult);
+	return true;
+}
+
+static void HCI_RunAbilityKitAgentExecutePlanPreflightDemoCommand(const TArray<FString>& Args)
+{
+	FHCIAbilityKitToolRegistry& Registry = FHCIAbilityKitToolRegistry::Get();
+	Registry.ResetToDefaults();
+
+	auto MakeBaseOptions = []()
+	{
+		FHCIAbilityKitAgentExecutorOptions Options;
+		Options.bValidatePlanBeforeExecute = true;
+		Options.bDryRun = true;
+		Options.bEnablePreflightGates = true;
+		Options.TerminationPolicy = EHCIAbilityKitAgentExecutorTerminationPolicy::StopOnFirstFailure;
+		Options.bUserConfirmedWriteSteps = true;
+		Options.MockUserName = TEXT("artist_a");
+		Options.MockResolvedRole = TEXT("Artist");
+		Options.bMockUserMatchedWhitelist = true;
+		Options.MockAllowedCapabilities = {TEXT("read_only"), TEXT("write")};
+		Options.bSourceControlEnabled = false; // offline local mode pass path
+		Options.bSourceControlCheckoutSucceeded = false;
+		Options.SimulatedLodTargetObjectClass = TEXT("UStaticMesh");
+		Options.bSimulatedLodTargetNaniteEnabled = false;
+		return Options;
+	};
+
+	auto RunKey =
+		[&](const FString& CaseKey, int32& PassedCases, int32& BlockedCases, TMap<FString, int32>& BlockedByGateCounts) -> bool
+	{
+		FHCIAbilityKitAgentExecutorOptions Options = MakeBaseOptions();
+		FHCIAbilityKitAgentPlan Plan;
+		const TCHAR* CaseName = TEXT("custom");
+		const TCHAR* Description = TEXT("-");
+
+		if (CaseKey == TEXT("ok"))
+		{
+			CaseName = TEXT("custom_ok");
+			Description = TEXT("authorized_write_confirmed_offline_local_mode");
+			Plan = HCI_BuildAgentExecutorF5TexturePlan(TEXT("req_cli_f5_ok"), 3);
+		}
+		else if (CaseKey == TEXT("fail_confirm"))
+		{
+			CaseName = TEXT("custom_fail_confirm");
+			Description = TEXT("unconfirmed_write_blocked_by_confirm_gate");
+			Plan = HCI_BuildAgentExecutorF5TexturePlan(TEXT("req_cli_f5_confirm"), 3);
+			Options.bUserConfirmedWriteSteps = false;
+		}
+		else if (CaseKey == TEXT("fail_blast"))
+		{
+			CaseName = TEXT("custom_fail_blast");
+			Description = TEXT("over_modify_limit_blocked_by_blast_radius");
+			Plan = HCI_BuildAgentExecutorF5TexturePlan(TEXT("req_cli_f5_blast"), 51);
+			Options.bValidatePlanBeforeExecute = false; // let F5 preflight blast-radius gate own the failure (F2 validator would reject first)
+		}
+		else if (CaseKey == TEXT("fail_rbac"))
+		{
+			CaseName = TEXT("custom_fail_rbac");
+			Description = TEXT("guest_write_blocked_by_rbac");
+			Plan = HCI_BuildAgentExecutorF5TexturePlan(TEXT("req_cli_f5_rbac"), 3);
+			Options.MockUserName = TEXT("unknown_guest");
+			Options.MockResolvedRole = TEXT("Guest");
+			Options.bMockUserMatchedWhitelist = false;
+			Options.MockAllowedCapabilities = {TEXT("read_only")};
+		}
+		else if (CaseKey == TEXT("fail_sc"))
+		{
+			CaseName = TEXT("custom_fail_sc");
+			Description = TEXT("checkout_failed_blocked_by_source_control_fail_fast");
+			Plan = HCI_BuildAgentExecutorF5TexturePlan(TEXT("req_cli_f5_sc"), 3);
+			Options.bSourceControlEnabled = true;
+			Options.bSourceControlCheckoutSucceeded = false;
+		}
+		else if (CaseKey == TEXT("fail_lod"))
+		{
+			CaseName = TEXT("custom_fail_lod");
+			Description = TEXT("nanite_mesh_blocked_by_lod_safety");
+			Plan = HCI_BuildAgentExecutorF4TwoStepPlan(TEXT("req_cli_f5_lod"));
+			Options.SimulatedLodTargetObjectClass = TEXT("UStaticMesh");
+			Options.bSimulatedLodTargetNaniteEnabled = true;
+		}
+		else
+		{
+			return false;
+		}
+
+		return HCI_RunAgentExecutorPreflightDemoCase(
+			CaseName,
+			Description,
+			Plan,
+			Options,
+			Registry,
+			PassedCases,
+			BlockedCases,
+			BlockedByGateCounts);
+	};
+
+	if (Args.Num() == 0)
+	{
+		int32 PassedCases = 0;
+		int32 BlockedCases = 0;
+		TMap<FString, int32> BlockedByGateCounts;
+
+		const TArray<FString> CaseKeys = {
+			TEXT("ok"),
+			TEXT("fail_confirm"),
+			TEXT("fail_blast"),
+			TEXT("fail_rbac"),
+			TEXT("fail_sc"),
+			TEXT("fail_lod")};
+
+		for (const FString& CaseKey : CaseKeys)
+		{
+			RunKey(CaseKey, PassedCases, BlockedCases, BlockedByGateCounts);
+		}
+
+		const int32 ConfirmBlocked = BlockedByGateCounts.FindRef(TEXT("confirm_gate"));
+		const int32 BlastBlocked = BlockedByGateCounts.FindRef(TEXT("blast_radius"));
+		const int32 RbacBlocked = BlockedByGateCounts.FindRef(TEXT("rbac"));
+		const int32 SourceControlBlocked = BlockedByGateCounts.FindRef(TEXT("source_control"));
+		const int32 LodSafetyBlocked = BlockedByGateCounts.FindRef(TEXT("lod_safety"));
+
+		UE_LOG(
+			LogHCIAbilityKitAgentDemo,
+			Display,
+			TEXT("[HCIAbilityKit][AgentExecutorPreflight] summary total_cases=%d passed_cases=%d blocked_cases=%d preflight_enabled=true confirm_blocked=%d blast_radius_blocked=%d rbac_blocked=%d source_control_blocked=%d lod_safety_blocked=%d execution_mode=%s validation=ok"),
+			CaseKeys.Num(),
+			PassedCases,
+			BlockedCases,
+			ConfirmBlocked,
+			BlastBlocked,
+			RbacBlocked,
+			SourceControlBlocked,
+			LodSafetyBlocked,
+			TEXT("simulate_dry_run"));
+		UE_LOG(
+			LogHCIAbilityKitAgentDemo,
+			Display,
+			TEXT("[HCIAbilityKit][AgentExecutorPreflight] hint=也可运行 HCIAbilityKit.AgentExecutePlanPreflightDemo [ok|fail_confirm|fail_blast|fail_rbac|fail_sc|fail_lod]"));
+		return;
+	}
+
+	if (Args.Num() != 1)
+	{
+		UE_LOG(
+			LogHCIAbilityKitAgentDemo,
+			Error,
+			TEXT("[HCIAbilityKit][AgentExecutorPreflight] invalid_args usage=HCIAbilityKit.AgentExecutePlanPreflightDemo [ok|fail_confirm|fail_blast|fail_rbac|fail_sc|fail_lod]"));
+		return;
+	}
+
+	const FString CaseKey = Args[0].TrimStartAndEnd();
+	if (CaseKey.IsEmpty())
+	{
+		UE_LOG(LogHCIAbilityKitAgentDemo, Error, TEXT("[HCIAbilityKit][AgentExecutorPreflight] invalid_args reason=empty case_key"));
+		return;
+	}
+
+	int32 PassedCases = 0;
+	int32 BlockedCases = 0;
+	TMap<FString, int32> BlockedByGateCounts;
+	if (!RunKey(CaseKey, PassedCases, BlockedCases, BlockedByGateCounts))
+	{
+		UE_LOG(
+			LogHCIAbilityKitAgentDemo,
+			Error,
+			TEXT("[HCIAbilityKit][AgentExecutorPreflight] invalid_args reason=unknown case_key key=%s allowed=ok|fail_confirm|fail_blast|fail_rbac|fail_sc|fail_lod"),
+			*CaseKey);
+	}
+}
+
 static void HCI_RunAbilityKitAgentExecutePlanDemoCommand(const TArray<FString>& Args)
 {
 	FHCIAbilityKitToolRegistry& Registry = FHCIAbilityKitToolRegistry::Get();
@@ -2276,6 +2526,14 @@ void FHCIAbilityKitAgentDemoConsoleCommands::Startup()
 			TEXT("F4 Executor failure convergence demo (step-level error + termination policy). Usage: HCIAbilityKit.AgentExecutePlanFailDemo [ok|fail_stop|fail_continue]"),
 			FConsoleCommandWithArgsDelegate::CreateStatic(&HCI_RunAbilityKitAgentExecutePlanFailDemoCommand));
 	}
+
+	if (!AgentExecutePlanPreflightDemoCommand.IsValid())
+	{
+		AgentExecutePlanPreflightDemoCommand = MakeUnique<FAutoConsoleCommand>(
+			TEXT("HCIAbilityKit.AgentExecutePlanPreflightDemo"),
+			TEXT("F5 Executor preflight gate-chain demo (Confirm/BlastRadius/RBAC/SourceControl/LOD Safety). Usage: HCIAbilityKit.AgentExecutePlanPreflightDemo [ok|fail_confirm|fail_blast|fail_rbac|fail_sc|fail_lod]"),
+			FConsoleCommandWithArgsDelegate::CreateStatic(&HCI_RunAbilityKitAgentExecutePlanPreflightDemoCommand));
+	}
 }
 
 void FHCIAbilityKitAgentDemoConsoleCommands::Shutdown()
@@ -2291,4 +2549,5 @@ void FHCIAbilityKitAgentDemoConsoleCommands::Shutdown()
 	AgentPlanValidateDemoCommand.Reset();
 	AgentExecutePlanDemoCommand.Reset();
 	AgentExecutePlanFailDemoCommand.Reset();
+	AgentExecutePlanPreflightDemoCommand.Reset();
 }

@@ -859,6 +859,63 @@ public:
     - `attempted/succeeded`
     - `error_code/reason`
 
+### 14.5.3 StageF-SliceF5 Executor 预检门禁链路接入（Stage E Gate Chain -> Executor）
+
+- 目标：在 `FHCIAbilityKitAgentExecutor` 中把 Stage E 已冻结的安全门禁按步骤串联到执行前（预检链路），并把阻断结果收敛到 `summary + row=`，保持 `simulate_dry_run`，不触发真实资产写入。
+- 预检链路顺序（冻结）：
+  1. `ConfirmGate`
+  2. `BlastRadius`
+  3. `MockRBAC`
+  4. `SourceControl Fail-Fast / OfflineLocalMode`
+  5. `LOD Tool Safety`（仅 `SetMeshLODGroup` 生效）
+- Runtime 扩展：`FHCIAbilityKitAgentExecutor`
+  - `options` 新增（F5 最小集）：
+    - `bEnablePreflightGates`
+    - `bUserConfirmedWriteSteps`
+    - `MockUserName / MockResolvedRole / bMockUserMatchedWhitelist / MockAllowedCapabilities`
+    - `bSourceControlEnabled / bSourceControlCheckoutSucceeded`
+    - `SimulatedLodTargetObjectClass / bSimulatedLodTargetNaniteEnabled`
+  - `run_result` 顶层新增字段：
+    - `preflight_enabled`
+    - `preflight_blocked_steps`
+    - `failed_gate`
+  - `step_result` 新增字段：
+    - `failure_phase`（`- / preflight / execute`）
+    - `preflight_gate`（`- / passed / confirm_gate / blast_radius / rbac / source_control / lod_safety`）
+- F5 失败收敛口径（冻结）：
+  - 预检门禁阻断的步骤行：
+    - `status=failed`
+    - `attempted=true`
+    - `succeeded=false`
+    - `failure_phase=preflight`
+    - `preflight_gate=<具体门禁>`
+    - `error_code/reason` 直接透传对应 Stage E 门禁错误码（如 `E4005/E4004/E4008/E4006/E4010`）
+  - 顶层收敛：
+    - `failed_gate` 收敛为首个失败步骤的 `preflight_gate`
+    - `preflight_blocked_steps` 统计所有被预检阻断的步骤数
+    - 若 `termination_policy=stop_on_first_failure` 且失败来自预检：
+      - `terminal_status=failed`
+      - `terminal_reason=executor_preflight_gate_failed_stop_on_first_failure`
+    - 若 `termination_policy=continue_on_failure` 且存在预检阻断：
+      - `terminal_status=completed_with_failures`
+      - `terminal_reason=executor_preflight_gate_failed_continue_on_failure`
+  - 当 `bEnablePreflightGates=false`：
+    - F3/F4 既有行为保持不变（兼容旧门禁日志口径）
+- Editor UE 手测入口（控制台）：
+  - `HCIAbilityKit.AgentExecutePlanPreflightDemo`
+    - 默认输出 6 案例：`ok / fail_confirm / fail_blast / fail_rbac / fail_sc / fail_lod`
+    - 每案例输出：
+      - `[HCIAbilityKit][AgentExecutorPreflight] case=...`
+      - `AgentExecutor summary + row=`
+    - 总摘要输出（F5）：
+      - `summary total_cases=... passed_cases=... blocked_cases=...`
+      - `preflight_enabled=true`
+      - `confirm_blocked / blast_radius_blocked / rbac_blocked / source_control_blocked / lod_safety_blocked`
+      - `execution_mode=simulate_dry_run`
+      - `validation=ok`
+  - `HCIAbilityKit.AgentExecutePlanPreflightDemo [ok|fail_confirm|fail_blast|fail_rbac|fail_sc|fail_lod]`
+    - 用于单案例验证某个门禁在 Executor 预检链路中的收敛口径
+
 ### 14.6 一期禁止实现（延期到 Phase 3）
 
 - 记忆门禁与 TTL 细则（Session TTL/SOP 自动提炼触发策略）。

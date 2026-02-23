@@ -133,7 +133,100 @@ static FHCIAbilityKitAgentExecutorStepResult& HCI_AddStepResultSkeleton(
 	StepResult.bWriteLike = HCI_IsWriteLike(Tool);
 	StepResult.TargetCountEstimate = HCI_GetTargetCountEstimate(Step);
 	StepResult.EvidenceKeys = Step.ExpectedEvidence;
+	StepResult.FailurePhase = TEXT("-");
+	StepResult.PreflightGate = TEXT("-");
 	return StepResult;
+}
+
+struct FHCIAbilityKitAgentExecutorPreflightDecision
+{
+	bool bAllowed = true;
+	FString FailedGate;
+	FString ErrorCode;
+	FString Reason;
+};
+
+static FHCIAbilityKitAgentExecutorPreflightDecision HCI_EvaluateExecutorPreflight(
+	const FHCIAbilityKitAgentPlan& Plan,
+	const FHCIAbilityKitAgentPlanStep& Step,
+	const FHCIAbilityKitAgentExecutorStepResult& StepResult,
+	const FHCIAbilityKitToolRegistry& ToolRegistry,
+	const FHCIAbilityKitAgentExecutorOptions& Options)
+{
+	FHCIAbilityKitAgentExecutorPreflightDecision Preflight;
+	if (!Options.bEnablePreflightGates)
+	{
+		return Preflight;
+	}
+
+	const FHCIAbilityKitAgentExecutionDecision ConfirmDecision = FHCIAbilityKitAgentExecutionGate::EvaluateConfirmGate(
+		{Step.StepId, Step.ToolName, Step.bRequiresConfirm, Options.bUserConfirmedWriteSteps},
+		ToolRegistry);
+	if (!ConfirmDecision.bAllowed)
+	{
+		Preflight.bAllowed = false;
+		Preflight.FailedGate = TEXT("confirm_gate");
+		Preflight.ErrorCode = ConfirmDecision.ErrorCode;
+		Preflight.Reason = ConfirmDecision.Reason;
+		return Preflight;
+	}
+
+	const FHCIAbilityKitAgentBlastRadiusDecision BlastDecision = FHCIAbilityKitAgentExecutionGate::EvaluateBlastRadius(
+		{Plan.RequestId, Step.ToolName, StepResult.TargetCountEstimate},
+		ToolRegistry);
+	if (!BlastDecision.bAllowed)
+	{
+		Preflight.bAllowed = false;
+		Preflight.FailedGate = TEXT("blast_radius");
+		Preflight.ErrorCode = BlastDecision.ErrorCode;
+		Preflight.Reason = BlastDecision.Reason;
+		return Preflight;
+	}
+
+	const FHCIAbilityKitAgentMockRbacDecision RbacDecision = FHCIAbilityKitAgentExecutionGate::EvaluateMockRbac(
+		{
+			Plan.RequestId,
+			Options.MockUserName,
+			Options.MockResolvedRole,
+			Options.bMockUserMatchedWhitelist,
+			Step.ToolName,
+			StepResult.TargetCountEstimate,
+			Options.MockAllowedCapabilities},
+		ToolRegistry);
+	if (!RbacDecision.bAllowed)
+	{
+		Preflight.bAllowed = false;
+		Preflight.FailedGate = TEXT("rbac");
+		Preflight.ErrorCode = RbacDecision.ErrorCode;
+		Preflight.Reason = RbacDecision.Reason;
+		return Preflight;
+	}
+
+	const FHCIAbilityKitAgentSourceControlDecision SourceControlDecision = FHCIAbilityKitAgentExecutionGate::EvaluateSourceControlFailFast(
+		{Plan.RequestId, Step.ToolName, Options.bSourceControlEnabled, Options.bSourceControlCheckoutSucceeded},
+		ToolRegistry);
+	if (!SourceControlDecision.bAllowed)
+	{
+		Preflight.bAllowed = false;
+		Preflight.FailedGate = TEXT("source_control");
+		Preflight.ErrorCode = SourceControlDecision.ErrorCode;
+		Preflight.Reason = SourceControlDecision.Reason;
+		return Preflight;
+	}
+
+	const FHCIAbilityKitAgentLodToolSafetyDecision LodSafetyDecision = FHCIAbilityKitAgentExecutionGate::EvaluateLodToolSafety(
+		{Plan.RequestId, Step.ToolName, Options.SimulatedLodTargetObjectClass, Options.bSimulatedLodTargetNaniteEnabled},
+		ToolRegistry);
+	if (!LodSafetyDecision.bAllowed)
+	{
+		Preflight.bAllowed = false;
+		Preflight.FailedGate = TEXT("lod_safety");
+		Preflight.ErrorCode = LodSafetyDecision.ErrorCode;
+		Preflight.Reason = LodSafetyDecision.Reason;
+		return Preflight;
+	}
+
+	return Preflight;
 }
 }
 
@@ -157,6 +250,7 @@ bool FHCIAbilityKitAgentExecutor::ExecutePlan(
 	HCI_InitRunResultBase(Plan, OutResult);
 	OutResult.ExecutionMode = Options.bDryRun ? TEXT("simulate_dry_run") : TEXT("simulate_apply");
 	OutResult.TerminationPolicy = HCI_TerminationPolicyToString(Options.TerminationPolicy);
+	OutResult.bPreflightEnabled = Options.bEnablePreflightGates;
 	OutResult.StartedAtUtc = FHCIAbilityKitTimeFormat::FormatNowBeijingIso8601();
 
 	if (Options.bValidatePlanBeforeExecute)
@@ -195,24 +289,43 @@ bool FHCIAbilityKitAgentExecutor::ExecutePlan(
 			StepResult.Status = TEXT("failed");
 			StepResult.ErrorCode = TEXT("E4002");
 			StepResult.Reason = TEXT("tool_not_whitelisted");
-		}
-		else if (Options.SimulatedFailureStepIndex == StepIndex)
-		{
-			StepResult.bSucceeded = false;
-			StepResult.Status = TEXT("failed");
-			StepResult.ErrorCode = Options.SimulatedFailureErrorCode.IsEmpty() ? TEXT("E4101") : Options.SimulatedFailureErrorCode;
-			StepResult.Reason = Options.SimulatedFailureReason.IsEmpty() ? TEXT("simulated_tool_execution_failed") : Options.SimulatedFailureReason;
+			StepResult.FailurePhase = TEXT("execute");
 		}
 		else
 		{
-			for (const FString& EvidenceKey : Step.ExpectedEvidence)
+			const FHCIAbilityKitAgentExecutorPreflightDecision PreflightDecision =
+				HCI_EvaluateExecutorPreflight(Plan, Step, StepResult, ToolRegistry, Options);
+			if (!PreflightDecision.bAllowed)
 			{
-				StepResult.Evidence.Add(EvidenceKey, HCI_BuildEvidenceValue(EvidenceKey, Step));
+				StepResult.bSucceeded = false;
+				StepResult.Status = TEXT("failed");
+				StepResult.ErrorCode = PreflightDecision.ErrorCode;
+				StepResult.Reason = PreflightDecision.Reason;
+				StepResult.FailurePhase = TEXT("preflight");
+				StepResult.PreflightGate = PreflightDecision.FailedGate.IsEmpty() ? TEXT("-") : PreflightDecision.FailedGate;
+				OutResult.PreflightBlockedSteps += 1;
 			}
+			else if (Options.SimulatedFailureStepIndex == StepIndex)
+			{
+				StepResult.bSucceeded = false;
+				StepResult.Status = TEXT("failed");
+				StepResult.ErrorCode = Options.SimulatedFailureErrorCode.IsEmpty() ? TEXT("E4101") : Options.SimulatedFailureErrorCode;
+				StepResult.Reason = Options.SimulatedFailureReason.IsEmpty() ? TEXT("simulated_tool_execution_failed") : Options.SimulatedFailureReason;
+				StepResult.FailurePhase = TEXT("execute");
+				StepResult.PreflightGate = Options.bEnablePreflightGates ? TEXT("passed") : TEXT("-");
+			}
+			else
+			{
+				for (const FString& EvidenceKey : Step.ExpectedEvidence)
+				{
+					StepResult.Evidence.Add(EvidenceKey, HCI_BuildEvidenceValue(EvidenceKey, Step));
+				}
 
-			StepResult.bSucceeded = true;
-			StepResult.Status = TEXT("succeeded");
-			StepResult.Reason = Options.bDryRun ? TEXT("simulated_dry_run_success") : TEXT("simulated_apply_success");
+				StepResult.bSucceeded = true;
+				StepResult.Status = TEXT("succeeded");
+				StepResult.Reason = Options.bDryRun ? TEXT("simulated_dry_run_success") : TEXT("simulated_apply_success");
+				StepResult.PreflightGate = Options.bEnablePreflightGates ? TEXT("passed") : TEXT("-");
+			}
 		}
 
 		if (StepResult.bSucceeded)
@@ -228,6 +341,7 @@ bool FHCIAbilityKitAgentExecutor::ExecutePlan(
 			OutResult.FailedStepIndex = StepIndex;
 			OutResult.FailedStepId = Step.StepId;
 			OutResult.FailedToolName = Step.ToolName.ToString();
+			OutResult.FailedGate = StepResult.FailurePhase == TEXT("preflight") ? StepResult.PreflightGate : FString(TEXT("-"));
 			OutResult.ErrorCode = StepResult.ErrorCode;
 			OutResult.Reason = StepResult.Reason;
 		}
@@ -250,7 +364,10 @@ bool FHCIAbilityKitAgentExecutor::ExecutePlan(
 
 			OutResult.bCompleted = false;
 			OutResult.TerminalStatus = TEXT("failed");
-			OutResult.TerminalReason = TEXT("executor_step_failed_stop_on_first_failure");
+			OutResult.TerminalReason =
+				(StepResult.FailurePhase == TEXT("preflight"))
+					? TEXT("executor_preflight_gate_failed_stop_on_first_failure")
+					: TEXT("executor_step_failed_stop_on_first_failure");
 			OutResult.FinishedAtUtc = FHCIAbilityKitTimeFormat::FormatNowBeijingIso8601();
 			return false;
 		}
@@ -262,7 +379,9 @@ bool FHCIAbilityKitAgentExecutor::ExecutePlan(
 	{
 		OutResult.bCompleted = false;
 		OutResult.TerminalStatus = TEXT("completed_with_failures");
-		OutResult.TerminalReason = TEXT("executor_step_failed_continue_on_failure");
+		OutResult.TerminalReason = (OutResult.PreflightBlockedSteps > 0)
+									 ? TEXT("executor_preflight_gate_failed_continue_on_failure")
+									 : TEXT("executor_step_failed_continue_on_failure");
 		OutResult.FinishedAtUtc = FHCIAbilityKitTimeFormat::FormatNowBeijingIso8601();
 		return false;
 	}

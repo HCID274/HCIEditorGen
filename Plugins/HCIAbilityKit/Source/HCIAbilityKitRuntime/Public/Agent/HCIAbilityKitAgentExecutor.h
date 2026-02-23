@@ -18,6 +18,24 @@ struct HCIABILITYKITRUNTIME_API FHCIAbilityKitAgentExecutorOptions
 	bool bDryRun = true;
 	EHCIAbilityKitAgentExecutorTerminationPolicy TerminationPolicy = EHCIAbilityKitAgentExecutorTerminationPolicy::StopOnFirstFailure;
 
+	// F5: integrate Stage E execution gates into executor preflight while still simulating execution.
+	bool bEnablePreflightGates = false;
+	bool bUserConfirmedWriteSteps = true;
+
+	// F5 mock RBAC seam (default to an authorized Artist write user).
+	FString MockUserName = TEXT("artist_a");
+	FString MockResolvedRole = TEXT("Artist");
+	bool bMockUserMatchedWhitelist = true;
+	TArray<FString> MockAllowedCapabilities = {TEXT("read_only"), TEXT("write")};
+
+	// F5 source control seam (default offline-local mode to avoid requiring SC in demo).
+	bool bSourceControlEnabled = false;
+	bool bSourceControlCheckoutSucceeded = false;
+
+	// F5 LOD safety seam used only for SetMeshLODGroup steps.
+	FString SimulatedLodTargetObjectClass = TEXT("UStaticMesh");
+	bool bSimulatedLodTargetNaniteEnabled = false;
+
 	// F4 demo seam: used by tests/console demo to validate step-level failure convergence without real tool execution.
 	int32 SimulatedFailureStepIndex = INDEX_NONE; // 0-based; INDEX_NONE disables simulation
 	FString SimulatedFailureErrorCode = TEXT("E4101");
@@ -43,6 +61,9 @@ struct HCIABILITYKITRUNTIME_API FHCIAbilityKitAgentExecutorStepResult
 
 	FString ErrorCode;
 	FString Reason;
+
+	FString FailurePhase;  // "-", "precheck", "preflight", "execute"
+	FString PreflightGate; // "-", "confirm_gate", "blast_radius", "rbac", "source_control", "lod_safety"
 };
 
 struct HCIABILITYKITRUNTIME_API FHCIAbilityKitAgentExecutorRunResult
@@ -58,6 +79,7 @@ struct HCIABILITYKITRUNTIME_API FHCIAbilityKitAgentExecutorRunResult
 
 	FString ExecutionMode;
 	FString TerminationPolicy;
+	bool bPreflightEnabled = false;
 	FString TerminalStatus;
 	FString TerminalReason;
 
@@ -66,9 +88,11 @@ struct HCIABILITYKITRUNTIME_API FHCIAbilityKitAgentExecutorRunResult
 	int32 SucceededSteps = 0;
 	int32 FailedSteps = 0;
 	int32 SkippedSteps = 0;
+	int32 PreflightBlockedSteps = 0;
 	int32 FailedStepIndex = INDEX_NONE; // 0-based
 	FString FailedStepId;
 	FString FailedToolName;
+	FString FailedGate;
 
 	FString StartedAtUtc;
 	FString FinishedAtUtc;

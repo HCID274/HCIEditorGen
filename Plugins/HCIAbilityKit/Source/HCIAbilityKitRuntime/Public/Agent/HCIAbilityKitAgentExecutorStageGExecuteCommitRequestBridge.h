@@ -1,0 +1,44 @@
+#pragma once
+
+#include "CoreMinimal.h"
+
+struct FHCIAbilityKitAgentApplyConfirmRequest;
+struct FHCIAbilityKitAgentApplyRequest;
+struct FHCIAbilityKitAgentExecuteTicket;
+struct FHCIAbilityKitAgentSimulateExecuteHandoffEnvelope;
+struct FHCIAbilityKitAgentSimulateExecuteArchiveBundle;
+struct FHCIAbilityKitAgentSimulateExecuteFinalReport;
+struct FHCIAbilityKitAgentSimulateExecuteReceipt;
+struct FHCIAbilityKitAgentStageGExecuteIntent;
+struct FHCIAbilityKitAgentStageGWriteEnableRequest;
+struct FHCIAbilityKitAgentStageGExecutePermitTicket;
+struct FHCIAbilityKitAgentStageGExecuteDispatchRequest;
+struct FHCIAbilityKitAgentStageGExecuteDispatchReceipt;
+struct FHCIAbilityKitAgentStageGExecuteCommitRequest;
+struct FHCIAbilityKitDryRunDiffReport;
+
+class HCIABILITYKITRUNTIME_API FHCIAbilityKitAgentExecutorStageGExecuteCommitRequestBridge
+{
+public:
+	static bool BuildStageGExecuteCommitRequest(
+		const FHCIAbilityKitAgentStageGExecuteDispatchReceipt& StageGExecuteDispatchReceipt,
+		const FString& ExpectedStageGExecuteDispatchReceiptId,
+		const FHCIAbilityKitAgentStageGExecuteDispatchRequest& StageGExecuteDispatchRequest,
+		const FHCIAbilityKitAgentStageGExecutePermitTicket& StageGExecutePermitTicket,
+		const FHCIAbilityKitAgentStageGWriteEnableRequest& StageGWriteEnableRequest,
+		const FHCIAbilityKitAgentStageGExecuteIntent& StageGExecuteIntent,
+		const FHCIAbilityKitAgentSimulateExecuteHandoffEnvelope& SimHandoffEnvelope,
+		const FHCIAbilityKitAgentSimulateExecuteArchiveBundle& SimArchiveBundle,
+		const FHCIAbilityKitAgentSimulateExecuteFinalReport& SimFinalReport,
+		const FHCIAbilityKitAgentSimulateExecuteReceipt& SimExecuteReceipt,
+		const FHCIAbilityKitAgentExecuteTicket& CurrentExecuteTicket,
+		const FHCIAbilityKitAgentApplyConfirmRequest& CurrentConfirmRequest,
+		const FHCIAbilityKitAgentApplyRequest& CurrentApplyRequest,
+		const FHCIAbilityKitDryRunDiffReport& CurrentReviewReport,
+		bool bExecuteCommitConfirmed,
+		FHCIAbilityKitAgentStageGExecuteCommitRequest& OutRequest);
+};
+
+
+
+

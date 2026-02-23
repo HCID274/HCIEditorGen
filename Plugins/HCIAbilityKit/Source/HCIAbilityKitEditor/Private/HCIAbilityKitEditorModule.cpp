@@ -16,7 +16,6 @@
 #include "Audit/HCIAbilityKitAuditReportJsonSerializer.h"
 #include "Audit/HCIAbilityKitAuditRuleRegistry.h"
 #include "Audit/HCIAbilityKitAuditTagNames.h"
-#include "ContentBrowserMenuContexts.h"
 #include "Dom/JsonObject.h"
 #include "Audit/HCIAbilityKitAuditScanService.h"
 #include "Common/HCIAbilityKitTimeFormat.h"
@@ -41,6 +40,7 @@
 #include "Misc/PackageName.h"
 #include "Misc/Paths.h"
 #include "Modules/ModuleManager.h"
+#include "Menu/HCIAbilityKitContentBrowserMenuRegistrar.h"
 #include "Search/HCIAbilityKitSearchIndexService.h"
 #include "Search/HCIAbilityKitSearchQueryService.h"
 #include "Policies/CondensedJsonPrintPolicy.h"
@@ -48,7 +48,6 @@
 #include "Serialization/JsonSerializer.h"
 #include "Serialization/JsonWriter.h"
 #include "Services/HCIAbilityKitParserService.h"
-#include "Styling/AppStyle.h"
 #include "ToolMenus.h"
 #include "UObject/Package.h"
 #include "UObject/GarbageCollection.h"
@@ -3501,45 +3500,6 @@ static bool HCI_RunPythonHook(const FString& SourceFilename, FHCIAbilityKitParse
 	return bParseOk;
 }
 
-static bool HCI_CanReimportSelectedAbilityKits(const FToolMenuContext& MenuContext)
-{
-	const UContentBrowserAssetContextMenuContext* Context = UContentBrowserAssetContextMenuContext::FindContextWithAssets(MenuContext);
-	if (!Context || !GHCIAbilityKitFactory)
-	{
-		return false;
-	}
-
-	for (UHCIAbilityKitAsset* Asset : Context->LoadSelectedObjects<UHCIAbilityKitAsset>())
-	{
-		if (!Asset)
-		{
-			continue;
-		}
-
-		TArray<FString> SourceFiles;
-		if (GHCIAbilityKitFactory->CanReimport(Asset, SourceFiles))
-		{
-			return true;
-		}
-	}
-
-	return false;
-}
-
-static void HCI_ReimportSelectedAbilityKits(const FToolMenuContext& MenuContext)
-{
-	const UContentBrowserAssetContextMenuContext* Context = UContentBrowserAssetContextMenuContext::FindContextWithAssets(MenuContext);
-	if (!Context || !GHCIAbilityKitFactory)
-	{
-		return;
-	}
-
-	for (UHCIAbilityKitAsset* Asset : Context->LoadSelectedObjects<UHCIAbilityKitAsset>())
-	{
-		GHCIAbilityKitFactory->Reimport(Asset);
-	}
-}
-
 void FHCIAbilityKitEditorModule::StartupModule()
 {
 	FHCIAbilityKitSearchIndexService::Get().RebuildFromAssetRegistry();
@@ -3552,6 +3512,12 @@ void FHCIAbilityKitEditorModule::StartupModule()
 
 	GHCIAbilityKitFactory = NewObject<UHCIAbilityKitFactory>(GetTransientPackage());
 	GHCIAbilityKitFactory->AddToRoot();
+
+	if (!ContentBrowserMenuRegistrar.IsValid())
+	{
+		ContentBrowserMenuRegistrar = MakeUnique<FHCIAbilityKitContentBrowserMenuRegistrar>();
+	}
+	ContentBrowserMenuRegistrar->Startup(GHCIAbilityKitFactory);
 
 	if (!GHCIAbilityKitSearchCommand.IsValid())
 	{
@@ -3713,17 +3679,16 @@ void FHCIAbilityKitEditorModule::StartupModule()
 			FConsoleCommandWithArgsDelegate::CreateStatic(&HCI_RunAbilityKitAgentPlanValidateDemoCommand));
 	}
 
-	UToolMenus::RegisterStartupCallback(FSimpleMulticastDelegate::FDelegate::CreateRaw(this, &FHCIAbilityKitEditorModule::RegisterMenus));
 }
 
 void FHCIAbilityKitEditorModule::ShutdownModule()
 {
 	FHCIAbilityKitParserService::ClearPythonHook();
 
-	if (UToolMenus::IsToolMenuUIEnabled())
+	if (ContentBrowserMenuRegistrar.IsValid())
 	{
-		UToolMenus::UnRegisterStartupCallback(this);
-		UToolMenus::UnregisterOwner(this);
+		ContentBrowserMenuRegistrar->Shutdown();
+		ContentBrowserMenuRegistrar.Reset();
 	}
 
 	if (GHCIAbilityKitFactory)
@@ -3761,29 +3726,6 @@ void FHCIAbilityKitEditorModule::ShutdownModule()
 	GHCIAbilityKitAgentPlanDemoCommand.Reset();
 	GHCIAbilityKitAgentPlanDemoJsonCommand.Reset();
 	GHCIAbilityKitAgentPlanValidateDemoCommand.Reset();
-}
-
-void FHCIAbilityKitEditorModule::RegisterMenus()
-{
-	FToolMenuOwnerScoped OwnerScoped(this);
-	UToolMenu* Menu = UE::ContentBrowser::ExtendToolMenu_AssetContextMenu(UHCIAbilityKitAsset::StaticClass());
-	if (!Menu)
-	{
-		return;
-	}
-
-	FToolMenuSection& Section = Menu->FindOrAddSection("GetAssetActions");
-	Section.AddDynamicEntry("HCIAbilityKit_Reimport", FNewToolMenuSectionDelegate::CreateLambda([](FToolMenuSection& InSection)
-	{
-		const TAttribute<FText> Label = NSLOCTEXT("HCIAbilityKit", "Reimport", "Reimport");
-		const TAttribute<FText> ToolTip = NSLOCTEXT("HCIAbilityKit", "Reimport_Tooltip", "Reimport from source .hciabilitykit file.");
-		const FSlateIcon Icon(FAppStyle::GetAppStyleSetName(), "ContentBrowser.AssetActions.ReimportAsset");
-
-		FToolUIAction UIAction;
-		UIAction.ExecuteAction = FToolMenuExecuteAction::CreateStatic(&HCI_ReimportSelectedAbilityKits);
-		UIAction.CanExecuteAction = FToolMenuCanExecuteAction::CreateStatic(&HCI_CanReimportSelectedAbilityKits);
-		InSection.AddMenuEntry("HCIAbilityKit_Reimport", Label, ToolTip, Icon, UIAction);
-	}));
 }
 
 IMPLEMENT_MODULE(FHCIAbilityKitEditorModule, HCIAbilityKitEditor)

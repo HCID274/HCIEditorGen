@@ -1,6 +1,9 @@
 #pragma once
 
 #include "Modules/ModuleManager.h"
+#include "Templates/UniquePtr.h"
+
+class FHCIAbilityKitContentBrowserMenuRegistrar;
 
 /**
  * HCIAbilityKit Editor 模块类
@@ -15,5 +18,5 @@ public:
 	virtual void ShutdownModule() override;
 
 private:
-	void RegisterMenus();
+	TUniquePtr<FHCIAbilityKitContentBrowserMenuRegistrar> ContentBrowserMenuRegistrar;
 };

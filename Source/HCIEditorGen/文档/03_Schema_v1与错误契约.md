@@ -1837,3 +1837,40 @@ public:
 - UE 控制台命令（G6）：
   - `HCIAbilityKit.AgentExecutePlanReviewPrepareStageGExecuteCommitRequest [execute_commit_confirmed=0|1] [tamper=none|digest|intent|handoff|dispatch|receipt|ready]`
   - `HCIAbilityKit.AgentExecutePlanReviewPrepareStageGExecuteCommitRequestJson [execute_commit_confirmed=0|1] [tamper=none|digest|intent|handoff|dispatch|receipt|ready]`
+
+### 14.5.20 StageG-SliceG7 StageGExecuteCommitRequest（Stage G 执行提交请求，dry-run）完整性校验 -> StageGExecuteCommitReceipt（Stage G 执行提交回执，dry-run）桥接
+
+- 目标：基于 G6 的 `StageGExecuteCommitRequest` 与最新 `StageGExecuteDispatchReceipt/StageGExecuteDispatchRequest/StageGExecutePermitTicket/StageGWriteEnableRequest/StageGExecuteIntent/SimHandoffEnvelope/SimArchiveBundle/SimFinalReport/SimExecuteReceipt/ExecuteTicket/ConfirmRequest/ApplyRequest/Review` 预览执行完整性校验，桥接为 `StageGExecuteCommitReceipt` 契约与 JSON；仍为 dry-run，不触发真实资产写入。
+- Runtime 桥接接口：`FHCIAbilityKitAgentExecutorStageGExecuteCommitReceiptBridge::BuildStageGExecuteCommitReceipt(...)`
+- 输出：`FHCIAbilityKitAgentStageGExecuteCommitReceipt`
+- 新增核心字段（G7）：
+  - `stage_g_execute_commit_request_id`
+  - `stage_g_execute_commit_receipt_digest`
+  - `stage_g_execute_commit_receipt_status`（`accepted|blocked`）
+  - `stage_g_execute_commit_accepted`
+  - `stage_g_execute_commit_receipt_ready`
+- 成功口径（G7）：
+  - `stage_g_execute_commit_receipt_status=accepted`
+  - `stage_g_execute_commit_accepted=true`
+  - `stage_g_execute_commit_receipt_ready=true`
+  - `error_code=-`
+  - `reason=stage_g_execute_commit_receipt_ready`
+- 新增错误码（G7）：
+  - `E4215 / stage_g_execute_commit_request_not_ready`
+- 继续沿用并可能在 G7 触发：
+  - `E4005 / user_not_confirmed`
+  - `E4005 / stage_g_write_enable_not_confirmed`
+  - `E4005 / stage_g_execute_dispatch_not_confirmed`
+  - `E4005 / stage_g_execute_commit_not_confirmed`
+  - `E4202 / *_mismatch`
+  - `E4204 / confirm_request_not_ready`
+  - `E4205 / execute_ticket_not_ready`
+  - `E4206 / simulate_execute_receipt_not_accepted`
+  - `E4207 / simulate_final_report_not_completed`
+  - `E4208 / sim_archive_bundle_not_ready`
+  - `E4209 / sim_handoff_envelope_not_ready`
+  - `E4210 / stage_g_execute_intent_not_ready`
+  - `E4214 / stage_g_execute_dispatch_receipt_not_ready`
+- UE 控制台命令（G7）：
+  - `HCIAbilityKit.AgentExecutePlanReviewPrepareStageGExecuteCommitReceipt [tamper=none|digest|intent|handoff|dispatch|receipt|commit|ready]`
+  - `HCIAbilityKit.AgentExecutePlanReviewPrepareStageGExecuteCommitReceiptJson [tamper=none|digest|intent|handoff|dispatch|receipt|commit|ready]`

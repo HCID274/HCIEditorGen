@@ -28,6 +28,8 @@
 #include "Agent/HCIAbilityKitAgentStageGExecuteDispatchReceiptJsonSerializer.h"
 #include "Agent/HCIAbilityKitAgentStageGExecuteCommitRequest.h"
 #include "Agent/HCIAbilityKitAgentStageGExecuteCommitRequestJsonSerializer.h"
+#include "Agent/HCIAbilityKitAgentStageGExecuteCommitReceipt.h"
+#include "Agent/HCIAbilityKitAgentStageGExecuteCommitReceiptJsonSerializer.h"
 #include "Agent/HCIAbilityKitAgentExecutor.h"
 #include "Agent/HCIAbilityKitAgentExecutorApplyConfirmBridge.h"
 #include "Agent/HCIAbilityKitAgentExecutorApplyRequestBridge.h"
@@ -43,6 +45,7 @@
 #include "Agent/HCIAbilityKitAgentExecutorStageGExecuteDispatchRequestBridge.h"
 #include "Agent/HCIAbilityKitAgentExecutorStageGExecuteDispatchReceiptBridge.h"
 #include "Agent/HCIAbilityKitAgentExecutorStageGExecuteCommitRequestBridge.h"
+#include "Agent/HCIAbilityKitAgentExecutorStageGExecuteCommitReceiptBridge.h"
 #include "Agent/HCIAbilityKitAgentPlan.h"
 #include "Agent/HCIAbilityKitAgentPlanJsonSerializer.h"
 #include "Agent/HCIAbilityKitAgentPlanner.h"
@@ -80,6 +83,7 @@ static FHCIAbilityKitAgentStageGExecutePermitTicket GHCIAbilityKitAgentStageGExe
 static FHCIAbilityKitAgentStageGExecuteDispatchRequest GHCIAbilityKitAgentStageGExecuteDispatchRequestPreviewState;
 static FHCIAbilityKitAgentStageGExecuteDispatchReceipt GHCIAbilityKitAgentStageGExecuteDispatchReceiptPreviewState;
 static FHCIAbilityKitAgentStageGExecuteCommitRequest GHCIAbilityKitAgentStageGExecuteCommitRequestPreviewState;
+static FHCIAbilityKitAgentStageGExecuteCommitReceipt GHCIAbilityKitAgentStageGExecuteCommitReceiptPreviewState;
 
 static FString HCI_JoinConsoleArgsAsText(const TArray<FString>& Args)
 {
@@ -6191,6 +6195,221 @@ static void HCI_RunAbilityKitAgentExecutePlanReviewPrepareStageGExecuteCommitReq
 	UE_LOG(LogHCIAbilityKitAgentDemo, Display, TEXT("%s"), *JsonText);
 }
 
+static bool HCI_TryParseStageGExecuteCommitReceiptTamperModeArg(const FString& InValue, FString& OutTamperMode)
+{
+	const FString Lower = InValue.TrimStartAndEnd().ToLower();
+	if (Lower == TEXT("none") || Lower == TEXT("digest") || Lower == TEXT("intent") || Lower == TEXT("handoff") ||
+		Lower == TEXT("dispatch") || Lower == TEXT("receipt") || Lower == TEXT("commit") || Lower == TEXT("ready"))
+	{
+		OutTamperMode = Lower;
+		return true;
+	}
+	return false;
+}
+
+static void HCI_LogAgentExecutorStageGExecuteCommitReceiptSummary(const FHCIAbilityKitAgentStageGExecuteCommitReceipt& Receipt)
+{
+	UE_LOG(
+		LogHCIAbilityKitAgentDemo,
+		Display,
+		TEXT("[HCIAbilityKit][AgentExecutorStageGExecuteCommitReceipt] summary request_id=%s stage_g_execute_commit_request_id=%s stage_g_execute_dispatch_receipt_id=%s stage_g_execute_dispatch_request_id=%s stage_g_execute_permit_ticket_id=%s stage_g_write_enable_request_id=%s stage_g_execute_intent_id=%s sim_handoff_envelope_id=%s selection_digest=%s stage_g_execute_commit_request_digest=%s stage_g_execute_commit_receipt_digest=%s execute_commit_confirmed=%s write_enabled=%s ready_for_stage_g_execute=%s stage_g_execute_commit_request_ready=%s stage_g_execute_commit_accepted=%s stage_g_execute_commit_receipt_ready=%s stage_g_execute_commit_request_status=%s stage_g_execute_commit_receipt_status=%s error_code=%s reason=%s validation=ok"),
+		Receipt.RequestId.IsEmpty() ? TEXT("-") : *Receipt.RequestId,
+		Receipt.StageGExecuteCommitRequestId.IsEmpty() ? TEXT("-") : *Receipt.StageGExecuteCommitRequestId,
+		Receipt.StageGExecuteDispatchReceiptId.IsEmpty() ? TEXT("-") : *Receipt.StageGExecuteDispatchReceiptId,
+		Receipt.StageGExecuteDispatchRequestId.IsEmpty() ? TEXT("-") : *Receipt.StageGExecuteDispatchRequestId,
+		Receipt.StageGExecutePermitTicketId.IsEmpty() ? TEXT("-") : *Receipt.StageGExecutePermitTicketId,
+		Receipt.StageGWriteEnableRequestId.IsEmpty() ? TEXT("-") : *Receipt.StageGWriteEnableRequestId,
+		Receipt.StageGExecuteIntentId.IsEmpty() ? TEXT("-") : *Receipt.StageGExecuteIntentId,
+		Receipt.SimHandoffEnvelopeId.IsEmpty() ? TEXT("-") : *Receipt.SimHandoffEnvelopeId,
+		Receipt.SelectionDigest.IsEmpty() ? TEXT("-") : *Receipt.SelectionDigest,
+		Receipt.StageGExecuteCommitRequestDigest.IsEmpty() ? TEXT("-") : *Receipt.StageGExecuteCommitRequestDigest,
+		Receipt.StageGExecuteCommitReceiptDigest.IsEmpty() ? TEXT("-") : *Receipt.StageGExecuteCommitReceiptDigest,
+		Receipt.bExecuteCommitConfirmed ? TEXT("true") : TEXT("false"),
+		Receipt.bWriteEnabled ? TEXT("true") : TEXT("false"),
+		Receipt.bReadyForStageGExecute ? TEXT("true") : TEXT("false"),
+		Receipt.bStageGExecuteCommitRequestReady ? TEXT("true") : TEXT("false"),
+		Receipt.bStageGExecuteCommitAccepted ? TEXT("true") : TEXT("false"),
+		Receipt.bStageGExecuteCommitReceiptReady ? TEXT("true") : TEXT("false"),
+		Receipt.StageGExecuteCommitRequestStatus.IsEmpty() ? TEXT("-") : *Receipt.StageGExecuteCommitRequestStatus,
+		Receipt.StageGExecuteCommitReceiptStatus.IsEmpty() ? TEXT("-") : *Receipt.StageGExecuteCommitReceiptStatus,
+		Receipt.ErrorCode.IsEmpty() ? TEXT("-") : *Receipt.ErrorCode,
+		Receipt.Reason.IsEmpty() ? TEXT("-") : *Receipt.Reason);
+}
+
+static void HCI_LogAgentExecutorStageGExecuteCommitReceiptRows(const FHCIAbilityKitAgentStageGExecuteCommitReceipt& Receipt)
+{
+	for (int32 Index = 0; Index < Receipt.Items.Num(); ++Index)
+	{
+		const FHCIAbilityKitAgentApplyRequestItem& Item = Receipt.Items[Index];
+		UE_LOG(
+			LogHCIAbilityKitAgentDemo,
+			Display,
+			TEXT("[HCIAbilityKit][AgentExecutorStageGExecuteCommitReceipt] row=%d tool_name=%s risk=%s blocked=%s skip_reason=%s object_type=%s locate_strategy=%s asset_path=%s field=%s evidence_key=%s actor_path=%s"),
+			Index,
+			Item.ToolName.IsEmpty() ? TEXT("-") : *Item.ToolName,
+			*FHCIAbilityKitDryRunDiff::RiskToString(Item.Risk),
+			Item.bBlocked ? TEXT("true") : TEXT("false"),
+			Item.SkipReason.IsEmpty() ? TEXT("-") : *Item.SkipReason,
+			*FHCIAbilityKitDryRunDiff::ObjectTypeToString(Item.ObjectType),
+			*FHCIAbilityKitDryRunDiff::LocateStrategyToString(Item.LocateStrategy),
+			Item.AssetPath.IsEmpty() ? TEXT("-") : *Item.AssetPath,
+			Item.Field.IsEmpty() ? TEXT("-") : *Item.Field,
+			Item.EvidenceKey.IsEmpty() ? TEXT("-") : *Item.EvidenceKey,
+			Item.ActorPath.IsEmpty() ? TEXT("-") : *Item.ActorPath);
+	}
+}
+
+static bool HCI_TryBuildAgentExecutorStageGExecuteCommitReceiptFromLatestPreview(
+	const FString& TamperMode,
+	FHCIAbilityKitAgentStageGExecuteCommitReceipt& OutReceipt)
+{
+	if (GHCIAbilityKitAgentStageGExecuteCommitRequestPreviewState.RequestId.IsEmpty())
+	{
+		UE_LOG(LogHCIAbilityKitAgentDemo, Warning, TEXT("[HCIAbilityKit][AgentExecutorStageGExecuteCommitReceipt] prepare=unavailable reason=no_stage_g_execute_commit_request_preview_state"));
+		UE_LOG(LogHCIAbilityKitAgentDemo, Display, TEXT("[HCIAbilityKit][AgentExecutorStageGExecuteCommitReceipt] suggestion=先运行 HCIAbilityKit.AgentExecutePlanReviewPrepareStageGExecuteCommitRequest"));
+		return false;
+	}
+	if (GHCIAbilityKitAgentStageGExecuteDispatchReceiptPreviewState.RequestId.IsEmpty())
+	{
+		UE_LOG(LogHCIAbilityKitAgentDemo, Warning, TEXT("[HCIAbilityKit][AgentExecutorStageGExecuteCommitReceipt] prepare=unavailable reason=no_stage_g_execute_dispatch_receipt_preview_state"));
+		return false;
+	}
+
+	FHCIAbilityKitAgentStageGExecuteCommitRequest CommitRequest = GHCIAbilityKitAgentStageGExecuteCommitRequestPreviewState;
+	const FHCIAbilityKitAgentStageGExecuteDispatchReceipt DispatchReceipt = GHCIAbilityKitAgentStageGExecuteDispatchReceiptPreviewState;
+	const FHCIAbilityKitAgentStageGExecuteDispatchRequest DispatchRequest = GHCIAbilityKitAgentStageGExecuteDispatchRequestPreviewState;
+	const FHCIAbilityKitAgentStageGExecutePermitTicket PermitTicket = GHCIAbilityKitAgentStageGExecutePermitTicketPreviewState;
+	const FHCIAbilityKitAgentStageGWriteEnableRequest WriteEnableRequest = GHCIAbilityKitAgentStageGWriteEnableRequestPreviewState;
+	const FHCIAbilityKitAgentStageGExecuteIntent Intent = GHCIAbilityKitAgentStageGExecuteIntentPreviewState;
+	const FHCIAbilityKitAgentSimulateExecuteHandoffEnvelope HandoffEnvelope = GHCIAbilityKitAgentSimulateExecuteHandoffEnvelopePreviewState;
+	const FHCIAbilityKitAgentSimulateExecuteArchiveBundle ArchiveBundle = GHCIAbilityKitAgentSimulateExecuteArchiveBundlePreviewState;
+	const FHCIAbilityKitAgentSimulateExecuteFinalReport FinalReport = GHCIAbilityKitAgentSimulateExecuteFinalReportPreviewState;
+	const FHCIAbilityKitAgentSimulateExecuteReceipt SimReceipt = GHCIAbilityKitAgentSimulateExecuteReceiptPreviewState;
+	const FHCIAbilityKitAgentExecuteTicket ExecuteTicket = GHCIAbilityKitAgentExecuteTicketPreviewState;
+	const FHCIAbilityKitAgentApplyConfirmRequest ConfirmRequest = GHCIAbilityKitAgentApplyConfirmRequestPreviewState;
+	const FHCIAbilityKitAgentApplyRequest ApplyRequest = GHCIAbilityKitAgentApplyRequestPreviewState;
+	const FHCIAbilityKitDryRunDiffReport Review = GHCIAbilityKitAgentExecutorReviewDiffPreviewState;
+
+	FString ExpectedCommitRequestId = CommitRequest.RequestId;
+	if (TamperMode == TEXT("digest"))
+	{
+		CommitRequest.SelectionDigest = TEXT("crc32_BAD0C0DE");
+	}
+	else if (TamperMode == TEXT("intent"))
+	{
+		CommitRequest.StageGExecuteIntentId += TEXT("_stale");
+	}
+	else if (TamperMode == TEXT("handoff"))
+	{
+		CommitRequest.SimHandoffEnvelopeId += TEXT("_stale");
+	}
+	else if (TamperMode == TEXT("dispatch"))
+	{
+		CommitRequest.StageGExecuteDispatchRequestId += TEXT("_stale");
+	}
+	else if (TamperMode == TEXT("receipt"))
+	{
+		CommitRequest.StageGExecuteDispatchReceiptId += TEXT("_stale");
+	}
+	else if (TamperMode == TEXT("commit"))
+	{
+		ExpectedCommitRequestId += TEXT("_stale");
+	}
+	else if (TamperMode == TEXT("ready"))
+	{
+		CommitRequest.bStageGExecuteCommitRequestReady = false;
+		CommitRequest.StageGExecuteCommitRequestStatus = TEXT("blocked");
+	}
+
+	if (!FHCIAbilityKitAgentExecutorStageGExecuteCommitReceiptBridge::BuildStageGExecuteCommitReceipt(
+		CommitRequest,
+		ExpectedCommitRequestId,
+		DispatchReceipt,
+		DispatchRequest,
+		PermitTicket,
+		WriteEnableRequest,
+		Intent,
+		HandoffEnvelope,
+		ArchiveBundle,
+		FinalReport,
+		SimReceipt,
+		ExecuteTicket,
+		ConfirmRequest,
+		ApplyRequest,
+		Review,
+		OutReceipt))
+	{
+		UE_LOG(LogHCIAbilityKitAgentDemo, Error, TEXT("[HCIAbilityKit][AgentExecutorStageGExecuteCommitReceipt] prepare_failed reason=bridge_failed"));
+		return false;
+	}
+
+	GHCIAbilityKitAgentStageGExecuteCommitReceiptPreviewState = OutReceipt;
+	return true;
+}
+
+static bool HCI_TryParseStageGExecuteCommitReceiptCommandArgs(const TArray<FString>& Args, FString& OutTamperMode)
+{
+	OutTamperMode = TEXT("none");
+	if (Args.Num() == 0)
+	{
+		return true;
+	}
+	if (Args.Num() != 1)
+	{
+		return false;
+	}
+	return HCI_TryParseStageGExecuteCommitReceiptTamperModeArg(Args[0], OutTamperMode);
+}
+
+static void HCI_RunAbilityKitAgentExecutePlanReviewPrepareStageGExecuteCommitReceiptCommand(const TArray<FString>& Args)
+{
+	FString TamperMode;
+	if (!HCI_TryParseStageGExecuteCommitReceiptCommandArgs(Args, TamperMode))
+	{
+		UE_LOG(LogHCIAbilityKitAgentDemo, Error, TEXT("[HCIAbilityKit][AgentExecutorStageGExecuteCommitReceipt] invalid_args usage=HCIAbilityKit.AgentExecutePlanReviewPrepareStageGExecuteCommitReceipt [tamper=none|digest|intent|handoff|dispatch|receipt|commit|ready]"));
+		return;
+	}
+
+	FHCIAbilityKitAgentStageGExecuteCommitReceipt Receipt;
+	if (!HCI_TryBuildAgentExecutorStageGExecuteCommitReceiptFromLatestPreview(TamperMode, Receipt))
+	{
+		return;
+	}
+
+	HCI_LogAgentExecutorStageGExecuteCommitReceiptSummary(Receipt);
+	HCI_LogAgentExecutorStageGExecuteCommitReceiptRows(Receipt);
+	UE_LOG(LogHCIAbilityKitAgentDemo, Display, TEXT("[HCIAbilityKit][AgentExecutorStageGExecuteCommitReceipt] hint=也可运行 HCIAbilityKit.AgentExecutePlanReviewPrepareStageGExecuteCommitReceiptJson [tamper] 输出 StageGExecuteCommitReceipt JSON"));
+}
+
+static void HCI_RunAbilityKitAgentExecutePlanReviewPrepareStageGExecuteCommitReceiptJsonCommand(const TArray<FString>& Args)
+{
+	FString TamperMode;
+	if (!HCI_TryParseStageGExecuteCommitReceiptCommandArgs(Args, TamperMode))
+	{
+		UE_LOG(LogHCIAbilityKitAgentDemo, Error, TEXT("[HCIAbilityKit][AgentExecutorStageGExecuteCommitReceipt] invalid_args usage=HCIAbilityKit.AgentExecutePlanReviewPrepareStageGExecuteCommitReceiptJson [tamper=none|digest|intent|handoff|dispatch|receipt|commit|ready]"));
+		return;
+	}
+
+	FHCIAbilityKitAgentStageGExecuteCommitReceipt Receipt;
+	if (!HCI_TryBuildAgentExecutorStageGExecuteCommitReceiptFromLatestPreview(TamperMode, Receipt))
+	{
+		return;
+	}
+
+	HCI_LogAgentExecutorStageGExecuteCommitReceiptSummary(Receipt);
+	HCI_LogAgentExecutorStageGExecuteCommitReceiptRows(Receipt);
+
+	FString JsonText;
+	if (!FHCIAbilityKitAgentStageGExecuteCommitReceiptJsonSerializer::SerializeToJsonString(Receipt, JsonText))
+	{
+		UE_LOG(LogHCIAbilityKitAgentDemo, Error, TEXT("[HCIAbilityKit][AgentExecutorStageGExecuteCommitReceipt] json_failed request_id=%s"), Receipt.RequestId.IsEmpty() ? TEXT("-") : *Receipt.RequestId);
+		return;
+	}
+
+	UE_LOG(LogHCIAbilityKitAgentDemo, Display, TEXT("[HCIAbilityKit][AgentExecutorStageGExecuteCommitReceipt] json request_id=%s bytes=%d"), Receipt.RequestId.IsEmpty() ? TEXT("-") : *Receipt.RequestId, JsonText.Len());
+	UE_LOG(LogHCIAbilityKitAgentDemo, Display, TEXT("%s"), *JsonText);
+}
+
 
 
 
@@ -6539,6 +6758,22 @@ void FHCIAbilityKitAgentDemoConsoleCommands::Startup()
 			TEXT("G6 Build Stage-G execute commit request (dry-run only) and print JSON. Usage: HCIAbilityKit.AgentExecutePlanReviewPrepareStageGExecuteCommitRequestJson [execute_commit_confirmed=0|1] [tamper=none|digest|intent|handoff|dispatch|receipt|ready]"),
 			FConsoleCommandWithArgsDelegate::CreateStatic(&HCI_RunAbilityKitAgentExecutePlanReviewPrepareStageGExecuteCommitRequestJsonCommand));
 	}
+
+	if (!AgentExecutePlanReviewPrepareStageGExecuteCommitReceiptCommand.IsValid())
+	{
+		AgentExecutePlanReviewPrepareStageGExecuteCommitReceiptCommand = MakeUnique<FAutoConsoleCommand>(
+			TEXT("HCIAbilityKit.AgentExecutePlanReviewPrepareStageGExecuteCommitReceipt"),
+			TEXT("G7 Validate latest StageGExecuteCommitRequest and build Stage-G execute commit receipt (dry-run only). Usage: HCIAbilityKit.AgentExecutePlanReviewPrepareStageGExecuteCommitReceipt [tamper=none|digest|intent|handoff|dispatch|receipt|commit|ready]"),
+			FConsoleCommandWithArgsDelegate::CreateStatic(&HCI_RunAbilityKitAgentExecutePlanReviewPrepareStageGExecuteCommitReceiptCommand));
+	}
+
+	if (!AgentExecutePlanReviewPrepareStageGExecuteCommitReceiptJsonCommand.IsValid())
+	{
+		AgentExecutePlanReviewPrepareStageGExecuteCommitReceiptJsonCommand = MakeUnique<FAutoConsoleCommand>(
+			TEXT("HCIAbilityKit.AgentExecutePlanReviewPrepareStageGExecuteCommitReceiptJson"),
+			TEXT("G7 Build Stage-G execute commit receipt (dry-run only) and print JSON. Usage: HCIAbilityKit.AgentExecutePlanReviewPrepareStageGExecuteCommitReceiptJson [tamper=none|digest|intent|handoff|dispatch|receipt|commit|ready]"),
+			FConsoleCommandWithArgsDelegate::CreateStatic(&HCI_RunAbilityKitAgentExecutePlanReviewPrepareStageGExecuteCommitReceiptJsonCommand));
+	}
 }
 
 void FHCIAbilityKitAgentDemoConsoleCommands::Shutdown()
@@ -6586,6 +6821,8 @@ void FHCIAbilityKitAgentDemoConsoleCommands::Shutdown()
 	AgentExecutePlanReviewPrepareStageGExecuteDispatchReceiptJsonCommand.Reset();
 	AgentExecutePlanReviewPrepareStageGExecuteCommitRequestCommand.Reset();
 	AgentExecutePlanReviewPrepareStageGExecuteCommitRequestJsonCommand.Reset();
+	AgentExecutePlanReviewPrepareStageGExecuteCommitReceiptCommand.Reset();
+	AgentExecutePlanReviewPrepareStageGExecuteCommitReceiptJsonCommand.Reset();
 }
 
 

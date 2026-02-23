@@ -7,7 +7,7 @@
 
 namespace
 {
-static bool HCI_TryLocateActorByPathCameraFocus(const FString& ActorPath, FString& OutReason)
+static bool HCI_ReviewLocate_TryLocateActorByPathCameraFocus(const FString& ActorPath, FString& OutReason)
 {
 	if (!GEditor)
 	{
@@ -42,7 +42,7 @@ static bool HCI_TryLocateActorByPathCameraFocus(const FString& ActorPath, FStrin
 	return false;
 }
 
-static bool HCI_TryLocateAssetSyncBrowser(const FString& AssetPath, FString& OutReason)
+static bool HCI_ReviewLocate_TryLocateAssetSyncBrowser(const FString& AssetPath, FString& OutReason)
 {
 	if (!GEditor)
 	{
@@ -110,8 +110,8 @@ bool FHCIAbilityKitAgentExecutorReviewLocateUtils::TryLocateResolvedRowInEditor(
 	if (Resolved.LocateStrategy == EHCIAbilityKitDryRunLocateStrategy::CameraFocus)
 	{
 		const FString ActorPathToLocate = Resolved.ActorPath.IsEmpty() ? Resolved.AssetPath : Resolved.ActorPath;
-		return HCI_TryLocateActorByPathCameraFocus(ActorPathToLocate, OutReason);
+		return HCI_ReviewLocate_TryLocateActorByPathCameraFocus(ActorPathToLocate, OutReason);
 	}
 
-	return HCI_TryLocateAssetSyncBrowser(Resolved.AssetPath, OutReason);
+	return HCI_ReviewLocate_TryLocateAssetSyncBrowser(Resolved.AssetPath, OutReason);
 }

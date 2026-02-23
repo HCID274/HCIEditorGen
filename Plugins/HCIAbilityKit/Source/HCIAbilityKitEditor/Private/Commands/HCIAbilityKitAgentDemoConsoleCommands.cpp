@@ -10,6 +10,7 @@
 #include "Agent/HCIAbilityKitAgentPlanValidator.h"
 #include "Agent/HCIAbilityKitDryRunDiff.h"
 #include "Agent/HCIAbilityKitDryRunDiffJsonSerializer.h"
+#include "Agent/HCIAbilityKitDryRunDiffSelection.h"
 #include "Agent/HCIAbilityKitToolRegistry.h"
 #include "Common/HCIAbilityKitTimeFormat.h"
 #include "Dom/JsonObject.h"
@@ -98,6 +99,49 @@ static bool HCI_TryParseNonNegativeIntArg(const FString& InValue, int32& OutValu
 		return false;
 	}
 	return OutValue >= 0;
+}
+
+static bool HCI_TryParseRowIndexListArgs(const TArray<FString>& Args, TArray<int32>& OutRows, FString& OutReason)
+{
+	OutRows.Reset();
+	OutReason = TEXT("ok");
+
+	if (Args.Num() <= 0)
+	{
+		OutReason = TEXT("empty_row_selection");
+		return false;
+	}
+
+	FString Joined = HCI_JoinConsoleArgsAsText(Args);
+	Joined.ReplaceInline(TEXT(","), TEXT(" "));
+	Joined.TrimStartAndEndInline();
+	if (Joined.IsEmpty())
+	{
+		OutReason = TEXT("empty_row_selection");
+		return false;
+	}
+
+	TArray<FString> Tokens;
+	Joined.ParseIntoArrayWS(Tokens);
+	if (Tokens.Num() <= 0)
+	{
+		OutReason = TEXT("empty_row_selection");
+		return false;
+	}
+
+	OutRows.Reserve(Tokens.Num());
+	for (const FString& Token : Tokens)
+	{
+		int32 RowIndex = INDEX_NONE;
+		if (!LexTryParseString(RowIndex, *Token) || RowIndex < 0)
+		{
+			OutReason = TEXT("row_index must be integer >= 0");
+			return false;
+		}
+		OutRows.Add(RowIndex);
+	}
+
+	return true;
 }
 
 
@@ -2457,6 +2501,132 @@ static void HCI_LogAgentExecutorReviewDiffRows(const TCHAR* CaseName, const FHCI
 	}
 }
 
+static void HCI_LogAgentExecutorReviewSelectSummary(const FHCIAbilityKitDryRunDiffSelectionResult& SelectionResult)
+{
+	const bool bUseWarning = SelectionResult.SelectedReport.Summary.Skipped > 0;
+	if (bUseWarning)
+	{
+		UE_LOG(
+			LogHCIAbilityKitAgentDemo,
+			Warning,
+			TEXT("[HCIAbilityKit][AgentExecutorReviewSelect] summary request_id=%s total_before=%d total_after=%d input_rows=%d unique_rows=%d dropped_duplicates=%d modifiable=%d skipped=%d validation=ok"),
+			SelectionResult.SelectedReport.RequestId.IsEmpty() ? TEXT("-") : *SelectionResult.SelectedReport.RequestId,
+			SelectionResult.TotalRowsBefore,
+			SelectionResult.TotalRowsAfter,
+			SelectionResult.InputRowCount,
+			SelectionResult.UniqueRowCount,
+			SelectionResult.DroppedDuplicateRows,
+			SelectionResult.SelectedReport.Summary.Modifiable,
+			SelectionResult.SelectedReport.Summary.Skipped);
+		return;
+	}
+
+	UE_LOG(
+		LogHCIAbilityKitAgentDemo,
+		Display,
+		TEXT("[HCIAbilityKit][AgentExecutorReviewSelect] summary request_id=%s total_before=%d total_after=%d input_rows=%d unique_rows=%d dropped_duplicates=%d modifiable=%d skipped=%d validation=ok"),
+		SelectionResult.SelectedReport.RequestId.IsEmpty() ? TEXT("-") : *SelectionResult.SelectedReport.RequestId,
+		SelectionResult.TotalRowsBefore,
+		SelectionResult.TotalRowsAfter,
+		SelectionResult.InputRowCount,
+		SelectionResult.UniqueRowCount,
+		SelectionResult.DroppedDuplicateRows,
+		SelectionResult.SelectedReport.Summary.Modifiable,
+		SelectionResult.SelectedReport.Summary.Skipped);
+}
+
+static void HCI_LogAgentExecutorReviewSelectRows(const FHCIAbilityKitDryRunDiffReport& Report)
+{
+	for (int32 Index = 0; Index < Report.DiffItems.Num(); ++Index)
+	{
+		const FHCIAbilityKitDryRunDiffItem& Item = Report.DiffItems[Index];
+		const bool bBlockedOrSkipped = !Item.SkipReason.IsEmpty();
+		if (bBlockedOrSkipped)
+		{
+			UE_LOG(
+				LogHCIAbilityKitAgentDemo,
+				Warning,
+				TEXT("[HCIAbilityKit][AgentExecutorReviewSelect] row=%d asset_path=%s field=%s before=%s after=%s tool_name=%s risk=%s skip_reason=%s object_type=%s locate_strategy=%s evidence_key=%s actor_path=%s"),
+				Index,
+				Item.AssetPath.IsEmpty() ? TEXT("-") : *Item.AssetPath,
+				Item.Field.IsEmpty() ? TEXT("-") : *Item.Field,
+				Item.Before.IsEmpty() ? TEXT("-") : *Item.Before,
+				Item.After.IsEmpty() ? TEXT("-") : *Item.After,
+				Item.ToolName.IsEmpty() ? TEXT("-") : *Item.ToolName,
+				*FHCIAbilityKitDryRunDiff::RiskToString(Item.Risk),
+				Item.SkipReason.IsEmpty() ? TEXT("-") : *Item.SkipReason,
+				*FHCIAbilityKitDryRunDiff::ObjectTypeToString(Item.ObjectType),
+				*FHCIAbilityKitDryRunDiff::LocateStrategyToString(Item.LocateStrategy),
+				Item.EvidenceKey.IsEmpty() ? TEXT("-") : *Item.EvidenceKey,
+				Item.ActorPath.IsEmpty() ? TEXT("-") : *Item.ActorPath);
+		}
+		else
+		{
+			UE_LOG(
+				LogHCIAbilityKitAgentDemo,
+				Display,
+				TEXT("[HCIAbilityKit][AgentExecutorReviewSelect] row=%d asset_path=%s field=%s before=%s after=%s tool_name=%s risk=%s skip_reason=%s object_type=%s locate_strategy=%s evidence_key=%s actor_path=%s"),
+				Index,
+				Item.AssetPath.IsEmpty() ? TEXT("-") : *Item.AssetPath,
+				Item.Field.IsEmpty() ? TEXT("-") : *Item.Field,
+				Item.Before.IsEmpty() ? TEXT("-") : *Item.Before,
+				Item.After.IsEmpty() ? TEXT("-") : *Item.After,
+				Item.ToolName.IsEmpty() ? TEXT("-") : *Item.ToolName,
+				*FHCIAbilityKitDryRunDiff::RiskToString(Item.Risk),
+				Item.SkipReason.IsEmpty() ? TEXT("-") : *Item.SkipReason,
+				*FHCIAbilityKitDryRunDiff::ObjectTypeToString(Item.ObjectType),
+				*FHCIAbilityKitDryRunDiff::LocateStrategyToString(Item.LocateStrategy),
+				Item.EvidenceKey.IsEmpty() ? TEXT("-") : *Item.EvidenceKey,
+				Item.ActorPath.IsEmpty() ? TEXT("-") : *Item.ActorPath);
+		}
+	}
+}
+
+static bool HCI_ApplyAgentExecutorReviewSelection(
+	const TArray<FString>& Args,
+	FHCIAbilityKitDryRunDiffSelectionResult& OutSelectionResult)
+{
+	TArray<int32> RequestedRows;
+	FString ParseReason;
+	if (!HCI_TryParseRowIndexListArgs(Args, RequestedRows, ParseReason))
+	{
+		UE_LOG(
+			LogHCIAbilityKitAgentDemo,
+			Error,
+			TEXT("[HCIAbilityKit][AgentExecutorReviewSelect] invalid_args reason=%s usage=HCIAbilityKit.AgentExecutePlanReviewSelect [row_indices_csv]"),
+			*ParseReason);
+		return false;
+	}
+
+	if (GHCIAbilityKitAgentExecutorReviewDiffPreviewState.DiffItems.Num() <= 0)
+	{
+		UE_LOG(LogHCIAbilityKitAgentDemo, Warning, TEXT("[HCIAbilityKit][AgentExecutorReviewSelect] select=unavailable reason=no_preview_state"));
+		UE_LOG(
+			LogHCIAbilityKitAgentDemo,
+			Display,
+			TEXT("[HCIAbilityKit][AgentExecutorReviewSelect] suggestion=先运行 HCIAbilityKit.AgentExecutePlanReviewDemo 或 HCIAbilityKit.AgentExecutePlanReviewJson"));
+		return false;
+	}
+
+	if (!FHCIAbilityKitDryRunDiffSelection::SelectRows(
+			GHCIAbilityKitAgentExecutorReviewDiffPreviewState,
+			RequestedRows,
+			OutSelectionResult))
+	{
+		UE_LOG(
+			LogHCIAbilityKitAgentDemo,
+			Error,
+			TEXT("[HCIAbilityKit][AgentExecutorReviewSelect] invalid_args error_code=%s reason=%s total=%d"),
+			OutSelectionResult.ErrorCode.IsEmpty() ? TEXT("-") : *OutSelectionResult.ErrorCode,
+			OutSelectionResult.Reason.IsEmpty() ? TEXT("-") : *OutSelectionResult.Reason,
+			GHCIAbilityKitAgentExecutorReviewDiffPreviewState.DiffItems.Num());
+		return false;
+	}
+
+	GHCIAbilityKitAgentExecutorReviewDiffPreviewState = OutSelectionResult.SelectedReport;
+	return true;
+}
+
 static bool HCI_BuildAgentExecutorReviewDemoCaseConfig(
 	const FString& CaseKey,
 	FHCIAbilityKitAgentPlan& OutPlan,
@@ -2749,6 +2919,53 @@ static void HCI_RunAbilityKitAgentExecutePlanReviewLocateCommand(const TArray<FS
 		Resolved.ActorPath.IsEmpty() ? TEXT("-") : *Resolved.ActorPath);
 }
 
+static void HCI_RunAbilityKitAgentExecutePlanReviewSelectCommand(const TArray<FString>& Args)
+{
+	FHCIAbilityKitDryRunDiffSelectionResult SelectionResult;
+	if (!HCI_ApplyAgentExecutorReviewSelection(Args, SelectionResult))
+	{
+		return;
+	}
+
+	HCI_LogAgentExecutorReviewSelectSummary(SelectionResult);
+	HCI_LogAgentExecutorReviewSelectRows(SelectionResult.SelectedReport);
+	UE_LOG(
+		LogHCIAbilityKitAgentDemo,
+		Display,
+		TEXT("[HCIAbilityKit][AgentExecutorReviewSelect] hint=已将最新审阅预览替换为已采纳子集，可继续运行 HCIAbilityKit.AgentExecutePlanReviewLocate [row_index]"));
+}
+
+static void HCI_RunAbilityKitAgentExecutePlanReviewSelectJsonCommand(const TArray<FString>& Args)
+{
+	FHCIAbilityKitDryRunDiffSelectionResult SelectionResult;
+	if (!HCI_ApplyAgentExecutorReviewSelection(Args, SelectionResult))
+	{
+		return;
+	}
+
+	HCI_LogAgentExecutorReviewSelectSummary(SelectionResult);
+	HCI_LogAgentExecutorReviewSelectRows(SelectionResult.SelectedReport);
+
+	FString JsonText;
+	if (!FHCIAbilityKitDryRunDiffJsonSerializer::SerializeToJsonString(SelectionResult.SelectedReport, JsonText))
+	{
+		UE_LOG(
+			LogHCIAbilityKitAgentDemo,
+			Error,
+			TEXT("[HCIAbilityKit][AgentExecutorReviewSelect] json_failed request_id=%s"),
+			SelectionResult.SelectedReport.RequestId.IsEmpty() ? TEXT("-") : *SelectionResult.SelectedReport.RequestId);
+		return;
+	}
+
+	UE_LOG(
+		LogHCIAbilityKitAgentDemo,
+		Display,
+		TEXT("[HCIAbilityKit][AgentExecutorReviewSelect] json request_id=%s bytes=%d"),
+		SelectionResult.SelectedReport.RequestId.IsEmpty() ? TEXT("-") : *SelectionResult.SelectedReport.RequestId,
+		JsonText.Len());
+	UE_LOG(LogHCIAbilityKitAgentDemo, Display, TEXT("%s"), *JsonText);
+}
+
 static void HCI_RunAbilityKitAgentExecutePlanDemoCommand(const TArray<FString>& Args)
 {
 	FHCIAbilityKitToolRegistry& Registry = FHCIAbilityKitToolRegistry::Get();
@@ -2941,6 +3158,22 @@ void FHCIAbilityKitAgentDemoConsoleCommands::Startup()
 			TEXT("F7 Locate a row from the latest ExecutorReview dry-run diff preview. Usage: HCIAbilityKit.AgentExecutePlanReviewLocate [row_index]"),
 			FConsoleCommandWithArgsDelegate::CreateStatic(&HCI_RunAbilityKitAgentExecutePlanReviewLocateCommand));
 	}
+
+	if (!AgentExecutePlanReviewSelectCommand.IsValid())
+	{
+		AgentExecutePlanReviewSelectCommand = MakeUnique<FAutoConsoleCommand>(
+			TEXT("HCIAbilityKit.AgentExecutePlanReviewSelect"),
+			TEXT("F8 Select review rows (dedupe/filter) from latest ExecutorReview preview. Usage: HCIAbilityKit.AgentExecutePlanReviewSelect [row_indices_csv]"),
+			FConsoleCommandWithArgsDelegate::CreateStatic(&HCI_RunAbilityKitAgentExecutePlanReviewSelectCommand));
+	}
+
+	if (!AgentExecutePlanReviewSelectJsonCommand.IsValid())
+	{
+		AgentExecutePlanReviewSelectJsonCommand = MakeUnique<FAutoConsoleCommand>(
+			TEXT("HCIAbilityKit.AgentExecutePlanReviewSelectJson"),
+			TEXT("F8 Select review rows and print selected DryRunDiff JSON. Usage: HCIAbilityKit.AgentExecutePlanReviewSelectJson [row_indices_csv]"),
+			FConsoleCommandWithArgsDelegate::CreateStatic(&HCI_RunAbilityKitAgentExecutePlanReviewSelectJsonCommand));
+	}
 }
 
 void FHCIAbilityKitAgentDemoConsoleCommands::Shutdown()
@@ -2960,4 +3193,6 @@ void FHCIAbilityKitAgentDemoConsoleCommands::Shutdown()
 	AgentExecutePlanReviewDemoCommand.Reset();
 	AgentExecutePlanReviewJsonCommand.Reset();
 	AgentExecutePlanReviewLocateCommand.Reset();
+	AgentExecutePlanReviewSelectCommand.Reset();
+	AgentExecutePlanReviewSelectJsonCommand.Reset();
 }

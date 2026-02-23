@@ -1016,6 +1016,50 @@ public:
   - 不修改 F6 `AgentExecutePlanReviewDemo/Json` 的既有 `summary + row=` 字段口径。
   - F7 仅新增 `Locate` 命令与辅助 util，不改变 F6 桥接 JSON 契约。
 
+### 14.5.6 StageF-SliceF8 ExecutorReview 逐项采纳选择契约与过滤预览（Selection）
+
+- 目标：在 F6/F7 已建立的“最新审阅预览”`FHCIAbilityKitDryRunDiffReport` 上，按 `row_index` 列表执行逐项采纳选择（去重/越界校验/过滤），生成“已采纳子集”审阅预览与 JSON（仍为 `simulate_dry_run`，不触发真实资产写入）。
+- Runtime 新增选择过滤器（F8）：
+  - `FHCIAbilityKitDryRunDiffSelection::SelectRows(...)`
+  - 输入：`SourceReport + RequestedRowIndices`
+  - 输出：`FHCIAbilityKitDryRunDiffSelectionResult`
+- F8 选择过滤规则（冻结）：
+  - `RequestedRowIndices.Num()==0`：失败，`error_code=E4201`，`reason=empty_row_selection`
+  - 任一 `row_index < 0 || out_of_range`：失败，`error_code=E4201`，`reason=row_index_out_of_range`
+  - 重复行号：允许输入，但执行去重（按“首次出现顺序”保留）
+    - 统计 `dropped_duplicates`
+  - 去重后为空：失败，`error_code=E4201`，`reason=empty_row_selection_after_dedup`
+  - 成功：输出 `SelectedReport`，并复用 `FHCIAbilityKitDryRunDiff::NormalizeAndFinalize(...)` 重新计算 `summary/modifiable/skipped` 与定位策略归一化
+- F8 结果结构（最小字段，冻结）：
+  - `bSuccess/error_code/reason`
+  - `input_row_count/unique_row_count/dropped_duplicate_rows`
+  - `total_rows_before/total_rows_after`
+  - `applied_row_indices[]`
+  - `selected_report`
+- Editor 新增命令（F8）：
+  - `HCIAbilityKit.AgentExecutePlanReviewSelect [row_indices_csv]`
+  - `HCIAbilityKit.AgentExecutePlanReviewSelectJson [row_indices_csv]`
+  - 输入来源：F6/F7 预览状态 `GHCIAbilityKitAgentExecutorReviewDiffPreviewState`
+  - 行号参数兼容：逗号分隔或空格分隔（如 `0,2` / `0 2`）
+  - 成功后行为：将“最新审阅预览状态”替换为已采纳子集（便于直接复用 F7 `Locate`）
+- F8 日志口径（新增，冻结）：
+  - 无预览状态（Warning + 指引）：
+    - `[HCIAbilityKit][AgentExecutorReviewSelect] select=unavailable reason=no_preview_state`
+    - `suggestion=先运行 HCIAbilityKit.AgentExecutePlanReviewDemo 或 HCIAbilityKit.AgentExecutePlanReviewJson`
+  - 非法参数（Error）：
+    - `invalid_args reason=row_index must be integer >= 0 ...`
+    - 或 `invalid_args error_code=E4201 reason=row_index_out_of_range total=...`
+  - 选择摘要（Display/Warning）：
+    - `[HCIAbilityKit][AgentExecutorReviewSelect] summary request_id=... total_before=... total_after=... input_rows=... unique_rows=... dropped_duplicates=... modifiable=... skipped=... validation=ok`
+  - 选择结果行（Display/Warning）：
+    - `row=... asset_path=... field=... before=... after=... tool_name=... risk=... skip_reason=... object_type=... locate_strategy=... evidence_key=... actor_path=...`
+  - JSON 输出：
+    - `[HCIAbilityKit][AgentExecutorReviewSelect] json request_id=... bytes=...`
+    - 后续输出 JSON 文本（复用 E2 `DryRunDiff` 序列化器）
+- 兼容性要求（F8）：
+  - 不修改 F6 `AgentExecutePlanReviewDemo/Json` 与 F7 `AgentExecutePlanReviewLocate` 的既有日志字段口径。
+  - F8 仅新增“选择过滤”命令与 Runtime 过滤器；输出 JSON 仍复用 E2 `DryRunDiff` 契约字段名（`request_id/summary/diff_items[]`）。
+
 ### 14.6 一期禁止实现（延期到 Phase 3）
 
 - 记忆门禁与 TTL 细则（Session TTL/SOP 自动提炼触发策略）。

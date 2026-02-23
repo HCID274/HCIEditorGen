@@ -257,8 +257,9 @@ Scope: whole repo.
   - `Stage G-SliceG2` 已通过：StageGExecuteIntent（validate-only 入口意图包）完整性校验 + Stage G 写权限二次确认 -> StageGWriteEnableRequest（写权限启用请求，dry-run）桥接（新增 `write_enable_confirmed` 二次确认门禁，输出 `stage_g_write_enable_digest/stage_g_write_status/ready_for_stage_g_execute`；用户在 UE 手测中发现并推动修复 `intent` 篡改未拦截漏洞，现已命中 `E4202/stage_g_execute_intent_id_mismatch`，且正常场景回归通过）已接入并通过 UE 手测。
   - `Stage G-SliceG3` 已通过：StageGWriteEnableRequest（写权限启用请求，dry-run）完整性校验 -> StageGExecutePermitTicket（Stage G 执行许可票据，dry-run）桥接（新增 `stage_g_write_enable_request_id/stage_g_write_enable_digest/stage_g_execute_permit_digest/stage_g_execute_permit_status/stage_g_execute_permit_ready`，新增 `E4211/stage_g_write_enable_request_not_ready`；用户 UE 手测验证正常场景 `stage_g_execute_permit_ticket_ready` 与 `E4005/E4211/E4202` 阻断链路均正确）已接入并通过 UE 手测。
   - `Stage G-SliceG4` 已通过：StageGExecutePermitTicket（执行许可票据，dry-run）完整性校验 + 执行派发二次确认 -> StageGExecuteDispatchRequest（执行派发请求，dry-run）桥接（新增 `execute_dispatch_confirmed`、`stage_g_execute_permit_ticket_id/stage_g_execute_dispatch_digest/stage_g_execute_dispatch_status/stage_g_execute_dispatch_ready`，新增 `E4212/stage_g_execute_permit_ticket_not_ready`；用户 UE 手测验证正常场景 `stage_g_execute_dispatch_request_ready`、`E4005/E4212/E4202` 阻断链路与 JSON/行级定位字段均正确；`1 permit` 手测输入触发 `invalid_args`，但 `1 ready` 已完成 `E4212` 覆盖验证）。
-  - 当前切片：`Stage G-SliceG5`（待定义；文档先行）
-  - 下一切片：`Stage G-SliceG6`（待定义；G5 通过后冻结）
+  - `Stage G-SliceG5` 已通过：StageGExecuteDispatchRequest（执行派发请求，dry-run）完整性校验 -> StageGExecuteDispatchReceipt（执行派发回执，dry-run）桥接（新增 `stage_g_execute_dispatch_request_id/stage_g_execute_dispatch_receipt_digest/stage_g_execute_dispatch_receipt_status/stage_g_execute_dispatch_accepted/stage_g_execute_dispatch_receipt_ready` 与 `E4213/stage_g_execute_dispatch_request_not_ready`；用户 UE 手测验证正常场景 `stage_g_execute_dispatch_receipt_ready`、`E4202/E4213` 阻断链路、可选 `E4005` 穿透回溯，以及 JSON/行级定位字段均正确）已接入并通过 UE 手测。
+  - 当前切片：`Stage G-SliceG6`（待定义；文档先行）
+  - 下一切片：`Stage G-SliceG6`（冻结后实现）
   - 兼容性说明（时间字符串）：对外日志/JSON 的时间值已统一改为北京时间 `+08:00` 输出；字段名（如 `updated_utc/generated_utc/timestamp_utc`）暂保持不变以兼容既有门禁与测试。
   - D 段收尾后续主线：`Stage E`（安全执行：Dry-Run/Confirm/Transaction/SC）-> `Stage F`（NL->Plan->Executor）。
   - B3 最新状态：

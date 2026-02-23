@@ -1737,3 +1737,52 @@ public:
 - UE 控制台命令（G4）：
   - `HCIAbilityKit.AgentExecutePlanReviewPrepareStageGExecuteDispatchRequest [execute_dispatch_confirmed=0|1] [tamper=none|digest|intent|handoff|permit|ready]`
   - `HCIAbilityKit.AgentExecutePlanReviewPrepareStageGExecuteDispatchRequestJson [execute_dispatch_confirmed=0|1] [tamper=none|digest|intent|handoff|permit|ready]`
+
+### 14.5.18 StageG-SliceG5 StageGExecuteDispatchRequest（Stage G 执行派发请求，dry-run）完整性校验 -> StageGExecuteDispatchReceipt（Stage G 执行派发回执，dry-run）桥接
+
+- 目标：基于 G4 的 `StageGExecuteDispatchRequest` 与最新 `StageGExecutePermitTicket/StageGWriteEnableRequest/StageGExecuteIntent/SimHandoffEnvelope/SimArchiveBundle/SimFinalReport/SimExecuteReceipt/ExecuteTicket/ConfirmRequest/ApplyRequest/Review` 预览执行完整性校验，桥接为 `StageGExecuteDispatchReceipt` 契约与 JSON；仍为 dry-run，不触发真实资产写入。
+- Runtime 桥接接口：`FHCIAbilityKitAgentExecutorStageGExecuteDispatchReceiptBridge::BuildStageGExecuteDispatchReceipt(...)`
+- 输出：`FHCIAbilityKitAgentStageGExecuteDispatchReceipt`
+
+- G5 顶层字段（最小冻结）：
+  - `request_id/stage_g_execute_dispatch_request_id/stage_g_execute_permit_ticket_id/stage_g_write_enable_request_id/stage_g_execute_intent_id`
+  - `sim_handoff_envelope_id/sim_archive_bundle_id/sim_final_report_id/sim_execute_receipt_id`
+  - `execute_ticket_id/confirm_request_id/apply_request_id/review_request_id`
+  - `selection_digest/archive_digest/handoff_digest/execute_intent_digest/stage_g_write_enable_digest/stage_g_execute_permit_digest/stage_g_execute_dispatch_digest/stage_g_execute_dispatch_receipt_digest`
+  - `execute_target/handoff_target`
+  - `terminal_status/archive_status/handoff_status/stage_g_status/stage_g_write_status/stage_g_execute_permit_status/stage_g_execute_dispatch_status/stage_g_execute_dispatch_receipt_status`
+  - `user_confirmed/write_enable_confirmed/execute_dispatch_confirmed`
+  - `ready_to_simulate_execute/simulated_dispatch_accepted/simulation_completed/archive_ready/handoff_ready`
+  - `write_enabled/ready_for_stage_g_entry/ready_for_stage_g_execute/stage_g_execute_permit_ready/stage_g_execute_dispatch_ready`
+  - `stage_g_execute_dispatch_accepted/stage_g_execute_dispatch_receipt_ready`
+  - `error_code/reason`
+  - `summary/items`（保留 `blocked/skip_reason/object_type/locate_strategy/evidence_key/actor_path`）
+
+- 成功口径（G5）：
+  - `stage_g_execute_dispatch_receipt_ready=true`
+  - `stage_g_execute_dispatch_accepted=true`
+  - `write_enabled=true`
+  - `ready_for_stage_g_execute=true`
+  - `stage_g_execute_dispatch_receipt_status=accepted`
+  - `error_code=-`
+  - `reason=stage_g_execute_dispatch_receipt_ready`
+
+- 错误码与原因（新增/延续）：
+  - `E4213 / stage_g_execute_dispatch_request_not_ready`（新增）
+  - `E4212 / stage_g_execute_permit_ticket_not_ready`
+  - `E4211 / stage_g_write_enable_request_not_ready`
+  - `E4210 / stage_g_execute_intent_not_ready`
+  - `E4209 / sim_handoff_envelope_not_ready`
+  - `E4208 / sim_archive_bundle_not_ready`
+  - `E4207 / simulate_final_report_not_completed`
+  - `E4206 / simulate_execute_receipt_not_accepted`
+  - `E4205 / execute_ticket_not_ready`
+  - `E4204 / confirm_request_not_ready`
+  - `E4005 / user_not_confirmed`
+  - `E4005 / stage_g_write_enable_not_confirmed`
+  - `E4005 / stage_g_execute_dispatch_not_confirmed`
+  - `E4202 / *_mismatch`
+
+- UE 控制台命令（G5）：
+  - `HCIAbilityKit.AgentExecutePlanReviewPrepareStageGExecuteDispatchReceipt [tamper=none|digest|intent|handoff|dispatch|ready]`
+  - `HCIAbilityKit.AgentExecutePlanReviewPrepareStageGExecuteDispatchReceiptJson [tamper=none|digest|intent|handoff|dispatch|ready]`

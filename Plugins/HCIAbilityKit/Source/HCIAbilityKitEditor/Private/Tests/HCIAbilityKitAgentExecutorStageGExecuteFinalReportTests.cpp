@@ -17,6 +17,7 @@
 #include "Agent/HCIAbilityKitAgentExecutorStageGExecuteDispatchReceiptBridge.h"
 #include "Agent/HCIAbilityKitAgentExecutorStageGExecuteCommitRequestBridge.h"
 #include "Agent/HCIAbilityKitAgentExecutorStageGExecuteCommitReceiptBridge.h"
+#include "Agent/HCIAbilityKitAgentExecutorStageGExecuteFinalReportBridge.h"
 #include "Agent/HCIAbilityKitAgentSimulateExecuteArchiveBundle.h"
 #include "Agent/HCIAbilityKitAgentSimulateExecuteFinalReport.h"
 #include "Agent/HCIAbilityKitAgentSimulateExecuteHandoffEnvelope.h"
@@ -28,13 +29,14 @@
 #include "Agent/HCIAbilityKitAgentStageGExecuteDispatchReceipt.h"
 #include "Agent/HCIAbilityKitAgentStageGExecuteCommitRequest.h"
 #include "Agent/HCIAbilityKitAgentStageGExecuteCommitReceipt.h"
-#include "Agent/HCIAbilityKitAgentStageGExecuteCommitReceiptJsonSerializer.h"
+#include "Agent/HCIAbilityKitAgentStageGExecuteFinalReport.h"
+#include "Agent/HCIAbilityKitAgentStageGExecuteFinalReportJsonSerializer.h"
 #include "Agent/HCIAbilityKitDryRunDiff.h"
 #include "Misc/AutomationTest.h"
 
 namespace
 {
-static FHCIAbilityKitDryRunDiffReport MakeG7SelectedReviewReport()
+static FHCIAbilityKitDryRunDiffReport MakeG8SelectedReviewReport()
 {
 	FHCIAbilityKitDryRunDiffReport Report;
 	Report.RequestId = TEXT("req_g3_review");
@@ -53,14 +55,14 @@ static FHCIAbilityKitDryRunDiffReport MakeG7SelectedReviewReport()
 	return Report;
 }
 
-static FHCIAbilityKitAgentApplyRequest MakeG7ApplyRequest(const FHCIAbilityKitDryRunDiffReport& Review)
+static FHCIAbilityKitAgentApplyRequest MakeG8ApplyRequest(const FHCIAbilityKitDryRunDiffReport& Review)
 {
 	FHCIAbilityKitAgentApplyRequest ApplyRequest;
 	check(FHCIAbilityKitAgentExecutorApplyRequestBridge::BuildApplyRequest(Review, ApplyRequest));
 	return ApplyRequest;
 }
 
-static FHCIAbilityKitAgentApplyConfirmRequest MakeG7ConfirmRequest(
+static FHCIAbilityKitAgentApplyConfirmRequest MakeG8ConfirmRequest(
 	const FHCIAbilityKitAgentApplyRequest& ApplyRequest,
 	const FHCIAbilityKitDryRunDiffReport& Review,
 	const bool bUserConfirmed)
@@ -70,7 +72,7 @@ static FHCIAbilityKitAgentApplyConfirmRequest MakeG7ConfirmRequest(
 	return ConfirmRequest;
 }
 
-static FHCIAbilityKitAgentExecuteTicket MakeG7ExecuteTicket(
+static FHCIAbilityKitAgentExecuteTicket MakeG8ExecuteTicket(
 	const FHCIAbilityKitAgentApplyConfirmRequest& ConfirmRequest,
 	const FHCIAbilityKitAgentApplyRequest& ApplyRequest,
 	const FHCIAbilityKitDryRunDiffReport& Review)
@@ -80,7 +82,7 @@ static FHCIAbilityKitAgentExecuteTicket MakeG7ExecuteTicket(
 	return ExecuteTicket;
 }
 
-static FHCIAbilityKitAgentSimulateExecuteReceipt MakeG7Receipt(
+static FHCIAbilityKitAgentSimulateExecuteReceipt MakeG8Receipt(
 	const FHCIAbilityKitAgentExecuteTicket& ExecuteTicket,
 	const FHCIAbilityKitAgentApplyConfirmRequest& ConfirmRequest,
 	const FHCIAbilityKitAgentApplyRequest& ApplyRequest,
@@ -92,7 +94,7 @@ static FHCIAbilityKitAgentSimulateExecuteReceipt MakeG7Receipt(
 	return Receipt;
 }
 
-static FHCIAbilityKitAgentSimulateExecuteFinalReport MakeG7FinalReport(
+static FHCIAbilityKitAgentSimulateExecuteFinalReport MakeG8FinalReport(
 	const FHCIAbilityKitAgentSimulateExecuteReceipt& Receipt,
 	const FHCIAbilityKitAgentExecuteTicket& ExecuteTicket,
 	const FHCIAbilityKitAgentApplyConfirmRequest& ConfirmRequest,
@@ -105,7 +107,7 @@ static FHCIAbilityKitAgentSimulateExecuteFinalReport MakeG7FinalReport(
 	return FinalReport;
 }
 
-static FHCIAbilityKitAgentSimulateExecuteArchiveBundle MakeG7ArchiveBundle(
+static FHCIAbilityKitAgentSimulateExecuteArchiveBundle MakeG8ArchiveBundle(
 	const FHCIAbilityKitAgentSimulateExecuteFinalReport& FinalReport,
 	const FHCIAbilityKitAgentSimulateExecuteReceipt& Receipt,
 	const FHCIAbilityKitAgentExecuteTicket& ExecuteTicket,
@@ -119,7 +121,7 @@ static FHCIAbilityKitAgentSimulateExecuteArchiveBundle MakeG7ArchiveBundle(
 	return ArchiveBundle;
 }
 
-static FHCIAbilityKitAgentSimulateExecuteHandoffEnvelope MakeG7HandoffEnvelope(
+static FHCIAbilityKitAgentSimulateExecuteHandoffEnvelope MakeG8HandoffEnvelope(
 	const FHCIAbilityKitAgentSimulateExecuteArchiveBundle& ArchiveBundle,
 	const FHCIAbilityKitAgentSimulateExecuteFinalReport& FinalReport,
 	const FHCIAbilityKitAgentSimulateExecuteReceipt& Receipt,
@@ -134,7 +136,7 @@ static FHCIAbilityKitAgentSimulateExecuteHandoffEnvelope MakeG7HandoffEnvelope(
 	return HandoffEnvelope;
 }
 
-static FHCIAbilityKitAgentStageGExecuteIntent MakeG7StageGIntent(
+static FHCIAbilityKitAgentStageGExecuteIntent MakeG8StageGIntent(
 	const FHCIAbilityKitAgentSimulateExecuteHandoffEnvelope& HandoffEnvelope,
 	const FHCIAbilityKitAgentSimulateExecuteArchiveBundle& ArchiveBundle,
 	const FHCIAbilityKitAgentSimulateExecuteFinalReport& FinalReport,
@@ -150,7 +152,7 @@ static FHCIAbilityKitAgentStageGExecuteIntent MakeG7StageGIntent(
 	return Intent;
 }
 
-static FHCIAbilityKitAgentStageGWriteEnableRequest MakeG7WriteEnableRequest(
+static FHCIAbilityKitAgentStageGWriteEnableRequest MakeG8WriteEnableRequest(
 	const FHCIAbilityKitAgentStageGExecuteIntent& Intent,
 	const FHCIAbilityKitAgentSimulateExecuteHandoffEnvelope& HandoffEnvelope,
 	const FHCIAbilityKitAgentSimulateExecuteArchiveBundle& ArchiveBundle,
@@ -179,7 +181,7 @@ static FHCIAbilityKitAgentStageGWriteEnableRequest MakeG7WriteEnableRequest(
 	return Request;
 }
 
-static FHCIAbilityKitAgentStageGExecutePermitTicket MakeG7PermitTicket(
+static FHCIAbilityKitAgentStageGExecutePermitTicket MakeG8PermitTicket(
 	const FHCIAbilityKitAgentStageGWriteEnableRequest& WriteEnableRequest,
 	const FHCIAbilityKitAgentStageGExecuteIntent& Intent,
 	const FHCIAbilityKitAgentSimulateExecuteHandoffEnvelope& HandoffEnvelope,
@@ -208,7 +210,7 @@ static FHCIAbilityKitAgentStageGExecutePermitTicket MakeG7PermitTicket(
 	return Ticket;
 }
 
-static FHCIAbilityKitAgentStageGExecuteDispatchRequest MakeG7DispatchRequest(
+static FHCIAbilityKitAgentStageGExecuteDispatchRequest MakeG8DispatchRequest(
 	const FHCIAbilityKitAgentStageGExecutePermitTicket& PermitTicket,
 	const FHCIAbilityKitAgentStageGWriteEnableRequest& WriteEnableRequest,
 	const FHCIAbilityKitAgentStageGExecuteIntent& Intent,
@@ -241,7 +243,7 @@ static FHCIAbilityKitAgentStageGExecuteDispatchRequest MakeG7DispatchRequest(
 	return Request;
 }
 
-static FHCIAbilityKitAgentStageGExecuteDispatchReceipt MakeG7DispatchReceipt(
+static FHCIAbilityKitAgentStageGExecuteDispatchReceipt MakeG8DispatchReceipt(
 	const FHCIAbilityKitAgentStageGExecuteDispatchRequest& DispatchRequest,
 	const FHCIAbilityKitAgentStageGExecutePermitTicket& PermitTicket,
 	const FHCIAbilityKitAgentStageGWriteEnableRequest& WriteEnableRequest,
@@ -274,7 +276,7 @@ static FHCIAbilityKitAgentStageGExecuteDispatchReceipt MakeG7DispatchReceipt(
 	return Request;
 }
 
-static FHCIAbilityKitAgentStageGExecuteCommitRequest MakeG7CommitRequest(
+static FHCIAbilityKitAgentStageGExecuteCommitRequest MakeG8CommitRequest(
 	const FHCIAbilityKitAgentStageGExecuteDispatchReceipt& DispatchReceipt,
 	const FHCIAbilityKitAgentStageGExecuteDispatchRequest& DispatchRequest,
 	const FHCIAbilityKitAgentStageGExecutePermitTicket& PermitTicket,
@@ -310,35 +312,76 @@ static FHCIAbilityKitAgentStageGExecuteCommitRequest MakeG7CommitRequest(
 		Request));
 	return Request;
 }
+
+static FHCIAbilityKitAgentStageGExecuteCommitReceipt MakeG8CommitReceipt(
+	const FHCIAbilityKitAgentStageGExecuteCommitRequest& CommitRequest,
+	const FHCIAbilityKitAgentStageGExecuteDispatchReceipt& DispatchReceipt,
+	const FHCIAbilityKitAgentStageGExecuteDispatchRequest& DispatchRequest,
+	const FHCIAbilityKitAgentStageGExecutePermitTicket& PermitTicket,
+	const FHCIAbilityKitAgentStageGWriteEnableRequest& WriteEnableRequest,
+	const FHCIAbilityKitAgentStageGExecuteIntent& Intent,
+	const FHCIAbilityKitAgentSimulateExecuteHandoffEnvelope& HandoffEnvelope,
+	const FHCIAbilityKitAgentSimulateExecuteArchiveBundle& ArchiveBundle,
+	const FHCIAbilityKitAgentSimulateExecuteFinalReport& FinalReport,
+	const FHCIAbilityKitAgentSimulateExecuteReceipt& Receipt,
+	const FHCIAbilityKitAgentExecuteTicket& ExecuteTicket,
+	const FHCIAbilityKitAgentApplyConfirmRequest& ConfirmRequest,
+	const FHCIAbilityKitAgentApplyRequest& ApplyRequest,
+	const FHCIAbilityKitDryRunDiffReport& Review)
+{
+	FHCIAbilityKitAgentStageGExecuteCommitReceipt CommitReceipt;
+	check(FHCIAbilityKitAgentExecutorStageGExecuteCommitReceiptBridge::BuildStageGExecuteCommitReceipt(
+		CommitRequest,
+		CommitRequest.RequestId,
+		DispatchReceipt,
+		DispatchRequest,
+		PermitTicket,
+		WriteEnableRequest,
+		Intent,
+		HandoffEnvelope,
+		ArchiveBundle,
+		FinalReport,
+		Receipt,
+		ExecuteTicket,
+		ConfirmRequest,
+		ApplyRequest,
+		Review,
+		CommitReceipt));
+	return CommitReceipt;
+}
 } // namespace
 
 	IMPLEMENT_SIMPLE_AUTOMATION_TEST(
-	FHCIAbilityKitAgentExecutorStageGExecuteCommitReceiptReadyTest,
-	"HCIAbilityKit.Editor.AgentExecutorStageGExecuteCommitReceipt.ReadyWhenStageGExecuteDispatchReceiptReady",
+	FHCIAbilityKitAgentExecutorStageGExecuteFinalReportReadyTest,
+	"HCIAbilityKit.Editor.AgentExecutorStageGExecuteFinalReport.ReadyWhenStageGExecuteCommitReceiptReady",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
-bool FHCIAbilityKitAgentExecutorStageGExecuteCommitReceiptReadyTest::RunTest(const FString& Parameters)
+bool FHCIAbilityKitAgentExecutorStageGExecuteFinalReportReadyTest::RunTest(const FString& Parameters)
 {
-	const FHCIAbilityKitDryRunDiffReport Review = MakeG7SelectedReviewReport();
-	const FHCIAbilityKitAgentApplyRequest ApplyRequest = MakeG7ApplyRequest(Review);
-	const FHCIAbilityKitAgentApplyConfirmRequest ConfirmRequest = MakeG7ConfirmRequest(ApplyRequest, Review, true);
-	const FHCIAbilityKitAgentExecuteTicket ExecuteTicket = MakeG7ExecuteTicket(ConfirmRequest, ApplyRequest, Review);
-	const FHCIAbilityKitAgentSimulateExecuteReceipt Receipt = MakeG7Receipt(ExecuteTicket, ConfirmRequest, ApplyRequest, Review);
-	const FHCIAbilityKitAgentSimulateExecuteFinalReport FinalReport = MakeG7FinalReport(Receipt, ExecuteTicket, ConfirmRequest, ApplyRequest, Review);
-	const FHCIAbilityKitAgentSimulateExecuteArchiveBundle ArchiveBundle = MakeG7ArchiveBundle(FinalReport, Receipt, ExecuteTicket, ConfirmRequest, ApplyRequest, Review);
-	const FHCIAbilityKitAgentSimulateExecuteHandoffEnvelope HandoffEnvelope = MakeG7HandoffEnvelope(ArchiveBundle, FinalReport, Receipt, ExecuteTicket, ConfirmRequest, ApplyRequest, Review);
-	const FHCIAbilityKitAgentStageGExecuteIntent Intent = MakeG7StageGIntent(HandoffEnvelope, ArchiveBundle, FinalReport, Receipt, ExecuteTicket, ConfirmRequest, ApplyRequest, Review);
-	const FHCIAbilityKitAgentStageGWriteEnableRequest WriteEnableRequest = MakeG7WriteEnableRequest(Intent, HandoffEnvelope, ArchiveBundle, FinalReport, Receipt, ExecuteTicket, ConfirmRequest, ApplyRequest, Review, true);
-	const FHCIAbilityKitAgentStageGExecutePermitTicket PermitTicket = MakeG7PermitTicket(WriteEnableRequest, Intent, HandoffEnvelope, ArchiveBundle, FinalReport, Receipt, ExecuteTicket, ConfirmRequest, ApplyRequest, Review);
-	const FHCIAbilityKitAgentStageGExecuteDispatchRequest DispatchRequest = MakeG7DispatchRequest(PermitTicket, WriteEnableRequest, Intent, HandoffEnvelope, ArchiveBundle, FinalReport, Receipt, ExecuteTicket, ConfirmRequest, ApplyRequest, Review, true);
-	const FHCIAbilityKitAgentStageGExecuteDispatchReceipt DispatchReceipt = MakeG7DispatchReceipt(DispatchRequest, PermitTicket, WriteEnableRequest, Intent, HandoffEnvelope, ArchiveBundle, FinalReport, Receipt, ExecuteTicket, ConfirmRequest, ApplyRequest, Review);
-	const FHCIAbilityKitAgentStageGExecuteCommitRequest CommitRequest = MakeG7CommitRequest(
+	const FHCIAbilityKitDryRunDiffReport Review = MakeG8SelectedReviewReport();
+	const FHCIAbilityKitAgentApplyRequest ApplyRequest = MakeG8ApplyRequest(Review);
+	const FHCIAbilityKitAgentApplyConfirmRequest ConfirmRequest = MakeG8ConfirmRequest(ApplyRequest, Review, true);
+	const FHCIAbilityKitAgentExecuteTicket ExecuteTicket = MakeG8ExecuteTicket(ConfirmRequest, ApplyRequest, Review);
+	const FHCIAbilityKitAgentSimulateExecuteReceipt Receipt = MakeG8Receipt(ExecuteTicket, ConfirmRequest, ApplyRequest, Review);
+	const FHCIAbilityKitAgentSimulateExecuteFinalReport FinalReport = MakeG8FinalReport(Receipt, ExecuteTicket, ConfirmRequest, ApplyRequest, Review);
+	const FHCIAbilityKitAgentSimulateExecuteArchiveBundle ArchiveBundle = MakeG8ArchiveBundle(FinalReport, Receipt, ExecuteTicket, ConfirmRequest, ApplyRequest, Review);
+	const FHCIAbilityKitAgentSimulateExecuteHandoffEnvelope HandoffEnvelope = MakeG8HandoffEnvelope(ArchiveBundle, FinalReport, Receipt, ExecuteTicket, ConfirmRequest, ApplyRequest, Review);
+	const FHCIAbilityKitAgentStageGExecuteIntent Intent = MakeG8StageGIntent(HandoffEnvelope, ArchiveBundle, FinalReport, Receipt, ExecuteTicket, ConfirmRequest, ApplyRequest, Review);
+	const FHCIAbilityKitAgentStageGWriteEnableRequest WriteEnableRequest = MakeG8WriteEnableRequest(Intent, HandoffEnvelope, ArchiveBundle, FinalReport, Receipt, ExecuteTicket, ConfirmRequest, ApplyRequest, Review, true);
+	const FHCIAbilityKitAgentStageGExecutePermitTicket PermitTicket = MakeG8PermitTicket(WriteEnableRequest, Intent, HandoffEnvelope, ArchiveBundle, FinalReport, Receipt, ExecuteTicket, ConfirmRequest, ApplyRequest, Review);
+	const FHCIAbilityKitAgentStageGExecuteDispatchRequest DispatchRequest = MakeG8DispatchRequest(PermitTicket, WriteEnableRequest, Intent, HandoffEnvelope, ArchiveBundle, FinalReport, Receipt, ExecuteTicket, ConfirmRequest, ApplyRequest, Review, true);
+	const FHCIAbilityKitAgentStageGExecuteDispatchReceipt DispatchReceipt = MakeG8DispatchReceipt(DispatchRequest, PermitTicket, WriteEnableRequest, Intent, HandoffEnvelope, ArchiveBundle, FinalReport, Receipt, ExecuteTicket, ConfirmRequest, ApplyRequest, Review);
+	const FHCIAbilityKitAgentStageGExecuteCommitRequest CommitRequest = MakeG8CommitRequest(
 		DispatchReceipt, DispatchRequest, PermitTicket, WriteEnableRequest, Intent, HandoffEnvelope, ArchiveBundle, FinalReport, Receipt, ExecuteTicket, ConfirmRequest, ApplyRequest, Review, true);
+	const FHCIAbilityKitAgentStageGExecuteCommitReceipt CommitReceipt = MakeG8CommitReceipt(
+		CommitRequest, DispatchReceipt, DispatchRequest, PermitTicket, WriteEnableRequest, Intent, HandoffEnvelope, ArchiveBundle, FinalReport, Receipt, ExecuteTicket, ConfirmRequest, ApplyRequest, Review);
 
-	FHCIAbilityKitAgentStageGExecuteCommitReceipt Request;
-	TestTrue(TEXT("Build stage g execute commit receipt"), FHCIAbilityKitAgentExecutorStageGExecuteCommitReceiptBridge::BuildStageGExecuteCommitReceipt(
-		CommitRequest,
+	FHCIAbilityKitAgentStageGExecuteFinalReport Request;
+	TestTrue(TEXT("Build stage g execute final report"), FHCIAbilityKitAgentExecutorStageGExecuteFinalReportBridge::BuildStageGExecuteFinalReport(
+		CommitReceipt,
+		CommitReceipt.RequestId,
 		CommitRequest.RequestId,
+		CommitRequest.StageGExecuteCommitRequestDigest,
 		DispatchReceipt,
 		DispatchRequest,
 		PermitTicket,
@@ -353,48 +396,53 @@ bool FHCIAbilityKitAgentExecutorStageGExecuteCommitReceiptReadyTest::RunTest(con
 		ApplyRequest,
 		Review,
 		Request));
-	TestTrue(TEXT("CommitReady"), Request.bStageGExecuteCommitReceiptReady);
-	TestTrue(TEXT("CommitAccepted"), Request.bStageGExecuteCommitAccepted);
+	TestTrue(TEXT("FinalReportReady"), Request.bStageGExecuteFinalReportReady);
+	TestTrue(TEXT("Finalized"), Request.bStageGExecuteFinalized);
 	TestTrue(TEXT("CommitConfirmed"), Request.bExecuteCommitConfirmed);
 	TestTrue(TEXT("WriteEnabled"), Request.bWriteEnabled);
-	TestEqual(TEXT("CommitStatus"), Request.StageGExecuteCommitReceiptStatus, FString(TEXT("accepted")));
+	TestEqual(TEXT("FinalReportStatus"), Request.StageGExecuteFinalReportStatus, FString(TEXT("completed")));
 	TestEqual(TEXT("ErrorCode"), Request.ErrorCode, FString(TEXT("-")));
-	TestEqual(TEXT("Reason"), Request.Reason, FString(TEXT("stage_g_execute_commit_receipt_ready")));
-	TestFalse(TEXT("CommitDigest present"), Request.StageGExecuteCommitReceiptDigest.IsEmpty());
+	TestEqual(TEXT("Reason"), Request.Reason, FString(TEXT("stage_g_execute_final_report_ready")));
+	TestFalse(TEXT("CommitDigest present"), Request.StageGExecuteFinalReportDigest.IsEmpty());
 	return true;
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
-	FHCIAbilityKitAgentExecutorStageGExecuteCommitReceiptWriteEnableNotReadyTest,
-	"HCIAbilityKit.Editor.AgentExecutorStageGExecuteCommitReceipt.StageGExecuteDispatchReceiptNotReadyReturnsE4214",
+	FHCIAbilityKitAgentExecutorStageGExecuteFinalReportWriteEnableNotReadyTest,
+	"HCIAbilityKit.Editor.AgentExecutorStageGExecuteFinalReport.StageGExecuteCommitReceiptNotReadyReturnsE4216",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
-bool FHCIAbilityKitAgentExecutorStageGExecuteCommitReceiptWriteEnableNotReadyTest::RunTest(const FString& Parameters)
+bool FHCIAbilityKitAgentExecutorStageGExecuteFinalReportWriteEnableNotReadyTest::RunTest(const FString& Parameters)
 {
-	const FHCIAbilityKitDryRunDiffReport Review = MakeG7SelectedReviewReport();
-	const FHCIAbilityKitAgentApplyRequest ApplyRequest = MakeG7ApplyRequest(Review);
-	const FHCIAbilityKitAgentApplyConfirmRequest ConfirmRequest = MakeG7ConfirmRequest(ApplyRequest, Review, true);
-	const FHCIAbilityKitAgentExecuteTicket ExecuteTicket = MakeG7ExecuteTicket(ConfirmRequest, ApplyRequest, Review);
-	const FHCIAbilityKitAgentSimulateExecuteReceipt Receipt = MakeG7Receipt(ExecuteTicket, ConfirmRequest, ApplyRequest, Review);
-	const FHCIAbilityKitAgentSimulateExecuteFinalReport FinalReport = MakeG7FinalReport(Receipt, ExecuteTicket, ConfirmRequest, ApplyRequest, Review);
-	const FHCIAbilityKitAgentSimulateExecuteArchiveBundle ArchiveBundle = MakeG7ArchiveBundle(FinalReport, Receipt, ExecuteTicket, ConfirmRequest, ApplyRequest, Review);
-	const FHCIAbilityKitAgentSimulateExecuteHandoffEnvelope HandoffEnvelope = MakeG7HandoffEnvelope(ArchiveBundle, FinalReport, Receipt, ExecuteTicket, ConfirmRequest, ApplyRequest, Review);
-	const FHCIAbilityKitAgentStageGExecuteIntent Intent = MakeG7StageGIntent(HandoffEnvelope, ArchiveBundle, FinalReport, Receipt, ExecuteTicket, ConfirmRequest, ApplyRequest, Review);
-	const FHCIAbilityKitAgentStageGWriteEnableRequest WriteEnableRequest = MakeG7WriteEnableRequest(Intent, HandoffEnvelope, ArchiveBundle, FinalReport, Receipt, ExecuteTicket, ConfirmRequest, ApplyRequest, Review, true);
-	const FHCIAbilityKitAgentStageGExecutePermitTicket PermitTicket = MakeG7PermitTicket(WriteEnableRequest, Intent, HandoffEnvelope, ArchiveBundle, FinalReport, Receipt, ExecuteTicket, ConfirmRequest, ApplyRequest, Review);
-	const FHCIAbilityKitAgentStageGExecuteDispatchRequest DispatchRequest = MakeG7DispatchRequest(PermitTicket, WriteEnableRequest, Intent, HandoffEnvelope, ArchiveBundle, FinalReport, Receipt, ExecuteTicket, ConfirmRequest, ApplyRequest, Review, true);
-	const FHCIAbilityKitAgentStageGExecuteDispatchReceipt DispatchReceipt = MakeG7DispatchReceipt(DispatchRequest, PermitTicket, WriteEnableRequest, Intent, HandoffEnvelope, ArchiveBundle, FinalReport, Receipt, ExecuteTicket, ConfirmRequest, ApplyRequest, Review);
-	FHCIAbilityKitAgentStageGExecuteCommitRequest CommitRequest = MakeG7CommitRequest(
+	const FHCIAbilityKitDryRunDiffReport Review = MakeG8SelectedReviewReport();
+	const FHCIAbilityKitAgentApplyRequest ApplyRequest = MakeG8ApplyRequest(Review);
+	const FHCIAbilityKitAgentApplyConfirmRequest ConfirmRequest = MakeG8ConfirmRequest(ApplyRequest, Review, true);
+	const FHCIAbilityKitAgentExecuteTicket ExecuteTicket = MakeG8ExecuteTicket(ConfirmRequest, ApplyRequest, Review);
+	const FHCIAbilityKitAgentSimulateExecuteReceipt Receipt = MakeG8Receipt(ExecuteTicket, ConfirmRequest, ApplyRequest, Review);
+	const FHCIAbilityKitAgentSimulateExecuteFinalReport FinalReport = MakeG8FinalReport(Receipt, ExecuteTicket, ConfirmRequest, ApplyRequest, Review);
+	const FHCIAbilityKitAgentSimulateExecuteArchiveBundle ArchiveBundle = MakeG8ArchiveBundle(FinalReport, Receipt, ExecuteTicket, ConfirmRequest, ApplyRequest, Review);
+	const FHCIAbilityKitAgentSimulateExecuteHandoffEnvelope HandoffEnvelope = MakeG8HandoffEnvelope(ArchiveBundle, FinalReport, Receipt, ExecuteTicket, ConfirmRequest, ApplyRequest, Review);
+	const FHCIAbilityKitAgentStageGExecuteIntent Intent = MakeG8StageGIntent(HandoffEnvelope, ArchiveBundle, FinalReport, Receipt, ExecuteTicket, ConfirmRequest, ApplyRequest, Review);
+	const FHCIAbilityKitAgentStageGWriteEnableRequest WriteEnableRequest = MakeG8WriteEnableRequest(Intent, HandoffEnvelope, ArchiveBundle, FinalReport, Receipt, ExecuteTicket, ConfirmRequest, ApplyRequest, Review, true);
+	const FHCIAbilityKitAgentStageGExecutePermitTicket PermitTicket = MakeG8PermitTicket(WriteEnableRequest, Intent, HandoffEnvelope, ArchiveBundle, FinalReport, Receipt, ExecuteTicket, ConfirmRequest, ApplyRequest, Review);
+	const FHCIAbilityKitAgentStageGExecuteDispatchRequest DispatchRequest = MakeG8DispatchRequest(PermitTicket, WriteEnableRequest, Intent, HandoffEnvelope, ArchiveBundle, FinalReport, Receipt, ExecuteTicket, ConfirmRequest, ApplyRequest, Review, true);
+	const FHCIAbilityKitAgentStageGExecuteDispatchReceipt DispatchReceipt = MakeG8DispatchReceipt(DispatchRequest, PermitTicket, WriteEnableRequest, Intent, HandoffEnvelope, ArchiveBundle, FinalReport, Receipt, ExecuteTicket, ConfirmRequest, ApplyRequest, Review);
+	FHCIAbilityKitAgentStageGExecuteCommitRequest CommitRequest = MakeG8CommitRequest(
 		DispatchReceipt, DispatchRequest, PermitTicket, WriteEnableRequest, Intent, HandoffEnvelope, ArchiveBundle, FinalReport, Receipt, ExecuteTicket, ConfirmRequest, ApplyRequest, Review, true);
-	CommitRequest.bWriteEnabled = false;
-	CommitRequest.bReadyForStageGExecute = false;
-	CommitRequest.bStageGExecuteCommitRequestReady = false;
-	CommitRequest.StageGExecuteCommitRequestStatus = TEXT("blocked");
+	FHCIAbilityKitAgentStageGExecuteCommitReceipt CommitReceipt = MakeG8CommitReceipt(
+		CommitRequest, DispatchReceipt, DispatchRequest, PermitTicket, WriteEnableRequest, Intent, HandoffEnvelope, ArchiveBundle, FinalReport, Receipt, ExecuteTicket, ConfirmRequest, ApplyRequest, Review);
+	CommitReceipt.bWriteEnabled = false;
+	CommitReceipt.bReadyForStageGExecute = false;
+	CommitReceipt.bStageGExecuteCommitAccepted = false;
+	CommitReceipt.bStageGExecuteCommitReceiptReady = false;
+	CommitReceipt.StageGExecuteCommitReceiptStatus = TEXT("blocked");
 
-	FHCIAbilityKitAgentStageGExecuteCommitReceipt Request;
-	TestTrue(TEXT("Build stage g execute commit receipt"), FHCIAbilityKitAgentExecutorStageGExecuteCommitReceiptBridge::BuildStageGExecuteCommitReceipt(
-		CommitRequest,
+	FHCIAbilityKitAgentStageGExecuteFinalReport Request;
+	TestTrue(TEXT("Build stage g execute final report"), FHCIAbilityKitAgentExecutorStageGExecuteFinalReportBridge::BuildStageGExecuteFinalReport(
+		CommitReceipt,
+		CommitReceipt.RequestId,
 		CommitRequest.RequestId,
+		CommitRequest.StageGExecuteCommitRequestDigest,
 		DispatchReceipt,
 		DispatchRequest,
 		PermitTicket,
@@ -409,41 +457,45 @@ bool FHCIAbilityKitAgentExecutorStageGExecuteCommitReceiptWriteEnableNotReadyTes
 		ApplyRequest,
 		Review,
 		Request));
-	TestFalse(TEXT("CommitReady"), Request.bStageGExecuteCommitReceiptReady);
-	TestEqual(TEXT("CommitStatus"), Request.StageGExecuteCommitReceiptStatus, FString(TEXT("blocked")));
-	TestEqual(TEXT("ErrorCode"), Request.ErrorCode, FString(TEXT("E4215")));
-	TestEqual(TEXT("Reason"), Request.Reason, FString(TEXT("stage_g_execute_commit_request_not_ready")));
+	TestFalse(TEXT("FinalReportReady"), Request.bStageGExecuteFinalReportReady);
+	TestEqual(TEXT("FinalReportStatus"), Request.StageGExecuteFinalReportStatus, FString(TEXT("blocked")));
+	TestEqual(TEXT("ErrorCode"), Request.ErrorCode, FString(TEXT("E4216")));
+	TestEqual(TEXT("Reason"), Request.Reason, FString(TEXT("stage_g_execute_commit_receipt_not_ready")));
 	return true;
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
-	FHCIAbilityKitAgentExecutorStageGExecuteCommitReceiptDigestMismatchTest,
-	"HCIAbilityKit.Editor.AgentExecutorStageGExecuteCommitReceipt.DigestMismatchReturnsE4202",
+	FHCIAbilityKitAgentExecutorStageGExecuteFinalReportDigestMismatchTest,
+	"HCIAbilityKit.Editor.AgentExecutorStageGExecuteFinalReport.DigestMismatchReturnsE4202",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
-bool FHCIAbilityKitAgentExecutorStageGExecuteCommitReceiptDigestMismatchTest::RunTest(const FString& Parameters)
+bool FHCIAbilityKitAgentExecutorStageGExecuteFinalReportDigestMismatchTest::RunTest(const FString& Parameters)
 {
-	const FHCIAbilityKitDryRunDiffReport Review = MakeG7SelectedReviewReport();
-	const FHCIAbilityKitAgentApplyRequest ApplyRequest = MakeG7ApplyRequest(Review);
-	const FHCIAbilityKitAgentApplyConfirmRequest ConfirmRequest = MakeG7ConfirmRequest(ApplyRequest, Review, true);
-	const FHCIAbilityKitAgentExecuteTicket ExecuteTicket = MakeG7ExecuteTicket(ConfirmRequest, ApplyRequest, Review);
-	const FHCIAbilityKitAgentSimulateExecuteReceipt Receipt = MakeG7Receipt(ExecuteTicket, ConfirmRequest, ApplyRequest, Review);
-	const FHCIAbilityKitAgentSimulateExecuteFinalReport FinalReport = MakeG7FinalReport(Receipt, ExecuteTicket, ConfirmRequest, ApplyRequest, Review);
-	const FHCIAbilityKitAgentSimulateExecuteArchiveBundle ArchiveBundle = MakeG7ArchiveBundle(FinalReport, Receipt, ExecuteTicket, ConfirmRequest, ApplyRequest, Review);
-	const FHCIAbilityKitAgentSimulateExecuteHandoffEnvelope HandoffEnvelope = MakeG7HandoffEnvelope(ArchiveBundle, FinalReport, Receipt, ExecuteTicket, ConfirmRequest, ApplyRequest, Review);
-	const FHCIAbilityKitAgentStageGExecuteIntent Intent = MakeG7StageGIntent(HandoffEnvelope, ArchiveBundle, FinalReport, Receipt, ExecuteTicket, ConfirmRequest, ApplyRequest, Review);
-	const FHCIAbilityKitAgentStageGWriteEnableRequest WriteEnableRequest = MakeG7WriteEnableRequest(Intent, HandoffEnvelope, ArchiveBundle, FinalReport, Receipt, ExecuteTicket, ConfirmRequest, ApplyRequest, Review, true);
-	const FHCIAbilityKitAgentStageGExecutePermitTicket PermitTicket = MakeG7PermitTicket(WriteEnableRequest, Intent, HandoffEnvelope, ArchiveBundle, FinalReport, Receipt, ExecuteTicket, ConfirmRequest, ApplyRequest, Review);
-	const FHCIAbilityKitAgentStageGExecuteDispatchRequest DispatchRequest = MakeG7DispatchRequest(PermitTicket, WriteEnableRequest, Intent, HandoffEnvelope, ArchiveBundle, FinalReport, Receipt, ExecuteTicket, ConfirmRequest, ApplyRequest, Review, true);
-	const FHCIAbilityKitAgentStageGExecuteDispatchReceipt DispatchReceipt = MakeG7DispatchReceipt(DispatchRequest, PermitTicket, WriteEnableRequest, Intent, HandoffEnvelope, ArchiveBundle, FinalReport, Receipt, ExecuteTicket, ConfirmRequest, ApplyRequest, Review);
-	FHCIAbilityKitAgentStageGExecuteCommitRequest CommitRequest = MakeG7CommitRequest(
+	const FHCIAbilityKitDryRunDiffReport Review = MakeG8SelectedReviewReport();
+	const FHCIAbilityKitAgentApplyRequest ApplyRequest = MakeG8ApplyRequest(Review);
+	const FHCIAbilityKitAgentApplyConfirmRequest ConfirmRequest = MakeG8ConfirmRequest(ApplyRequest, Review, true);
+	const FHCIAbilityKitAgentExecuteTicket ExecuteTicket = MakeG8ExecuteTicket(ConfirmRequest, ApplyRequest, Review);
+	const FHCIAbilityKitAgentSimulateExecuteReceipt Receipt = MakeG8Receipt(ExecuteTicket, ConfirmRequest, ApplyRequest, Review);
+	const FHCIAbilityKitAgentSimulateExecuteFinalReport FinalReport = MakeG8FinalReport(Receipt, ExecuteTicket, ConfirmRequest, ApplyRequest, Review);
+	const FHCIAbilityKitAgentSimulateExecuteArchiveBundle ArchiveBundle = MakeG8ArchiveBundle(FinalReport, Receipt, ExecuteTicket, ConfirmRequest, ApplyRequest, Review);
+	const FHCIAbilityKitAgentSimulateExecuteHandoffEnvelope HandoffEnvelope = MakeG8HandoffEnvelope(ArchiveBundle, FinalReport, Receipt, ExecuteTicket, ConfirmRequest, ApplyRequest, Review);
+	const FHCIAbilityKitAgentStageGExecuteIntent Intent = MakeG8StageGIntent(HandoffEnvelope, ArchiveBundle, FinalReport, Receipt, ExecuteTicket, ConfirmRequest, ApplyRequest, Review);
+	const FHCIAbilityKitAgentStageGWriteEnableRequest WriteEnableRequest = MakeG8WriteEnableRequest(Intent, HandoffEnvelope, ArchiveBundle, FinalReport, Receipt, ExecuteTicket, ConfirmRequest, ApplyRequest, Review, true);
+	const FHCIAbilityKitAgentStageGExecutePermitTicket PermitTicket = MakeG8PermitTicket(WriteEnableRequest, Intent, HandoffEnvelope, ArchiveBundle, FinalReport, Receipt, ExecuteTicket, ConfirmRequest, ApplyRequest, Review);
+	const FHCIAbilityKitAgentStageGExecuteDispatchRequest DispatchRequest = MakeG8DispatchRequest(PermitTicket, WriteEnableRequest, Intent, HandoffEnvelope, ArchiveBundle, FinalReport, Receipt, ExecuteTicket, ConfirmRequest, ApplyRequest, Review, true);
+	const FHCIAbilityKitAgentStageGExecuteDispatchReceipt DispatchReceipt = MakeG8DispatchReceipt(DispatchRequest, PermitTicket, WriteEnableRequest, Intent, HandoffEnvelope, ArchiveBundle, FinalReport, Receipt, ExecuteTicket, ConfirmRequest, ApplyRequest, Review);
+	FHCIAbilityKitAgentStageGExecuteCommitRequest CommitRequest = MakeG8CommitRequest(
 		DispatchReceipt, DispatchRequest, PermitTicket, WriteEnableRequest, Intent, HandoffEnvelope, ArchiveBundle, FinalReport, Receipt, ExecuteTicket, ConfirmRequest, ApplyRequest, Review, true);
-	CommitRequest.SelectionDigest = TEXT("crc32_BAD0C0DE");
+	FHCIAbilityKitAgentStageGExecuteCommitReceipt CommitReceipt = MakeG8CommitReceipt(
+		CommitRequest, DispatchReceipt, DispatchRequest, PermitTicket, WriteEnableRequest, Intent, HandoffEnvelope, ArchiveBundle, FinalReport, Receipt, ExecuteTicket, ConfirmRequest, ApplyRequest, Review);
+	CommitReceipt.SelectionDigest = TEXT("crc32_BAD0C0DE");
 
-	FHCIAbilityKitAgentStageGExecuteCommitReceipt Request;
-	TestTrue(TEXT("Build stage g execute commit receipt"), FHCIAbilityKitAgentExecutorStageGExecuteCommitReceiptBridge::BuildStageGExecuteCommitReceipt(
-		CommitRequest,
+	FHCIAbilityKitAgentStageGExecuteFinalReport Request;
+	TestTrue(TEXT("Build stage g execute final report"), FHCIAbilityKitAgentExecutorStageGExecuteFinalReportBridge::BuildStageGExecuteFinalReport(
+		CommitReceipt,
+		CommitReceipt.RequestId,
 		CommitRequest.RequestId,
+		CommitRequest.StageGExecuteCommitRequestDigest,
 		DispatchReceipt,
 		DispatchRequest,
 		PermitTicket,
@@ -458,39 +510,43 @@ bool FHCIAbilityKitAgentExecutorStageGExecuteCommitReceiptDigestMismatchTest::Ru
 		ApplyRequest,
 		Review,
 		Request));
-	TestFalse(TEXT("CommitReady"), Request.bStageGExecuteCommitReceiptReady);
+	TestFalse(TEXT("FinalReportReady"), Request.bStageGExecuteFinalReportReady);
 	TestEqual(TEXT("ErrorCode"), Request.ErrorCode, FString(TEXT("E4202")));
 	TestEqual(TEXT("Reason"), Request.Reason, FString(TEXT("selection_digest_mismatch")));
 	return true;
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
-	FHCIAbilityKitAgentExecutorStageGExecuteCommitReceiptJsonFieldsTest,
-	"HCIAbilityKit.Editor.AgentExecutorStageGExecuteCommitReceipt.JsonIncludesCommitFields",
+	FHCIAbilityKitAgentExecutorStageGExecuteFinalReportJsonFieldsTest,
+	"HCIAbilityKit.Editor.AgentExecutorStageGExecuteFinalReport.JsonIncludesFinalReportFields",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
-bool FHCIAbilityKitAgentExecutorStageGExecuteCommitReceiptJsonFieldsTest::RunTest(const FString& Parameters)
+bool FHCIAbilityKitAgentExecutorStageGExecuteFinalReportJsonFieldsTest::RunTest(const FString& Parameters)
 {
-	const FHCIAbilityKitDryRunDiffReport Review = MakeG7SelectedReviewReport();
-	const FHCIAbilityKitAgentApplyRequest ApplyRequest = MakeG7ApplyRequest(Review);
-	const FHCIAbilityKitAgentApplyConfirmRequest ConfirmRequest = MakeG7ConfirmRequest(ApplyRequest, Review, true);
-	const FHCIAbilityKitAgentExecuteTicket ExecuteTicket = MakeG7ExecuteTicket(ConfirmRequest, ApplyRequest, Review);
-	const FHCIAbilityKitAgentSimulateExecuteReceipt Receipt = MakeG7Receipt(ExecuteTicket, ConfirmRequest, ApplyRequest, Review);
-	const FHCIAbilityKitAgentSimulateExecuteFinalReport FinalReport = MakeG7FinalReport(Receipt, ExecuteTicket, ConfirmRequest, ApplyRequest, Review);
-	const FHCIAbilityKitAgentSimulateExecuteArchiveBundle ArchiveBundle = MakeG7ArchiveBundle(FinalReport, Receipt, ExecuteTicket, ConfirmRequest, ApplyRequest, Review);
-	const FHCIAbilityKitAgentSimulateExecuteHandoffEnvelope HandoffEnvelope = MakeG7HandoffEnvelope(ArchiveBundle, FinalReport, Receipt, ExecuteTicket, ConfirmRequest, ApplyRequest, Review);
-	const FHCIAbilityKitAgentStageGExecuteIntent Intent = MakeG7StageGIntent(HandoffEnvelope, ArchiveBundle, FinalReport, Receipt, ExecuteTicket, ConfirmRequest, ApplyRequest, Review);
-	const FHCIAbilityKitAgentStageGWriteEnableRequest WriteEnableRequest = MakeG7WriteEnableRequest(Intent, HandoffEnvelope, ArchiveBundle, FinalReport, Receipt, ExecuteTicket, ConfirmRequest, ApplyRequest, Review, true);
-	const FHCIAbilityKitAgentStageGExecutePermitTicket PermitTicket = MakeG7PermitTicket(WriteEnableRequest, Intent, HandoffEnvelope, ArchiveBundle, FinalReport, Receipt, ExecuteTicket, ConfirmRequest, ApplyRequest, Review);
-	const FHCIAbilityKitAgentStageGExecuteDispatchRequest DispatchRequest = MakeG7DispatchRequest(PermitTicket, WriteEnableRequest, Intent, HandoffEnvelope, ArchiveBundle, FinalReport, Receipt, ExecuteTicket, ConfirmRequest, ApplyRequest, Review, true);
-	const FHCIAbilityKitAgentStageGExecuteDispatchReceipt DispatchReceipt = MakeG7DispatchReceipt(DispatchRequest, PermitTicket, WriteEnableRequest, Intent, HandoffEnvelope, ArchiveBundle, FinalReport, Receipt, ExecuteTicket, ConfirmRequest, ApplyRequest, Review);
-	const FHCIAbilityKitAgentStageGExecuteCommitRequest CommitRequest = MakeG7CommitRequest(
+	const FHCIAbilityKitDryRunDiffReport Review = MakeG8SelectedReviewReport();
+	const FHCIAbilityKitAgentApplyRequest ApplyRequest = MakeG8ApplyRequest(Review);
+	const FHCIAbilityKitAgentApplyConfirmRequest ConfirmRequest = MakeG8ConfirmRequest(ApplyRequest, Review, true);
+	const FHCIAbilityKitAgentExecuteTicket ExecuteTicket = MakeG8ExecuteTicket(ConfirmRequest, ApplyRequest, Review);
+	const FHCIAbilityKitAgentSimulateExecuteReceipt Receipt = MakeG8Receipt(ExecuteTicket, ConfirmRequest, ApplyRequest, Review);
+	const FHCIAbilityKitAgentSimulateExecuteFinalReport FinalReport = MakeG8FinalReport(Receipt, ExecuteTicket, ConfirmRequest, ApplyRequest, Review);
+	const FHCIAbilityKitAgentSimulateExecuteArchiveBundle ArchiveBundle = MakeG8ArchiveBundle(FinalReport, Receipt, ExecuteTicket, ConfirmRequest, ApplyRequest, Review);
+	const FHCIAbilityKitAgentSimulateExecuteHandoffEnvelope HandoffEnvelope = MakeG8HandoffEnvelope(ArchiveBundle, FinalReport, Receipt, ExecuteTicket, ConfirmRequest, ApplyRequest, Review);
+	const FHCIAbilityKitAgentStageGExecuteIntent Intent = MakeG8StageGIntent(HandoffEnvelope, ArchiveBundle, FinalReport, Receipt, ExecuteTicket, ConfirmRequest, ApplyRequest, Review);
+	const FHCIAbilityKitAgentStageGWriteEnableRequest WriteEnableRequest = MakeG8WriteEnableRequest(Intent, HandoffEnvelope, ArchiveBundle, FinalReport, Receipt, ExecuteTicket, ConfirmRequest, ApplyRequest, Review, true);
+	const FHCIAbilityKitAgentStageGExecutePermitTicket PermitTicket = MakeG8PermitTicket(WriteEnableRequest, Intent, HandoffEnvelope, ArchiveBundle, FinalReport, Receipt, ExecuteTicket, ConfirmRequest, ApplyRequest, Review);
+	const FHCIAbilityKitAgentStageGExecuteDispatchRequest DispatchRequest = MakeG8DispatchRequest(PermitTicket, WriteEnableRequest, Intent, HandoffEnvelope, ArchiveBundle, FinalReport, Receipt, ExecuteTicket, ConfirmRequest, ApplyRequest, Review, true);
+	const FHCIAbilityKitAgentStageGExecuteDispatchReceipt DispatchReceipt = MakeG8DispatchReceipt(DispatchRequest, PermitTicket, WriteEnableRequest, Intent, HandoffEnvelope, ArchiveBundle, FinalReport, Receipt, ExecuteTicket, ConfirmRequest, ApplyRequest, Review);
+	const FHCIAbilityKitAgentStageGExecuteCommitRequest CommitRequest = MakeG8CommitRequest(
 		DispatchReceipt, DispatchRequest, PermitTicket, WriteEnableRequest, Intent, HandoffEnvelope, ArchiveBundle, FinalReport, Receipt, ExecuteTicket, ConfirmRequest, ApplyRequest, Review, true);
+	const FHCIAbilityKitAgentStageGExecuteCommitReceipt CommitReceipt = MakeG8CommitReceipt(
+		CommitRequest, DispatchReceipt, DispatchRequest, PermitTicket, WriteEnableRequest, Intent, HandoffEnvelope, ArchiveBundle, FinalReport, Receipt, ExecuteTicket, ConfirmRequest, ApplyRequest, Review);
 
-	FHCIAbilityKitAgentStageGExecuteCommitReceipt Request;
-	TestTrue(TEXT("Build stage g execute commit receipt"), FHCIAbilityKitAgentExecutorStageGExecuteCommitReceiptBridge::BuildStageGExecuteCommitReceipt(
-		CommitRequest,
+	FHCIAbilityKitAgentStageGExecuteFinalReport Request;
+	TestTrue(TEXT("Build stage g execute final report"), FHCIAbilityKitAgentExecutorStageGExecuteFinalReportBridge::BuildStageGExecuteFinalReport(
+		CommitReceipt,
+		CommitReceipt.RequestId,
 		CommitRequest.RequestId,
+		CommitRequest.StageGExecuteCommitRequestDigest,
 		DispatchReceipt,
 		DispatchRequest,
 		PermitTicket,
@@ -507,7 +563,7 @@ bool FHCIAbilityKitAgentExecutorStageGExecuteCommitReceiptJsonFieldsTest::RunTes
 		Request));
 
 	FString JsonText;
-	TestTrue(TEXT("Serialize stage g execute commit receipt json"), FHCIAbilityKitAgentStageGExecuteCommitReceiptJsonSerializer::SerializeToJsonString(Request, JsonText));
+	TestTrue(TEXT("Serialize stage g execute final report json"), FHCIAbilityKitAgentStageGExecuteFinalReportJsonSerializer::SerializeToJsonString(Request, JsonText));
 	TestTrue(TEXT("JSON includes stage_g_execute_commit_request_id"), JsonText.Contains(TEXT("\"stage_g_execute_commit_request_id\"")));
 	TestTrue(TEXT("JSON includes stage_g_execute_dispatch_receipt_id"), JsonText.Contains(TEXT("\"stage_g_execute_dispatch_receipt_id\"")));
 	TestTrue(TEXT("JSON includes stage_g_execute_permit_ticket_id"), JsonText.Contains(TEXT("\"stage_g_execute_permit_ticket_id\"")));
@@ -518,12 +574,17 @@ bool FHCIAbilityKitAgentExecutorStageGExecuteCommitReceiptJsonFieldsTest::RunTes
 	TestTrue(TEXT("JSON includes stage_g_execute_dispatch_receipt_digest"), JsonText.Contains(TEXT("\"stage_g_execute_dispatch_receipt_digest\"")));
 	TestTrue(TEXT("JSON includes stage_g_execute_commit_request_digest"), JsonText.Contains(TEXT("\"stage_g_execute_commit_request_digest\"")));
 	TestTrue(TEXT("JSON includes stage_g_execute_commit_request_status"), JsonText.Contains(TEXT("\"stage_g_execute_commit_request_status\"")));
+	TestTrue(TEXT("JSON includes stage_g_execute_commit_receipt_id"), JsonText.Contains(TEXT("\"stage_g_execute_commit_receipt_id\"")));
 	TestTrue(TEXT("JSON includes stage_g_execute_commit_receipt_digest"), JsonText.Contains(TEXT("\"stage_g_execute_commit_receipt_digest\"")));
 	TestTrue(TEXT("JSON includes stage_g_execute_commit_receipt_status"), JsonText.Contains(TEXT("\"stage_g_execute_commit_receipt_status\"")));
+	TestTrue(TEXT("JSON includes stage_g_execute_final_report_digest"), JsonText.Contains(TEXT("\"stage_g_execute_final_report_digest\"")));
+	TestTrue(TEXT("JSON includes stage_g_execute_final_report_status"), JsonText.Contains(TEXT("\"stage_g_execute_final_report_status\"")));
 	TestTrue(TEXT("JSON includes execute_commit_confirmed"), JsonText.Contains(TEXT("\"execute_commit_confirmed\"")));
 	TestTrue(TEXT("JSON includes stage_g_execute_commit_request_ready"), JsonText.Contains(TEXT("\"stage_g_execute_commit_request_ready\"")));
 	TestTrue(TEXT("JSON includes stage_g_execute_commit_accepted"), JsonText.Contains(TEXT("\"stage_g_execute_commit_accepted\"")));
 	TestTrue(TEXT("JSON includes stage_g_execute_commit_receipt_ready"), JsonText.Contains(TEXT("\"stage_g_execute_commit_receipt_ready\"")));
+	TestTrue(TEXT("JSON includes stage_g_execute_finalized"), JsonText.Contains(TEXT("\"stage_g_execute_finalized\"")));
+	TestTrue(TEXT("JSON includes stage_g_execute_final_report_ready"), JsonText.Contains(TEXT("\"stage_g_execute_final_report_ready\"")));
 	TestTrue(TEXT("JSON includes locate_strategy"), JsonText.Contains(TEXT("\"locate_strategy\"")));
 	return true;
 }

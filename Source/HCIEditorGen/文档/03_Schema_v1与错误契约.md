@@ -1874,3 +1874,48 @@ public:
 - UE 控制台命令（G7）：
   - `HCIAbilityKit.AgentExecutePlanReviewPrepareStageGExecuteCommitReceipt [tamper=none|digest|intent|handoff|dispatch|receipt|commit|ready]`
   - `HCIAbilityKit.AgentExecutePlanReviewPrepareStageGExecuteCommitReceiptJson [tamper=none|digest|intent|handoff|dispatch|receipt|commit|ready]`
+
+### 14.5.21 StageG-SliceG8 StageGExecuteCommitReceipt（Stage G 执行提交回执，dry-run）完整性校验 -> StageGExecuteFinalReport（Stage G 执行最终报告，dry-run）桥接
+
+- 目标：基于 G7 的 `StageGExecuteCommitReceipt` 与最新 `StageGExecuteCommitRequest/StageGExecuteDispatchReceipt/StageGExecuteDispatchRequest/StageGExecutePermitTicket/StageGWriteEnableRequest/StageGExecuteIntent/SimHandoffEnvelope/SimArchiveBundle/SimFinalReport/SimExecuteReceipt/ExecuteTicket/ConfirmRequest/ApplyRequest/Review` 预览执行完整性校验，桥接为 `StageGExecuteFinalReport` 契约与 JSON；仍为 dry-run，不触发真实资产写入。
+- Runtime 桥接接口：`FHCIAbilityKitAgentExecutorStageGExecuteFinalReportBridge::BuildStageGExecuteFinalReport(...)`
+- 输出：`FHCIAbilityKitAgentStageGExecuteFinalReport`
+- 新增核心字段（G8）：
+  - `stage_g_execute_commit_receipt_id`
+  - `stage_g_execute_commit_receipt_digest`
+  - `stage_g_execute_commit_receipt_status`
+  - `stage_g_execute_commit_accepted`
+  - `stage_g_execute_commit_receipt_ready`
+  - `stage_g_execute_final_report_digest`
+  - `stage_g_execute_final_report_status`（`completed|blocked`）
+  - `stage_g_execute_finalized`
+  - `stage_g_execute_final_report_ready`
+- 成功口径（G8）：
+  - `stage_g_execute_final_report_status=completed`
+  - `stage_g_execute_finalized=true`
+  - `stage_g_execute_final_report_ready=true`
+  - `error_code=-`
+  - `reason=stage_g_execute_final_report_ready`
+- 新增错误码（G8）：
+  - `E4216 / stage_g_execute_commit_receipt_not_ready`
+- 继续沿用并可能在 G8 触发：
+  - `E4005 / user_not_confirmed`
+  - `E4005 / stage_g_write_enable_not_confirmed`
+  - `E4005 / stage_g_execute_dispatch_not_confirmed`
+  - `E4005 / stage_g_execute_commit_not_confirmed`
+  - `E4202 / *_mismatch`
+  - `E4204 / confirm_request_not_ready`
+  - `E4205 / execute_ticket_not_ready`
+  - `E4206 / simulate_execute_receipt_not_accepted`
+  - `E4207 / simulate_final_report_not_completed`
+  - `E4208 / sim_archive_bundle_not_ready`
+  - `E4209 / sim_handoff_envelope_not_ready`
+  - `E4210 / stage_g_execute_intent_not_ready`
+  - `E4211 / stage_g_write_enable_request_not_ready`
+  - `E4212 / stage_g_execute_permit_ticket_not_ready`
+  - `E4213 / stage_g_execute_dispatch_request_not_ready`
+  - `E4214 / stage_g_execute_dispatch_receipt_not_ready`
+  - `E4215 / stage_g_execute_commit_request_not_ready`
+- UE 控制台命令（G8）：
+  - `HCIAbilityKit.AgentExecutePlanReviewPrepareStageGExecuteFinalReport [tamper=none|digest|intent|handoff|dispatch|receipt|commit|commitreceipt|ready]`
+  - `HCIAbilityKit.AgentExecutePlanReviewPrepareStageGExecuteFinalReportJson [tamper=none|digest|intent|handoff|dispatch|receipt|commit|commitreceipt|ready]`

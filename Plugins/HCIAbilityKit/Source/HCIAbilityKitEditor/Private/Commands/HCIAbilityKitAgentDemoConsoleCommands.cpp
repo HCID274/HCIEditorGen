@@ -2,9 +2,12 @@
 #include "Commands/HCIAbilityKitAgentExecutorReviewLocateUtils.h"
 
 #include "Agent/HCIAbilityKitAgentExecutionGate.h"
+#include "Agent/HCIAbilityKitAgentApplyConfirmRequest.h"
+#include "Agent/HCIAbilityKitAgentApplyConfirmRequestJsonSerializer.h"
 #include "Agent/HCIAbilityKitAgentApplyRequest.h"
 #include "Agent/HCIAbilityKitAgentApplyRequestJsonSerializer.h"
 #include "Agent/HCIAbilityKitAgentExecutor.h"
+#include "Agent/HCIAbilityKitAgentExecutorApplyConfirmBridge.h"
 #include "Agent/HCIAbilityKitAgentExecutorApplyRequestBridge.h"
 #include "Agent/HCIAbilityKitAgentExecutorDryRunBridge.h"
 #include "Agent/HCIAbilityKitAgentPlan.h"
@@ -32,6 +35,7 @@ DEFINE_LOG_CATEGORY_STATIC(LogHCIAbilityKitAgentDemo, Log, All);
 static FHCIAbilityKitAgentPlan GHCIAbilityKitAgentPlanPreviewState;
 static FHCIAbilityKitDryRunDiffReport GHCIAbilityKitAgentExecutorReviewDiffPreviewState;
 static FHCIAbilityKitAgentApplyRequest GHCIAbilityKitAgentApplyRequestPreviewState;
+static FHCIAbilityKitAgentApplyConfirmRequest GHCIAbilityKitAgentApplyConfirmRequestPreviewState;
 
 static FString HCI_JoinConsoleArgsAsText(const TArray<FString>& Args)
 {
@@ -3138,6 +3142,249 @@ static void HCI_RunAbilityKitAgentExecutePlanReviewPrepareApplyJsonCommand(const
 	UE_LOG(LogHCIAbilityKitAgentDemo, Display, TEXT("%s"), *JsonText);
 }
 
+static bool HCI_TryParseConfirmTamperModeArg(const FString& InValue, FString& OutTamperMode)
+{
+	const FString Trimmed = InValue.TrimStartAndEnd();
+	if (Trimmed.Equals(TEXT("none"), ESearchCase::IgnoreCase))
+	{
+		OutTamperMode = TEXT("none");
+		return true;
+	}
+	if (Trimmed.Equals(TEXT("digest"), ESearchCase::IgnoreCase))
+	{
+		OutTamperMode = TEXT("digest");
+		return true;
+	}
+	if (Trimmed.Equals(TEXT("review"), ESearchCase::IgnoreCase))
+	{
+		OutTamperMode = TEXT("review");
+		return true;
+	}
+	return false;
+}
+
+static void HCI_LogAgentExecutorConfirmSummary(const FHCIAbilityKitAgentApplyConfirmRequest& ConfirmRequest)
+{
+	const bool bUseWarning = !ConfirmRequest.bReadyToExecute;
+	if (bUseWarning)
+	{
+		UE_LOG(
+			LogHCIAbilityKitAgentDemo,
+			Warning,
+			TEXT("[HCIAbilityKit][AgentExecutorConfirm] summary request_id=%s apply_request_id=%s review_request_id=%s selection_digest=%s user_confirmed=%s ready_to_execute=%s error_code=%s reason=%s validation=ok"),
+			ConfirmRequest.RequestId.IsEmpty() ? TEXT("-") : *ConfirmRequest.RequestId,
+			ConfirmRequest.ApplyRequestId.IsEmpty() ? TEXT("-") : *ConfirmRequest.ApplyRequestId,
+			ConfirmRequest.ReviewRequestId.IsEmpty() ? TEXT("-") : *ConfirmRequest.ReviewRequestId,
+			ConfirmRequest.SelectionDigest.IsEmpty() ? TEXT("-") : *ConfirmRequest.SelectionDigest,
+			ConfirmRequest.bUserConfirmed ? TEXT("true") : TEXT("false"),
+			ConfirmRequest.bReadyToExecute ? TEXT("true") : TEXT("false"),
+			ConfirmRequest.ErrorCode.IsEmpty() ? TEXT("-") : *ConfirmRequest.ErrorCode,
+			ConfirmRequest.Reason.IsEmpty() ? TEXT("-") : *ConfirmRequest.Reason);
+		return;
+	}
+
+	UE_LOG(
+		LogHCIAbilityKitAgentDemo,
+		Display,
+		TEXT("[HCIAbilityKit][AgentExecutorConfirm] summary request_id=%s apply_request_id=%s review_request_id=%s selection_digest=%s user_confirmed=%s ready_to_execute=%s error_code=%s reason=%s validation=ok"),
+		ConfirmRequest.RequestId.IsEmpty() ? TEXT("-") : *ConfirmRequest.RequestId,
+		ConfirmRequest.ApplyRequestId.IsEmpty() ? TEXT("-") : *ConfirmRequest.ApplyRequestId,
+		ConfirmRequest.ReviewRequestId.IsEmpty() ? TEXT("-") : *ConfirmRequest.ReviewRequestId,
+		ConfirmRequest.SelectionDigest.IsEmpty() ? TEXT("-") : *ConfirmRequest.SelectionDigest,
+		ConfirmRequest.bUserConfirmed ? TEXT("true") : TEXT("false"),
+		ConfirmRequest.bReadyToExecute ? TEXT("true") : TEXT("false"),
+		ConfirmRequest.ErrorCode.IsEmpty() ? TEXT("-") : *ConfirmRequest.ErrorCode,
+		ConfirmRequest.Reason.IsEmpty() ? TEXT("-") : *ConfirmRequest.Reason);
+}
+
+static void HCI_LogAgentExecutorConfirmRows(const FHCIAbilityKitAgentApplyConfirmRequest& ConfirmRequest)
+{
+	for (const FHCIAbilityKitAgentApplyRequestItem& Item : ConfirmRequest.Items)
+	{
+		if (Item.bBlocked)
+		{
+			UE_LOG(
+				LogHCIAbilityKitAgentDemo,
+				Warning,
+				TEXT("[HCIAbilityKit][AgentExecutorConfirm] row=%d tool_name=%s risk=%s blocked=%s skip_reason=%s object_type=%s locate_strategy=%s asset_path=%s field=%s evidence_key=%s actor_path=%s"),
+				Item.RowIndex,
+				Item.ToolName.IsEmpty() ? TEXT("-") : *Item.ToolName,
+				*FHCIAbilityKitDryRunDiff::RiskToString(Item.Risk),
+				TEXT("true"),
+				Item.SkipReason.IsEmpty() ? TEXT("-") : *Item.SkipReason,
+				*FHCIAbilityKitDryRunDiff::ObjectTypeToString(Item.ObjectType),
+				*FHCIAbilityKitDryRunDiff::LocateStrategyToString(Item.LocateStrategy),
+				Item.AssetPath.IsEmpty() ? TEXT("-") : *Item.AssetPath,
+				Item.Field.IsEmpty() ? TEXT("-") : *Item.Field,
+				Item.EvidenceKey.IsEmpty() ? TEXT("-") : *Item.EvidenceKey,
+				Item.ActorPath.IsEmpty() ? TEXT("-") : *Item.ActorPath);
+		}
+		else
+		{
+			UE_LOG(
+				LogHCIAbilityKitAgentDemo,
+				Display,
+				TEXT("[HCIAbilityKit][AgentExecutorConfirm] row=%d tool_name=%s risk=%s blocked=%s skip_reason=%s object_type=%s locate_strategy=%s asset_path=%s field=%s evidence_key=%s actor_path=%s"),
+				Item.RowIndex,
+				Item.ToolName.IsEmpty() ? TEXT("-") : *Item.ToolName,
+				*FHCIAbilityKitDryRunDiff::RiskToString(Item.Risk),
+				TEXT("false"),
+				Item.SkipReason.IsEmpty() ? TEXT("-") : *Item.SkipReason,
+				*FHCIAbilityKitDryRunDiff::ObjectTypeToString(Item.ObjectType),
+				*FHCIAbilityKitDryRunDiff::LocateStrategyToString(Item.LocateStrategy),
+				Item.AssetPath.IsEmpty() ? TEXT("-") : *Item.AssetPath,
+				Item.Field.IsEmpty() ? TEXT("-") : *Item.Field,
+				Item.EvidenceKey.IsEmpty() ? TEXT("-") : *Item.EvidenceKey,
+				Item.ActorPath.IsEmpty() ? TEXT("-") : *Item.ActorPath);
+		}
+	}
+}
+
+static bool HCI_TryBuildAgentExecutorConfirmRequestFromLatestPreview(
+	const bool bUserConfirmed,
+	const FString& TamperMode,
+	FHCIAbilityKitAgentApplyConfirmRequest& OutConfirmRequest)
+{
+	if (GHCIAbilityKitAgentApplyRequestPreviewState.Items.Num() <= 0)
+	{
+		UE_LOG(LogHCIAbilityKitAgentDemo, Warning, TEXT("[HCIAbilityKit][AgentExecutorConfirm] prepare=unavailable reason=no_apply_request_preview_state"));
+		UE_LOG(
+			LogHCIAbilityKitAgentDemo,
+			Display,
+			TEXT("[HCIAbilityKit][AgentExecutorConfirm] suggestion=先运行 HCIAbilityKit.AgentExecutePlanReviewPrepareApply"));
+		return false;
+	}
+
+	if (GHCIAbilityKitAgentExecutorReviewDiffPreviewState.DiffItems.Num() <= 0)
+	{
+		UE_LOG(LogHCIAbilityKitAgentDemo, Warning, TEXT("[HCIAbilityKit][AgentExecutorConfirm] prepare=unavailable reason=no_review_preview_state"));
+		UE_LOG(
+			LogHCIAbilityKitAgentDemo,
+			Display,
+			TEXT("[HCIAbilityKit][AgentExecutorConfirm] suggestion=先运行 HCIAbilityKit.AgentExecutePlanReviewDemo 或 HCIAbilityKit.AgentExecutePlanReviewSelect"));
+		return false;
+	}
+
+	FHCIAbilityKitAgentApplyRequest WorkingApplyRequest = GHCIAbilityKitAgentApplyRequestPreviewState;
+	if (TamperMode == TEXT("digest"))
+	{
+		WorkingApplyRequest.SelectionDigest += TEXT("_tampered");
+	}
+	else if (TamperMode == TEXT("review"))
+	{
+		WorkingApplyRequest.ReviewRequestId += TEXT("_stale");
+	}
+
+	if (!FHCIAbilityKitAgentExecutorApplyConfirmBridge::BuildConfirmRequest(
+			WorkingApplyRequest,
+			GHCIAbilityKitAgentExecutorReviewDiffPreviewState,
+			bUserConfirmed,
+			OutConfirmRequest))
+	{
+		UE_LOG(LogHCIAbilityKitAgentDemo, Error, TEXT("[HCIAbilityKit][AgentExecutorConfirm] prepare_failed reason=bridge_failed"));
+		return false;
+	}
+
+	GHCIAbilityKitAgentApplyConfirmRequestPreviewState = OutConfirmRequest;
+	return true;
+}
+
+static bool HCI_TryParseConfirmCommandArgs(
+	const TArray<FString>& Args,
+	bool& OutUserConfirmed,
+	FString& OutTamperMode)
+{
+	OutUserConfirmed = true;
+	OutTamperMode = TEXT("none");
+
+	if (Args.Num() == 0)
+	{
+		return true;
+	}
+	if (Args.Num() > 2)
+	{
+		return false;
+	}
+	if (!HCI_TryParseBool01Arg(Args[0], OutUserConfirmed))
+	{
+		return false;
+	}
+	if (Args.Num() == 2 && !HCI_TryParseConfirmTamperModeArg(Args[1], OutTamperMode))
+	{
+		return false;
+	}
+	return true;
+}
+
+static void HCI_RunAbilityKitAgentExecutePlanReviewPrepareConfirmCommand(const TArray<FString>& Args)
+{
+	bool bUserConfirmed = true;
+	FString TamperMode;
+	if (!HCI_TryParseConfirmCommandArgs(Args, bUserConfirmed, TamperMode))
+	{
+		UE_LOG(
+			LogHCIAbilityKitAgentDemo,
+			Error,
+			TEXT("[HCIAbilityKit][AgentExecutorConfirm] invalid_args usage=HCIAbilityKit.AgentExecutePlanReviewPrepareConfirm [user_confirmed=0|1] [tamper=none|digest|review]"));
+		return;
+	}
+
+	FHCIAbilityKitAgentApplyConfirmRequest ConfirmRequest;
+	if (!HCI_TryBuildAgentExecutorConfirmRequestFromLatestPreview(bUserConfirmed, TamperMode, ConfirmRequest))
+	{
+		return;
+	}
+
+	HCI_LogAgentExecutorConfirmSummary(ConfirmRequest);
+	HCI_LogAgentExecutorConfirmRows(ConfirmRequest);
+	UE_LOG(
+		LogHCIAbilityKitAgentDemo,
+		Display,
+		TEXT("[HCIAbilityKit][AgentExecutorConfirm] hint=也可运行 HCIAbilityKit.AgentExecutePlanReviewPrepareConfirmJson [user_confirmed] [tamper] 输出 ConfirmRequest JSON"));
+}
+
+static void HCI_RunAbilityKitAgentExecutePlanReviewPrepareConfirmJsonCommand(const TArray<FString>& Args)
+{
+	bool bUserConfirmed = true;
+	FString TamperMode;
+	if (!HCI_TryParseConfirmCommandArgs(Args, bUserConfirmed, TamperMode))
+	{
+		UE_LOG(
+			LogHCIAbilityKitAgentDemo,
+			Error,
+			TEXT("[HCIAbilityKit][AgentExecutorConfirm] invalid_args usage=HCIAbilityKit.AgentExecutePlanReviewPrepareConfirmJson [user_confirmed=0|1] [tamper=none|digest|review]"));
+		return;
+	}
+
+	FHCIAbilityKitAgentApplyConfirmRequest ConfirmRequest;
+	if (!HCI_TryBuildAgentExecutorConfirmRequestFromLatestPreview(bUserConfirmed, TamperMode, ConfirmRequest))
+	{
+		return;
+	}
+
+	HCI_LogAgentExecutorConfirmSummary(ConfirmRequest);
+	HCI_LogAgentExecutorConfirmRows(ConfirmRequest);
+
+	FString JsonText;
+	if (!FHCIAbilityKitAgentApplyConfirmRequestJsonSerializer::SerializeToJsonString(ConfirmRequest, JsonText))
+	{
+		UE_LOG(
+			LogHCIAbilityKitAgentDemo,
+			Error,
+			TEXT("[HCIAbilityKit][AgentExecutorConfirm] json_failed request_id=%s"),
+			ConfirmRequest.RequestId.IsEmpty() ? TEXT("-") : *ConfirmRequest.RequestId);
+		return;
+	}
+
+	UE_LOG(
+		LogHCIAbilityKitAgentDemo,
+		Display,
+		TEXT("[HCIAbilityKit][AgentExecutorConfirm] json request_id=%s bytes=%d"),
+		ConfirmRequest.RequestId.IsEmpty() ? TEXT("-") : *ConfirmRequest.RequestId,
+		JsonText.Len());
+	UE_LOG(LogHCIAbilityKitAgentDemo, Display, TEXT("%s"), *JsonText);
+}
+
 static void HCI_RunAbilityKitAgentExecutePlanDemoCommand(const TArray<FString>& Args)
 {
 	FHCIAbilityKitToolRegistry& Registry = FHCIAbilityKitToolRegistry::Get();
@@ -3362,6 +3609,22 @@ void FHCIAbilityKitAgentDemoConsoleCommands::Startup()
 			TEXT("F9 Build ApplyRequest package from latest selected ExecutorReview preview and print JSON. Usage: HCIAbilityKit.AgentExecutePlanReviewPrepareApplyJson"),
 			FConsoleCommandWithArgsDelegate::CreateStatic(&HCI_RunAbilityKitAgentExecutePlanReviewPrepareApplyJsonCommand));
 	}
+
+	if (!AgentExecutePlanReviewPrepareConfirmCommand.IsValid())
+	{
+		AgentExecutePlanReviewPrepareConfirmCommand = MakeUnique<FAutoConsoleCommand>(
+			TEXT("HCIAbilityKit.AgentExecutePlanReviewPrepareConfirm"),
+			TEXT("F10 Validate latest ApplyRequest against latest review preview and build ConfirmRequest. Usage: HCIAbilityKit.AgentExecutePlanReviewPrepareConfirm [user_confirmed=0|1] [tamper=none|digest|review]"),
+			FConsoleCommandWithArgsDelegate::CreateStatic(&HCI_RunAbilityKitAgentExecutePlanReviewPrepareConfirmCommand));
+	}
+
+	if (!AgentExecutePlanReviewPrepareConfirmJsonCommand.IsValid())
+	{
+		AgentExecutePlanReviewPrepareConfirmJsonCommand = MakeUnique<FAutoConsoleCommand>(
+			TEXT("HCIAbilityKit.AgentExecutePlanReviewPrepareConfirmJson"),
+			TEXT("F10 Build ConfirmRequest and print JSON. Usage: HCIAbilityKit.AgentExecutePlanReviewPrepareConfirmJson [user_confirmed=0|1] [tamper=none|digest|review]"),
+			FConsoleCommandWithArgsDelegate::CreateStatic(&HCI_RunAbilityKitAgentExecutePlanReviewPrepareConfirmJsonCommand));
+	}
 }
 
 void FHCIAbilityKitAgentDemoConsoleCommands::Shutdown()
@@ -3385,4 +3648,6 @@ void FHCIAbilityKitAgentDemoConsoleCommands::Shutdown()
 	AgentExecutePlanReviewSelectJsonCommand.Reset();
 	AgentExecutePlanReviewPrepareApplyCommand.Reset();
 	AgentExecutePlanReviewPrepareApplyJsonCommand.Reset();
+	AgentExecutePlanReviewPrepareConfirmCommand.Reset();
+	AgentExecutePlanReviewPrepareConfirmJsonCommand.Reset();
 }

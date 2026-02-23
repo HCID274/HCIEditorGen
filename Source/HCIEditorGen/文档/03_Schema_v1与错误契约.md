@@ -1121,6 +1121,68 @@ public:
   - 不修改 F6/F7/F8 现有命令与日志字段口径。
   - F9 仅做“审阅采纳子集 -> 执行申请包”桥接与 JSON 输出，不触发真实写资产/事务提交。
 
+### 14.5.8 StageF-SliceF10 ApplyRequest 确认前校验 -> ConfirmRequest 执行确认申请桥接
+
+- 目标：基于 F9 的 `ApplyRequest` 与最新审阅预览执行确认前校验（`review_request_id + selection_digest + ready + user_confirmed`），桥接为 `ConfirmRequest` 契约与 JSON，为后续 F11“确认后执行骨架（仍 dry-run）”提供稳定输入。
+- Runtime 新增桥接器（F10）：
+  - `FHCIAbilityKitAgentExecutorApplyConfirmBridge::BuildConfirmRequest(...)`
+  - 输入：`ApplyRequest`（来自 F9） + `CurrentReviewReport`（F6/F8 最新审阅预览）+ `user_confirmed`
+  - 输出：`FHCIAbilityKitAgentApplyConfirmRequest`
+- F10 `ConfirmRequest` 顶层字段（最小冻结）：
+  - `request_id`
+  - `apply_request_id`
+  - `review_request_id`
+  - `selection_digest`
+  - `generated_utc`（值按北京时间 `+08:00` 输出，字段名兼容保留）
+  - `execution_mode`（一期固定：`simulate_dry_run_apply_confirm_request`）
+  - `user_confirmed`
+  - `ready_to_execute`
+  - `error_code`（成功可为 `-`）
+  - `reason`
+  - `summary`
+  - `items[]`
+- F10 `summary` 字段（最小冻结）：
+  - `total_rows`
+  - `modifiable_rows`
+  - `blocked_rows`
+  - `read_only_rows`
+  - `write_rows`
+  - `destructive_rows`
+  - `selected_rows`
+- F10 `items[]` 字段（最小冻结）：
+  - 复用 F9 `ApplyRequest.items[]` 字段集：
+    - `row_index/tool_name/risk/asset_path/field/skip_reason/blocked/object_type/locate_strategy/evidence_key/actor_path`
+- F10 校验规则（冻结）：
+  - `user_confirmed=false` -> `ready_to_execute=false`，`error_code=E4005`，`reason=user_not_confirmed`
+  - `ApplyRequest.ready=false` 或 `ApplyRequest.summary.blocked_rows>0` -> `ready_to_execute=false`，`error_code=E4203`，`reason=apply_request_not_ready_blocked_rows_present`
+  - `ApplyRequest.review_request_id != CurrentReviewReport.request_id` -> `ready_to_execute=false`，`error_code=E4202`，`reason=review_request_id_mismatch`
+  - `ApplyRequest.selection_digest` 与 `CurrentReviewReport` 重算摘要不一致 -> `ready_to_execute=false`，`error_code=E4202`，`reason=selection_digest_mismatch`
+  - 全部通过 -> `ready_to_execute=true`，`error_code=-`，`reason=confirm_request_ready`
+- Editor 新增命令（F10）：
+  - `HCIAbilityKit.AgentExecutePlanReviewPrepareConfirm [user_confirmed=0|1] [tamper=none|digest|review]`
+  - `HCIAbilityKit.AgentExecutePlanReviewPrepareConfirmJson [user_confirmed=0|1] [tamper=none|digest|review]`
+  - 输入来源：F9 “最新 ApplyRequest 预览状态” + F6/F8 “最新审阅预览状态”
+  - `tamper` 仅用于 UE 手测模拟：
+    - `none`：正常校验
+    - `digest`：篡改 `selection_digest`（触发 `E4202/selection_digest_mismatch`）
+    - `review`：篡改 `review_request_id`（触发 `E4202/review_request_id_mismatch`）
+- F10 日志口径（新增，冻结）：
+  - 无状态（Warning + 指引）：
+    - `[HCIAbilityKit][AgentExecutorConfirm] prepare=unavailable reason=no_apply_request_preview_state`
+    - `[HCIAbilityKit][AgentExecutorConfirm] prepare=unavailable reason=no_review_preview_state`
+  - 非法参数（Error）：
+    - `invalid_args usage=HCIAbilityKit.AgentExecutePlanReviewPrepareConfirm [user_confirmed=0|1] [tamper=none|digest|review]`
+  - 摘要（Display/Warning）：
+    - `[HCIAbilityKit][AgentExecutorConfirm] summary request_id=... apply_request_id=... review_request_id=... selection_digest=... user_confirmed=true|false ready_to_execute=true|false error_code=... reason=... validation=ok`
+  - 行（Display/Warning）：
+    - `row=... tool_name=... risk=... blocked=... skip_reason=... object_type=... locate_strategy=... asset_path=... field=... evidence_key=... actor_path=...`
+  - JSON 输出：
+    - `[HCIAbilityKit][AgentExecutorConfirm] json request_id=... bytes=...`
+    - 后续输出 `ConfirmRequest` JSON 文本
+- 兼容性要求（F10）：
+  - 不修改 F6/F7/F8/F9 现有命令与日志字段口径。
+  - F10 仅做“确认前校验 + ConfirmRequest 桥接/JSON 输出”，不触发真实写资产/事务提交。
+
 ### 14.6 一期禁止实现（延期到 Phase 3）
 
 - 记忆门禁与 TTL 细则（Session TTL/SOP 自动提炼触发策略）。

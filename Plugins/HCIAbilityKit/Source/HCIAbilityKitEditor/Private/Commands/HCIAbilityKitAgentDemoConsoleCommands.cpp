@@ -8,11 +8,14 @@
 #include "Agent/HCIAbilityKitAgentApplyRequestJsonSerializer.h"
 #include "Agent/HCIAbilityKitAgentExecuteTicket.h"
 #include "Agent/HCIAbilityKitAgentExecuteTicketJsonSerializer.h"
+#include "Agent/HCIAbilityKitAgentSimulateExecuteReceipt.h"
+#include "Agent/HCIAbilityKitAgentSimulateExecuteReceiptJsonSerializer.h"
 #include "Agent/HCIAbilityKitAgentExecutor.h"
 #include "Agent/HCIAbilityKitAgentExecutorApplyConfirmBridge.h"
 #include "Agent/HCIAbilityKitAgentExecutorApplyRequestBridge.h"
 #include "Agent/HCIAbilityKitAgentExecutorDryRunBridge.h"
 #include "Agent/HCIAbilityKitAgentExecutorExecuteTicketBridge.h"
+#include "Agent/HCIAbilityKitAgentExecutorSimulateExecuteReceiptBridge.h"
 #include "Agent/HCIAbilityKitAgentPlan.h"
 #include "Agent/HCIAbilityKitAgentPlanJsonSerializer.h"
 #include "Agent/HCIAbilityKitAgentPlanner.h"
@@ -40,6 +43,7 @@ static FHCIAbilityKitDryRunDiffReport GHCIAbilityKitAgentExecutorReviewDiffPrevi
 static FHCIAbilityKitAgentApplyRequest GHCIAbilityKitAgentApplyRequestPreviewState;
 static FHCIAbilityKitAgentApplyConfirmRequest GHCIAbilityKitAgentApplyConfirmRequestPreviewState;
 static FHCIAbilityKitAgentExecuteTicket GHCIAbilityKitAgentExecuteTicketPreviewState;
+static FHCIAbilityKitAgentSimulateExecuteReceipt GHCIAbilityKitAgentSimulateExecuteReceiptPreviewState;
 
 static FString HCI_JoinConsoleArgsAsText(const TArray<FString>& Args)
 {
@@ -3637,6 +3641,287 @@ static void HCI_RunAbilityKitAgentExecutePlanReviewPrepareExecuteTicketJsonComma
 	UE_LOG(LogHCIAbilityKitAgentDemo, Display, TEXT("%s"), *JsonText);
 }
 
+static bool HCI_TryParseSimExecuteReceiptTamperModeArg(const FString& InValue, FString& OutTamperMode)
+{
+	const FString Trimmed = InValue.TrimStartAndEnd();
+	if (Trimmed.Equals(TEXT("none"), ESearchCase::IgnoreCase))
+	{
+		OutTamperMode = TEXT("none");
+		return true;
+	}
+	if (Trimmed.Equals(TEXT("digest"), ESearchCase::IgnoreCase))
+	{
+		OutTamperMode = TEXT("digest");
+		return true;
+	}
+	if (Trimmed.Equals(TEXT("apply"), ESearchCase::IgnoreCase))
+	{
+		OutTamperMode = TEXT("apply");
+		return true;
+	}
+	if (Trimmed.Equals(TEXT("review"), ESearchCase::IgnoreCase))
+	{
+		OutTamperMode = TEXT("review");
+		return true;
+	}
+	if (Trimmed.Equals(TEXT("confirm"), ESearchCase::IgnoreCase))
+	{
+		OutTamperMode = TEXT("confirm");
+		return true;
+	}
+	if (Trimmed.Equals(TEXT("ready"), ESearchCase::IgnoreCase))
+	{
+		OutTamperMode = TEXT("ready");
+		return true;
+	}
+	return false;
+}
+
+static void HCI_LogAgentExecutorSimExecuteReceiptSummary(const FHCIAbilityKitAgentSimulateExecuteReceipt& Receipt)
+{
+	const bool bUseWarning = !Receipt.bSimulatedDispatchAccepted;
+	if (bUseWarning)
+	{
+		UE_LOG(
+			LogHCIAbilityKitAgentDemo,
+			Warning,
+			TEXT("[HCIAbilityKit][AgentExecutorSimExecuteReceipt] summary request_id=%s execute_ticket_id=%s confirm_request_id=%s apply_request_id=%s review_request_id=%s selection_digest=%s user_confirmed=%s ready_to_simulate_execute=%s simulated_dispatch_accepted=%s error_code=%s reason=%s validation=ok"),
+			Receipt.RequestId.IsEmpty() ? TEXT("-") : *Receipt.RequestId,
+			Receipt.ExecuteTicketId.IsEmpty() ? TEXT("-") : *Receipt.ExecuteTicketId,
+			Receipt.ConfirmRequestId.IsEmpty() ? TEXT("-") : *Receipt.ConfirmRequestId,
+			Receipt.ApplyRequestId.IsEmpty() ? TEXT("-") : *Receipt.ApplyRequestId,
+			Receipt.ReviewRequestId.IsEmpty() ? TEXT("-") : *Receipt.ReviewRequestId,
+			Receipt.SelectionDigest.IsEmpty() ? TEXT("-") : *Receipt.SelectionDigest,
+			Receipt.bUserConfirmed ? TEXT("true") : TEXT("false"),
+			Receipt.bReadyToSimulateExecute ? TEXT("true") : TEXT("false"),
+			Receipt.bSimulatedDispatchAccepted ? TEXT("true") : TEXT("false"),
+			Receipt.ErrorCode.IsEmpty() ? TEXT("-") : *Receipt.ErrorCode,
+			Receipt.Reason.IsEmpty() ? TEXT("-") : *Receipt.Reason);
+		return;
+	}
+
+	UE_LOG(
+		LogHCIAbilityKitAgentDemo,
+		Display,
+		TEXT("[HCIAbilityKit][AgentExecutorSimExecuteReceipt] summary request_id=%s execute_ticket_id=%s confirm_request_id=%s apply_request_id=%s review_request_id=%s selection_digest=%s user_confirmed=%s ready_to_simulate_execute=%s simulated_dispatch_accepted=%s error_code=%s reason=%s validation=ok"),
+		Receipt.RequestId.IsEmpty() ? TEXT("-") : *Receipt.RequestId,
+		Receipt.ExecuteTicketId.IsEmpty() ? TEXT("-") : *Receipt.ExecuteTicketId,
+		Receipt.ConfirmRequestId.IsEmpty() ? TEXT("-") : *Receipt.ConfirmRequestId,
+		Receipt.ApplyRequestId.IsEmpty() ? TEXT("-") : *Receipt.ApplyRequestId,
+		Receipt.ReviewRequestId.IsEmpty() ? TEXT("-") : *Receipt.ReviewRequestId,
+		Receipt.SelectionDigest.IsEmpty() ? TEXT("-") : *Receipt.SelectionDigest,
+		Receipt.bUserConfirmed ? TEXT("true") : TEXT("false"),
+		Receipt.bReadyToSimulateExecute ? TEXT("true") : TEXT("false"),
+		Receipt.bSimulatedDispatchAccepted ? TEXT("true") : TEXT("false"),
+		Receipt.ErrorCode.IsEmpty() ? TEXT("-") : *Receipt.ErrorCode,
+		Receipt.Reason.IsEmpty() ? TEXT("-") : *Receipt.Reason);
+}
+
+static void HCI_LogAgentExecutorSimExecuteReceiptRows(const FHCIAbilityKitAgentSimulateExecuteReceipt& Receipt)
+{
+	for (const FHCIAbilityKitAgentApplyRequestItem& Item : Receipt.Items)
+	{
+		if (Item.bBlocked)
+		{
+			UE_LOG(
+				LogHCIAbilityKitAgentDemo,
+				Warning,
+				TEXT("[HCIAbilityKit][AgentExecutorSimExecuteReceipt] row=%d tool_name=%s risk=%s blocked=%s skip_reason=%s object_type=%s locate_strategy=%s asset_path=%s field=%s evidence_key=%s actor_path=%s"),
+				Item.RowIndex,
+				Item.ToolName.IsEmpty() ? TEXT("-") : *Item.ToolName,
+				*FHCIAbilityKitDryRunDiff::RiskToString(Item.Risk),
+				TEXT("true"),
+				Item.SkipReason.IsEmpty() ? TEXT("-") : *Item.SkipReason,
+				*FHCIAbilityKitDryRunDiff::ObjectTypeToString(Item.ObjectType),
+				*FHCIAbilityKitDryRunDiff::LocateStrategyToString(Item.LocateStrategy),
+				Item.AssetPath.IsEmpty() ? TEXT("-") : *Item.AssetPath,
+				Item.Field.IsEmpty() ? TEXT("-") : *Item.Field,
+				Item.EvidenceKey.IsEmpty() ? TEXT("-") : *Item.EvidenceKey,
+				Item.ActorPath.IsEmpty() ? TEXT("-") : *Item.ActorPath);
+		}
+		else
+		{
+			UE_LOG(
+				LogHCIAbilityKitAgentDemo,
+				Display,
+				TEXT("[HCIAbilityKit][AgentExecutorSimExecuteReceipt] row=%d tool_name=%s risk=%s blocked=%s skip_reason=%s object_type=%s locate_strategy=%s asset_path=%s field=%s evidence_key=%s actor_path=%s"),
+				Item.RowIndex,
+				Item.ToolName.IsEmpty() ? TEXT("-") : *Item.ToolName,
+				*FHCIAbilityKitDryRunDiff::RiskToString(Item.Risk),
+				TEXT("false"),
+				Item.SkipReason.IsEmpty() ? TEXT("-") : *Item.SkipReason,
+				*FHCIAbilityKitDryRunDiff::ObjectTypeToString(Item.ObjectType),
+				*FHCIAbilityKitDryRunDiff::LocateStrategyToString(Item.LocateStrategy),
+				Item.AssetPath.IsEmpty() ? TEXT("-") : *Item.AssetPath,
+				Item.Field.IsEmpty() ? TEXT("-") : *Item.Field,
+				Item.EvidenceKey.IsEmpty() ? TEXT("-") : *Item.EvidenceKey,
+				Item.ActorPath.IsEmpty() ? TEXT("-") : *Item.ActorPath);
+		}
+	}
+}
+
+static bool HCI_TryBuildAgentExecutorSimExecuteReceiptFromLatestPreview(
+	const FString& TamperMode,
+	FHCIAbilityKitAgentSimulateExecuteReceipt& OutReceipt)
+{
+	if (GHCIAbilityKitAgentExecuteTicketPreviewState.Items.Num() <= 0)
+	{
+		UE_LOG(LogHCIAbilityKitAgentDemo, Warning, TEXT("[HCIAbilityKit][AgentExecutorSimExecuteReceipt] prepare=unavailable reason=no_execute_ticket_preview_state"));
+		UE_LOG(
+			LogHCIAbilityKitAgentDemo,
+			Display,
+			TEXT("[HCIAbilityKit][AgentExecutorSimExecuteReceipt] suggestion=先运行 HCIAbilityKit.AgentExecutePlanReviewPrepareExecuteTicket"));
+		return false;
+	}
+
+	if (GHCIAbilityKitAgentApplyConfirmRequestPreviewState.Items.Num() <= 0)
+	{
+		UE_LOG(LogHCIAbilityKitAgentDemo, Warning, TEXT("[HCIAbilityKit][AgentExecutorSimExecuteReceipt] prepare=unavailable reason=no_confirm_request_preview_state"));
+		UE_LOG(
+			LogHCIAbilityKitAgentDemo,
+			Display,
+			TEXT("[HCIAbilityKit][AgentExecutorSimExecuteReceipt] suggestion=先运行 HCIAbilityKit.AgentExecutePlanReviewPrepareConfirm"));
+		return false;
+	}
+
+	if (GHCIAbilityKitAgentApplyRequestPreviewState.Items.Num() <= 0)
+	{
+		UE_LOG(LogHCIAbilityKitAgentDemo, Warning, TEXT("[HCIAbilityKit][AgentExecutorSimExecuteReceipt] prepare=unavailable reason=no_apply_request_preview_state"));
+		UE_LOG(
+			LogHCIAbilityKitAgentDemo,
+			Display,
+			TEXT("[HCIAbilityKit][AgentExecutorSimExecuteReceipt] suggestion=先运行 HCIAbilityKit.AgentExecutePlanReviewPrepareApply"));
+		return false;
+	}
+
+	if (GHCIAbilityKitAgentExecutorReviewDiffPreviewState.DiffItems.Num() <= 0)
+	{
+		UE_LOG(LogHCIAbilityKitAgentDemo, Warning, TEXT("[HCIAbilityKit][AgentExecutorSimExecuteReceipt] prepare=unavailable reason=no_review_preview_state"));
+		UE_LOG(
+			LogHCIAbilityKitAgentDemo,
+			Display,
+			TEXT("[HCIAbilityKit][AgentExecutorSimExecuteReceipt] suggestion=先运行 HCIAbilityKit.AgentExecutePlanReviewDemo 或 HCIAbilityKit.AgentExecutePlanReviewSelect"));
+		return false;
+	}
+
+	FHCIAbilityKitAgentExecuteTicket WorkingExecuteTicket = GHCIAbilityKitAgentExecuteTicketPreviewState;
+	if (TamperMode == TEXT("digest"))
+	{
+		WorkingExecuteTicket.SelectionDigest += TEXT("_tampered");
+	}
+	else if (TamperMode == TEXT("apply"))
+	{
+		WorkingExecuteTicket.ApplyRequestId += TEXT("_stale");
+	}
+	else if (TamperMode == TEXT("review"))
+	{
+		WorkingExecuteTicket.ReviewRequestId += TEXT("_stale");
+	}
+	else if (TamperMode == TEXT("confirm"))
+	{
+		WorkingExecuteTicket.ConfirmRequestId += TEXT("_stale");
+	}
+	else if (TamperMode == TEXT("ready"))
+	{
+		WorkingExecuteTicket.bReadyToSimulateExecute = false;
+	}
+
+	if (!FHCIAbilityKitAgentExecutorSimulateExecuteReceiptBridge::BuildSimulateExecuteReceipt(
+			WorkingExecuteTicket,
+			GHCIAbilityKitAgentApplyConfirmRequestPreviewState,
+			GHCIAbilityKitAgentApplyRequestPreviewState,
+			GHCIAbilityKitAgentExecutorReviewDiffPreviewState,
+			OutReceipt))
+	{
+		UE_LOG(LogHCIAbilityKitAgentDemo, Error, TEXT("[HCIAbilityKit][AgentExecutorSimExecuteReceipt] prepare_failed reason=bridge_failed"));
+		return false;
+	}
+
+	GHCIAbilityKitAgentSimulateExecuteReceiptPreviewState = OutReceipt;
+	return true;
+}
+
+static bool HCI_TryParseSimExecuteReceiptCommandArgs(const TArray<FString>& Args, FString& OutTamperMode)
+{
+	OutTamperMode = TEXT("none");
+	if (Args.Num() == 0)
+	{
+		return true;
+	}
+	if (Args.Num() != 1)
+	{
+		return false;
+	}
+	return HCI_TryParseSimExecuteReceiptTamperModeArg(Args[0], OutTamperMode);
+}
+
+static void HCI_RunAbilityKitAgentExecutePlanReviewPrepareSimExecuteReceiptCommand(const TArray<FString>& Args)
+{
+	FString TamperMode;
+	if (!HCI_TryParseSimExecuteReceiptCommandArgs(Args, TamperMode))
+	{
+		UE_LOG(
+			LogHCIAbilityKitAgentDemo,
+			Error,
+			TEXT("[HCIAbilityKit][AgentExecutorSimExecuteReceipt] invalid_args usage=HCIAbilityKit.AgentExecutePlanReviewPrepareSimExecuteReceipt [tamper=none|digest|apply|review|confirm|ready]"));
+		return;
+	}
+
+	FHCIAbilityKitAgentSimulateExecuteReceipt Receipt;
+	if (!HCI_TryBuildAgentExecutorSimExecuteReceiptFromLatestPreview(TamperMode, Receipt))
+	{
+		return;
+	}
+
+	HCI_LogAgentExecutorSimExecuteReceiptSummary(Receipt);
+	HCI_LogAgentExecutorSimExecuteReceiptRows(Receipt);
+	UE_LOG(
+		LogHCIAbilityKitAgentDemo,
+		Display,
+		TEXT("[HCIAbilityKit][AgentExecutorSimExecuteReceipt] hint=也可运行 HCIAbilityKit.AgentExecutePlanReviewPrepareSimExecuteReceiptJson [tamper] 输出 SimExecuteReceipt JSON"));
+}
+
+static void HCI_RunAbilityKitAgentExecutePlanReviewPrepareSimExecuteReceiptJsonCommand(const TArray<FString>& Args)
+{
+	FString TamperMode;
+	if (!HCI_TryParseSimExecuteReceiptCommandArgs(Args, TamperMode))
+	{
+		UE_LOG(
+			LogHCIAbilityKitAgentDemo,
+			Error,
+			TEXT("[HCIAbilityKit][AgentExecutorSimExecuteReceipt] invalid_args usage=HCIAbilityKit.AgentExecutePlanReviewPrepareSimExecuteReceiptJson [tamper=none|digest|apply|review|confirm|ready]"));
+		return;
+	}
+
+	FHCIAbilityKitAgentSimulateExecuteReceipt Receipt;
+	if (!HCI_TryBuildAgentExecutorSimExecuteReceiptFromLatestPreview(TamperMode, Receipt))
+	{
+		return;
+	}
+
+	HCI_LogAgentExecutorSimExecuteReceiptSummary(Receipt);
+	HCI_LogAgentExecutorSimExecuteReceiptRows(Receipt);
+
+	FString JsonText;
+	if (!FHCIAbilityKitAgentSimulateExecuteReceiptJsonSerializer::SerializeToJsonString(Receipt, JsonText))
+	{
+		UE_LOG(
+			LogHCIAbilityKitAgentDemo,
+			Error,
+			TEXT("[HCIAbilityKit][AgentExecutorSimExecuteReceipt] json_failed request_id=%s"),
+			Receipt.RequestId.IsEmpty() ? TEXT("-") : *Receipt.RequestId);
+		return;
+	}
+
+	UE_LOG(
+		LogHCIAbilityKitAgentDemo,
+		Display,
+		TEXT("[HCIAbilityKit][AgentExecutorSimExecuteReceipt] json request_id=%s bytes=%d"),
+		Receipt.RequestId.IsEmpty() ? TEXT("-") : *Receipt.RequestId,
+		JsonText.Len());
+	UE_LOG(LogHCIAbilityKitAgentDemo, Display, TEXT("%s"), *JsonText);
+}
+
 static void HCI_RunAbilityKitAgentExecutePlanDemoCommand(const TArray<FString>& Args)
 {
 	FHCIAbilityKitToolRegistry& Registry = FHCIAbilityKitToolRegistry::Get();
@@ -3893,6 +4178,22 @@ void FHCIAbilityKitAgentDemoConsoleCommands::Startup()
 			TEXT("F11 Build ExecuteTicket and print JSON. Usage: HCIAbilityKit.AgentExecutePlanReviewPrepareExecuteTicketJson [tamper=none|digest|apply|review]"),
 			FConsoleCommandWithArgsDelegate::CreateStatic(&HCI_RunAbilityKitAgentExecutePlanReviewPrepareExecuteTicketJsonCommand));
 	}
+
+	if (!AgentExecutePlanReviewPrepareSimExecuteReceiptCommand.IsValid())
+	{
+		AgentExecutePlanReviewPrepareSimExecuteReceiptCommand = MakeUnique<FAutoConsoleCommand>(
+			TEXT("HCIAbilityKit.AgentExecutePlanReviewPrepareSimExecuteReceipt"),
+			TEXT("F12 Validate latest ExecuteTicket against latest Confirm/Apply/Review preview and build SimExecuteReceipt. Usage: HCIAbilityKit.AgentExecutePlanReviewPrepareSimExecuteReceipt [tamper=none|digest|apply|review|confirm|ready]"),
+			FConsoleCommandWithArgsDelegate::CreateStatic(&HCI_RunAbilityKitAgentExecutePlanReviewPrepareSimExecuteReceiptCommand));
+	}
+
+	if (!AgentExecutePlanReviewPrepareSimExecuteReceiptJsonCommand.IsValid())
+	{
+		AgentExecutePlanReviewPrepareSimExecuteReceiptJsonCommand = MakeUnique<FAutoConsoleCommand>(
+			TEXT("HCIAbilityKit.AgentExecutePlanReviewPrepareSimExecuteReceiptJson"),
+			TEXT("F12 Build SimExecuteReceipt and print JSON. Usage: HCIAbilityKit.AgentExecutePlanReviewPrepareSimExecuteReceiptJson [tamper=none|digest|apply|review|confirm|ready]"),
+			FConsoleCommandWithArgsDelegate::CreateStatic(&HCI_RunAbilityKitAgentExecutePlanReviewPrepareSimExecuteReceiptJsonCommand));
+	}
 }
 
 void FHCIAbilityKitAgentDemoConsoleCommands::Shutdown()
@@ -3920,4 +4221,6 @@ void FHCIAbilityKitAgentDemoConsoleCommands::Shutdown()
 	AgentExecutePlanReviewPrepareConfirmJsonCommand.Reset();
 	AgentExecutePlanReviewPrepareExecuteTicketCommand.Reset();
 	AgentExecutePlanReviewPrepareExecuteTicketJsonCommand.Reset();
+	AgentExecutePlanReviewPrepareSimExecuteReceiptCommand.Reset();
+	AgentExecutePlanReviewPrepareSimExecuteReceiptJsonCommand.Reset();
 }

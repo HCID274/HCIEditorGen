@@ -1230,6 +1230,59 @@ public:
   - JSON 输出：
     - `[HCIAbilityKit][AgentExecutorExecuteTicket] json request_id=... bytes=...`
 
+### 14.5.10 StageF-SliceF12 ExecuteTicket 执行前投递校验 -> SimExecuteReceipt 模拟执行回执桥接
+
+- 目标：基于 F11 的 `ExecuteTicket` 与最新 `ConfirmRequest/ApplyRequest/Review` 预览执行投递前完整性校验（`confirm_request_id + apply_request_id + review_request_id + selection_digest + ready_to_simulate_execute + user_confirmed`），桥接为 `SimExecuteReceipt` 契约与 JSON；仍为 `simulate_dry_run`。
+- Runtime 新增桥接器（F12）：
+  - `FHCIAbilityKitAgentExecutorSimulateExecuteReceiptBridge::BuildSimulateExecuteReceipt(...)`
+  - 输入：`ExecuteTicket`（F11） + `CurrentConfirmRequest`（F10） + `CurrentApplyRequest`（F9） + `CurrentReviewReport`（F6/F8）
+  - 输出：`FHCIAbilityKitAgentSimulateExecuteReceipt`
+- F12 `SimExecuteReceipt` 顶层字段（最小冻结）：
+  - `request_id`
+  - `execute_ticket_id`
+  - `confirm_request_id`
+  - `apply_request_id`
+  - `review_request_id`
+  - `selection_digest`
+  - `generated_utc`（值按北京时间 `+08:00` 输出，字段名兼容保留）
+  - `execution_mode`（一期固定：`simulate_dry_run_execute_receipt`）
+  - `transaction_mode`（沿用 F11：`all_or_nothing`）
+  - `termination_policy`（沿用 F11：`stop_on_first_failure`）
+  - `user_confirmed`
+  - `ready_to_simulate_execute`（透传 F11）
+  - `simulated_dispatch_accepted`
+  - `error_code`（成功可为 `-`）
+  - `reason`
+  - `summary`
+  - `items[]`
+- F12 校验规则（冻结）：
+  - `ExecuteTicket.user_confirmed=false` -> `simulated_dispatch_accepted=false`，`error_code=E4005`，`reason=user_not_confirmed`
+  - `ExecuteTicket.ready_to_simulate_execute=false` -> `simulated_dispatch_accepted=false`，`error_code=E4205`，`reason=execute_ticket_not_ready`
+  - `CurrentConfirmRequest.ready_to_execute=false` -> `simulated_dispatch_accepted=false`，`error_code=E4204`，`reason=confirm_request_not_ready`
+  - `ExecuteTicket.confirm_request_id != CurrentConfirmRequest.request_id` -> `simulated_dispatch_accepted=false`，`error_code=E4202`，`reason=confirm_request_id_mismatch`
+  - `ExecuteTicket.apply_request_id != CurrentApplyRequest.request_id` -> `simulated_dispatch_accepted=false`，`error_code=E4202`，`reason=apply_request_id_mismatch`
+  - `ExecuteTicket.review_request_id != CurrentReviewReport.request_id` -> `simulated_dispatch_accepted=false`，`error_code=E4202`，`reason=review_request_id_mismatch`
+  - `ExecuteTicket.selection_digest` 与 `CurrentConfirmRequest/CurrentApplyRequest` 或 `CurrentReviewReport` 重算摘要任一不一致 -> `simulated_dispatch_accepted=false`，`error_code=E4202`，`reason=selection_digest_mismatch`
+  - 全部通过 -> `simulated_dispatch_accepted=true`，`error_code=-`，`reason=simulate_execute_receipt_ready`
+- Editor 新增命令（F12）：
+  - `HCIAbilityKit.AgentExecutePlanReviewPrepareSimExecuteReceipt [tamper=none|digest|apply|review|confirm|ready]`
+  - `HCIAbilityKit.AgentExecutePlanReviewPrepareSimExecuteReceiptJson [tamper=none|digest|apply|review|confirm|ready]`
+  - 输入来源：F11 “最新 ExecuteTicket 预览状态” + F10 “最新 ConfirmRequest 预览状态” + F9 “最新 ApplyRequest 预览状态” + F6/F8 “最新审阅预览状态”
+  - `tamper` 仅用于 UE 手测模拟：
+    - `none`：正常校验
+    - `digest`：篡改 `selection_digest`（触发 `E4202/selection_digest_mismatch`）
+    - `apply`：篡改 `apply_request_id`（触发 `E4202/apply_request_id_mismatch`）
+    - `review`：篡改 `review_request_id`（触发 `E4202/review_request_id_mismatch`）
+    - `confirm`：篡改 `confirm_request_id`（触发 `E4202/confirm_request_id_mismatch`）
+    - `ready`：强制清空 `ready_to_simulate_execute`（触发 `E4205/execute_ticket_not_ready`）
+- F12 日志口径（新增，冻结）：
+  - 摘要（Display/Warning）：
+    - `[HCIAbilityKit][AgentExecutorSimExecuteReceipt] summary request_id=... execute_ticket_id=... confirm_request_id=... apply_request_id=... review_request_id=... selection_digest=... user_confirmed=true|false ready_to_simulate_execute=true|false simulated_dispatch_accepted=true|false error_code=... reason=... validation=ok`
+  - 行（Display/Warning）：
+    - `row=... tool_name=... risk=... blocked=... skip_reason=... object_type=... locate_strategy=... asset_path=... field=... evidence_key=... actor_path=...`
+  - JSON 输出：
+    - `[HCIAbilityKit][AgentExecutorSimExecuteReceipt] json request_id=... bytes=...`
+
 ### 14.6 一期禁止实现（延期到 Phase 3）
 
 - 记忆门禁与 TTL 细则（Session TTL/SOP 自动提炼触发策略）。

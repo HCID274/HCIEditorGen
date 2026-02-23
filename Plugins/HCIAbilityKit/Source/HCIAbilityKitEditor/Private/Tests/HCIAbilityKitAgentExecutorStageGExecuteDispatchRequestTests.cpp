@@ -12,6 +12,7 @@
 #include "Agent/HCIAbilityKitAgentExecutorSimulateExecuteReceiptBridge.h"
 #include "Agent/HCIAbilityKitAgentExecutorStageGExecuteIntentBridge.h"
 #include "Agent/HCIAbilityKitAgentExecutorStageGWriteEnableRequestBridge.h"
+#include "Agent/HCIAbilityKitAgentExecutorStageGExecutePermitTicketBridge.h"
 #include "Agent/HCIAbilityKitAgentExecutorStageGExecuteDispatchRequestBridge.h"
 #include "Agent/HCIAbilityKitAgentSimulateExecuteArchiveBundle.h"
 #include "Agent/HCIAbilityKitAgentSimulateExecuteFinalReport.h"
@@ -19,6 +20,7 @@
 #include "Agent/HCIAbilityKitAgentSimulateExecuteReceipt.h"
 #include "Agent/HCIAbilityKitAgentStageGExecuteIntent.h"
 #include "Agent/HCIAbilityKitAgentStageGWriteEnableRequest.h"
+#include "Agent/HCIAbilityKitAgentStageGExecutePermitTicket.h"
 #include "Agent/HCIAbilityKitAgentStageGExecuteDispatchRequest.h"
 #include "Agent/HCIAbilityKitAgentStageGExecuteDispatchRequestJsonSerializer.h"
 #include "Agent/HCIAbilityKitDryRunDiff.h"
@@ -170,11 +172,40 @@ static FHCIAbilityKitAgentStageGWriteEnableRequest MakeG4WriteEnableRequest(
 		Request));
 	return Request;
 }
+
+static FHCIAbilityKitAgentStageGExecutePermitTicket MakeG4PermitTicket(
+	const FHCIAbilityKitAgentStageGWriteEnableRequest& WriteEnableRequest,
+	const FHCIAbilityKitAgentStageGExecuteIntent& Intent,
+	const FHCIAbilityKitAgentSimulateExecuteHandoffEnvelope& HandoffEnvelope,
+	const FHCIAbilityKitAgentSimulateExecuteArchiveBundle& ArchiveBundle,
+	const FHCIAbilityKitAgentSimulateExecuteFinalReport& FinalReport,
+	const FHCIAbilityKitAgentSimulateExecuteReceipt& Receipt,
+	const FHCIAbilityKitAgentExecuteTicket& ExecuteTicket,
+	const FHCIAbilityKitAgentApplyConfirmRequest& ConfirmRequest,
+	const FHCIAbilityKitAgentApplyRequest& ApplyRequest,
+	const FHCIAbilityKitDryRunDiffReport& Review)
+{
+	FHCIAbilityKitAgentStageGExecutePermitTicket Ticket;
+	check(FHCIAbilityKitAgentExecutorStageGExecutePermitTicketBridge::BuildStageGExecutePermitTicket(
+		WriteEnableRequest,
+		WriteEnableRequest.RequestId,
+		Intent,
+		HandoffEnvelope,
+		ArchiveBundle,
+		FinalReport,
+		Receipt,
+		ExecuteTicket,
+		ConfirmRequest,
+		ApplyRequest,
+		Review,
+		Ticket));
+	return Ticket;
+}
 } // namespace
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FHCIAbilityKitAgentExecutorStageGExecuteDispatchRequestReadyTest,
-	"HCIAbilityKit.Editor.AgentExecutorStageGExecuteDispatchRequest.ReadyWhenStageGWriteEnableRequestReady",
+	"HCIAbilityKit.Editor.AgentExecutorStageGExecuteDispatchRequest.ReadyWhenStageGExecutePermitTicketReady",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 bool FHCIAbilityKitAgentExecutorStageGExecuteDispatchRequestReadyTest::RunTest(const FString& Parameters)
@@ -189,11 +220,13 @@ bool FHCIAbilityKitAgentExecutorStageGExecuteDispatchRequestReadyTest::RunTest(c
 	const FHCIAbilityKitAgentSimulateExecuteHandoffEnvelope HandoffEnvelope = MakeG4HandoffEnvelope(ArchiveBundle, FinalReport, Receipt, ExecuteTicket, ConfirmRequest, ApplyRequest, Review);
 	const FHCIAbilityKitAgentStageGExecuteIntent Intent = MakeG4StageGIntent(HandoffEnvelope, ArchiveBundle, FinalReport, Receipt, ExecuteTicket, ConfirmRequest, ApplyRequest, Review);
 	const FHCIAbilityKitAgentStageGWriteEnableRequest WriteEnableRequest = MakeG4WriteEnableRequest(Intent, HandoffEnvelope, ArchiveBundle, FinalReport, Receipt, ExecuteTicket, ConfirmRequest, ApplyRequest, Review, true);
+	const FHCIAbilityKitAgentStageGExecutePermitTicket PermitTicket = MakeG4PermitTicket(WriteEnableRequest, Intent, HandoffEnvelope, ArchiveBundle, FinalReport, Receipt, ExecuteTicket, ConfirmRequest, ApplyRequest, Review);
 
-	FHCIAbilityKitAgentStageGExecuteDispatchRequest Ticket;
+	FHCIAbilityKitAgentStageGExecuteDispatchRequest Request;
 	TestTrue(TEXT("Build stage g execute dispatch request"), FHCIAbilityKitAgentExecutorStageGExecuteDispatchRequestBridge::BuildStageGExecuteDispatchRequest(
+		PermitTicket,
+		PermitTicket.RequestId,
 		WriteEnableRequest,
-		WriteEnableRequest.RequestId,
 		Intent,
 		HandoffEnvelope,
 		ArchiveBundle,
@@ -203,19 +236,20 @@ bool FHCIAbilityKitAgentExecutorStageGExecuteDispatchRequestReadyTest::RunTest(c
 		ConfirmRequest,
 		ApplyRequest,
 		Review,
-		Ticket));
-	TestTrue(TEXT("PermitReady"), Ticket.bStageGExecutePermitReady);
-	TestTrue(TEXT("WriteEnabled"), Ticket.bWriteEnabled);
-	TestEqual(TEXT("PermitStatus"), Ticket.StageGExecutePermitStatus, FString(TEXT("ready")));
-	TestEqual(TEXT("ErrorCode"), Ticket.ErrorCode, FString(TEXT("-")));
-	TestEqual(TEXT("Reason"), Ticket.Reason, FString(TEXT("stage_g_execute_dispatch_ticket_ready")));
-	TestFalse(TEXT("PermitDigest present"), Ticket.StageGExecutePermitDigest.IsEmpty());
+		true,
+		Request));
+	TestTrue(TEXT("DispatchReady"), Request.bStageGExecuteDispatchReady);
+	TestTrue(TEXT("WriteEnabled"), Request.bWriteEnabled);
+	TestEqual(TEXT("DispatchStatus"), Request.StageGExecuteDispatchStatus, FString(TEXT("ready")));
+	TestEqual(TEXT("ErrorCode"), Request.ErrorCode, FString(TEXT("-")));
+	TestEqual(TEXT("Reason"), Request.Reason, FString(TEXT("stage_g_execute_dispatch_request_ready")));
+	TestFalse(TEXT("DispatchDigest present"), Request.StageGExecuteDispatchDigest.IsEmpty());
 	return true;
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FHCIAbilityKitAgentExecutorStageGExecuteDispatchRequestWriteEnableNotReadyTest,
-	"HCIAbilityKit.Editor.AgentExecutorStageGExecuteDispatchRequest.StageGWriteEnableRequestNotReadyReturnsE4212",
+	"HCIAbilityKit.Editor.AgentExecutorStageGExecuteDispatchRequest.StageGExecutePermitTicketNotReadyReturnsE4212",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 bool FHCIAbilityKitAgentExecutorStageGExecuteDispatchRequestWriteEnableNotReadyTest::RunTest(const FString& Parameters)
@@ -229,15 +263,18 @@ bool FHCIAbilityKitAgentExecutorStageGExecuteDispatchRequestWriteEnableNotReadyT
 	const FHCIAbilityKitAgentSimulateExecuteArchiveBundle ArchiveBundle = MakeG4ArchiveBundle(FinalReport, Receipt, ExecuteTicket, ConfirmRequest, ApplyRequest, Review);
 	const FHCIAbilityKitAgentSimulateExecuteHandoffEnvelope HandoffEnvelope = MakeG4HandoffEnvelope(ArchiveBundle, FinalReport, Receipt, ExecuteTicket, ConfirmRequest, ApplyRequest, Review);
 	const FHCIAbilityKitAgentStageGExecuteIntent Intent = MakeG4StageGIntent(HandoffEnvelope, ArchiveBundle, FinalReport, Receipt, ExecuteTicket, ConfirmRequest, ApplyRequest, Review);
-	FHCIAbilityKitAgentStageGWriteEnableRequest WriteEnableRequest = MakeG4WriteEnableRequest(Intent, HandoffEnvelope, ArchiveBundle, FinalReport, Receipt, ExecuteTicket, ConfirmRequest, ApplyRequest, Review, true);
-	WriteEnableRequest.bWriteEnabled = false;
-	WriteEnableRequest.bReadyForStageGExecute = false;
-	WriteEnableRequest.StageGWriteStatus = TEXT("blocked");
+	const FHCIAbilityKitAgentStageGWriteEnableRequest WriteEnableRequest = MakeG4WriteEnableRequest(Intent, HandoffEnvelope, ArchiveBundle, FinalReport, Receipt, ExecuteTicket, ConfirmRequest, ApplyRequest, Review, true);
+	FHCIAbilityKitAgentStageGExecutePermitTicket PermitTicket = MakeG4PermitTicket(WriteEnableRequest, Intent, HandoffEnvelope, ArchiveBundle, FinalReport, Receipt, ExecuteTicket, ConfirmRequest, ApplyRequest, Review);
+	PermitTicket.bWriteEnabled = false;
+	PermitTicket.bReadyForStageGExecute = false;
+	PermitTicket.bStageGExecutePermitReady = false;
+	PermitTicket.StageGExecutePermitStatus = TEXT("blocked");
 
-	FHCIAbilityKitAgentStageGExecuteDispatchRequest Ticket;
+	FHCIAbilityKitAgentStageGExecuteDispatchRequest Request;
 	TestTrue(TEXT("Build stage g execute dispatch request"), FHCIAbilityKitAgentExecutorStageGExecuteDispatchRequestBridge::BuildStageGExecuteDispatchRequest(
+		PermitTicket,
+		PermitTicket.RequestId,
 		WriteEnableRequest,
-		WriteEnableRequest.RequestId,
 		Intent,
 		HandoffEnvelope,
 		ArchiveBundle,
@@ -247,11 +284,12 @@ bool FHCIAbilityKitAgentExecutorStageGExecuteDispatchRequestWriteEnableNotReadyT
 		ConfirmRequest,
 		ApplyRequest,
 		Review,
-		Ticket));
-	TestFalse(TEXT("PermitReady"), Ticket.bStageGExecutePermitReady);
-	TestEqual(TEXT("PermitStatus"), Ticket.StageGExecutePermitStatus, FString(TEXT("blocked")));
-	TestEqual(TEXT("ErrorCode"), Ticket.ErrorCode, FString(TEXT("E4212")));
-	TestEqual(TEXT("Reason"), Ticket.Reason, FString(TEXT("stage_g_execute_permit_ticket_not_ready")));
+		true,
+		Request));
+	TestFalse(TEXT("DispatchReady"), Request.bStageGExecuteDispatchReady);
+	TestEqual(TEXT("DispatchStatus"), Request.StageGExecuteDispatchStatus, FString(TEXT("blocked")));
+	TestEqual(TEXT("ErrorCode"), Request.ErrorCode, FString(TEXT("E4212")));
+	TestEqual(TEXT("Reason"), Request.Reason, FString(TEXT("stage_g_execute_permit_ticket_not_ready")));
 	return true;
 }
 
@@ -271,13 +309,15 @@ bool FHCIAbilityKitAgentExecutorStageGExecuteDispatchRequestDigestMismatchTest::
 	const FHCIAbilityKitAgentSimulateExecuteArchiveBundle ArchiveBundle = MakeG4ArchiveBundle(FinalReport, Receipt, ExecuteTicket, ConfirmRequest, ApplyRequest, Review);
 	const FHCIAbilityKitAgentSimulateExecuteHandoffEnvelope HandoffEnvelope = MakeG4HandoffEnvelope(ArchiveBundle, FinalReport, Receipt, ExecuteTicket, ConfirmRequest, ApplyRequest, Review);
 	const FHCIAbilityKitAgentStageGExecuteIntent Intent = MakeG4StageGIntent(HandoffEnvelope, ArchiveBundle, FinalReport, Receipt, ExecuteTicket, ConfirmRequest, ApplyRequest, Review);
-	FHCIAbilityKitAgentStageGWriteEnableRequest WriteEnableRequest = MakeG4WriteEnableRequest(Intent, HandoffEnvelope, ArchiveBundle, FinalReport, Receipt, ExecuteTicket, ConfirmRequest, ApplyRequest, Review, true);
-	WriteEnableRequest.SelectionDigest = TEXT("crc32_BAD0C0DE");
+	const FHCIAbilityKitAgentStageGWriteEnableRequest WriteEnableRequest = MakeG4WriteEnableRequest(Intent, HandoffEnvelope, ArchiveBundle, FinalReport, Receipt, ExecuteTicket, ConfirmRequest, ApplyRequest, Review, true);
+	FHCIAbilityKitAgentStageGExecutePermitTicket PermitTicket = MakeG4PermitTicket(WriteEnableRequest, Intent, HandoffEnvelope, ArchiveBundle, FinalReport, Receipt, ExecuteTicket, ConfirmRequest, ApplyRequest, Review);
+	PermitTicket.SelectionDigest = TEXT("crc32_BAD0C0DE");
 
-	FHCIAbilityKitAgentStageGExecuteDispatchRequest Ticket;
+	FHCIAbilityKitAgentStageGExecuteDispatchRequest Request;
 	TestTrue(TEXT("Build stage g execute dispatch request"), FHCIAbilityKitAgentExecutorStageGExecuteDispatchRequestBridge::BuildStageGExecuteDispatchRequest(
+		PermitTicket,
+		PermitTicket.RequestId,
 		WriteEnableRequest,
-		WriteEnableRequest.RequestId,
 		Intent,
 		HandoffEnvelope,
 		ArchiveBundle,
@@ -287,16 +327,17 @@ bool FHCIAbilityKitAgentExecutorStageGExecuteDispatchRequestDigestMismatchTest::
 		ConfirmRequest,
 		ApplyRequest,
 		Review,
-		Ticket));
-	TestFalse(TEXT("PermitReady"), Ticket.bStageGExecutePermitReady);
-	TestEqual(TEXT("ErrorCode"), Ticket.ErrorCode, FString(TEXT("E4202")));
-	TestEqual(TEXT("Reason"), Ticket.Reason, FString(TEXT("selection_digest_mismatch")));
+		true,
+		Request));
+	TestFalse(TEXT("DispatchReady"), Request.bStageGExecuteDispatchReady);
+	TestEqual(TEXT("ErrorCode"), Request.ErrorCode, FString(TEXT("E4202")));
+	TestEqual(TEXT("Reason"), Request.Reason, FString(TEXT("selection_digest_mismatch")));
 	return true;
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FHCIAbilityKitAgentExecutorStageGExecuteDispatchRequestJsonFieldsTest,
-	"HCIAbilityKit.Editor.AgentExecutorStageGExecuteDispatchRequest.JsonIncludesPermitFields",
+	"HCIAbilityKit.Editor.AgentExecutorStageGExecuteDispatchRequest.JsonIncludesDispatchFields",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 bool FHCIAbilityKitAgentExecutorStageGExecuteDispatchRequestJsonFieldsTest::RunTest(const FString& Parameters)
@@ -311,11 +352,13 @@ bool FHCIAbilityKitAgentExecutorStageGExecuteDispatchRequestJsonFieldsTest::RunT
 	const FHCIAbilityKitAgentSimulateExecuteHandoffEnvelope HandoffEnvelope = MakeG4HandoffEnvelope(ArchiveBundle, FinalReport, Receipt, ExecuteTicket, ConfirmRequest, ApplyRequest, Review);
 	const FHCIAbilityKitAgentStageGExecuteIntent Intent = MakeG4StageGIntent(HandoffEnvelope, ArchiveBundle, FinalReport, Receipt, ExecuteTicket, ConfirmRequest, ApplyRequest, Review);
 	const FHCIAbilityKitAgentStageGWriteEnableRequest WriteEnableRequest = MakeG4WriteEnableRequest(Intent, HandoffEnvelope, ArchiveBundle, FinalReport, Receipt, ExecuteTicket, ConfirmRequest, ApplyRequest, Review, true);
+	const FHCIAbilityKitAgentStageGExecutePermitTicket PermitTicket = MakeG4PermitTicket(WriteEnableRequest, Intent, HandoffEnvelope, ArchiveBundle, FinalReport, Receipt, ExecuteTicket, ConfirmRequest, ApplyRequest, Review);
 
-	FHCIAbilityKitAgentStageGExecuteDispatchRequest Ticket;
+	FHCIAbilityKitAgentStageGExecuteDispatchRequest Request;
 	TestTrue(TEXT("Build stage g execute dispatch request"), FHCIAbilityKitAgentExecutorStageGExecuteDispatchRequestBridge::BuildStageGExecuteDispatchRequest(
+		PermitTicket,
+		PermitTicket.RequestId,
 		WriteEnableRequest,
-		WriteEnableRequest.RequestId,
 		Intent,
 		HandoffEnvelope,
 		ArchiveBundle,
@@ -325,14 +368,18 @@ bool FHCIAbilityKitAgentExecutorStageGExecuteDispatchRequestJsonFieldsTest::RunT
 		ConfirmRequest,
 		ApplyRequest,
 		Review,
-		Ticket));
+		true,
+		Request));
 
 	FString JsonText;
-	TestTrue(TEXT("Serialize stage g execute dispatch request json"), FHCIAbilityKitAgentStageGExecuteDispatchRequestJsonSerializer::SerializeToJsonString(Ticket, JsonText));
+	TestTrue(TEXT("Serialize stage g execute dispatch request json"), FHCIAbilityKitAgentStageGExecuteDispatchRequestJsonSerializer::SerializeToJsonString(Request, JsonText));
+	TestTrue(TEXT("JSON includes stage_g_execute_permit_ticket_id"), JsonText.Contains(TEXT("\"stage_g_execute_permit_ticket_id\"")));
 	TestTrue(TEXT("JSON includes stage_g_write_enable_request_id"), JsonText.Contains(TEXT("\"stage_g_write_enable_request_id\"")));
 	TestTrue(TEXT("JSON includes stage_g_write_enable_digest"), JsonText.Contains(TEXT("\"stage_g_write_enable_digest\"")));
+	TestTrue(TEXT("JSON includes stage_g_execute_permit_digest"), JsonText.Contains(TEXT("\"stage_g_execute_permit_digest\"")));
 	TestTrue(TEXT("JSON includes stage_g_execute_dispatch_digest"), JsonText.Contains(TEXT("\"stage_g_execute_dispatch_digest\"")));
 	TestTrue(TEXT("JSON includes stage_g_execute_dispatch_status"), JsonText.Contains(TEXT("\"stage_g_execute_dispatch_status\"")));
+	TestTrue(TEXT("JSON includes execute_dispatch_confirmed"), JsonText.Contains(TEXT("\"execute_dispatch_confirmed\"")));
 	TestTrue(TEXT("JSON includes stage_g_execute_dispatch_ready"), JsonText.Contains(TEXT("\"stage_g_execute_dispatch_ready\"")));
 	TestTrue(TEXT("JSON includes locate_strategy"), JsonText.Contains(TEXT("\"locate_strategy\"")));
 	return true;

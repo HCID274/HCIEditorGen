@@ -22,6 +22,8 @@
 #include "Agent/HCIAbilityKitAgentStageGWriteEnableRequestJsonSerializer.h"
 #include "Agent/HCIAbilityKitAgentStageGExecutePermitTicket.h"
 #include "Agent/HCIAbilityKitAgentStageGExecutePermitTicketJsonSerializer.h"
+#include "Agent/HCIAbilityKitAgentStageGExecuteDispatchRequest.h"
+#include "Agent/HCIAbilityKitAgentStageGExecuteDispatchRequestJsonSerializer.h"
 #include "Agent/HCIAbilityKitAgentExecutor.h"
 #include "Agent/HCIAbilityKitAgentExecutorApplyConfirmBridge.h"
 #include "Agent/HCIAbilityKitAgentExecutorApplyRequestBridge.h"
@@ -34,6 +36,7 @@
 #include "Agent/HCIAbilityKitAgentExecutorStageGExecuteIntentBridge.h"
 #include "Agent/HCIAbilityKitAgentExecutorStageGWriteEnableRequestBridge.h"
 #include "Agent/HCIAbilityKitAgentExecutorStageGExecutePermitTicketBridge.h"
+#include "Agent/HCIAbilityKitAgentExecutorStageGExecuteDispatchRequestBridge.h"
 #include "Agent/HCIAbilityKitAgentPlan.h"
 #include "Agent/HCIAbilityKitAgentPlanJsonSerializer.h"
 #include "Agent/HCIAbilityKitAgentPlanner.h"
@@ -68,6 +71,7 @@ static FHCIAbilityKitAgentSimulateExecuteHandoffEnvelope GHCIAbilityKitAgentSimu
 static FHCIAbilityKitAgentStageGExecuteIntent GHCIAbilityKitAgentStageGExecuteIntentPreviewState;
 static FHCIAbilityKitAgentStageGWriteEnableRequest GHCIAbilityKitAgentStageGWriteEnableRequestPreviewState;
 static FHCIAbilityKitAgentStageGExecutePermitTicket GHCIAbilityKitAgentStageGExecutePermitTicketPreviewState;
+static FHCIAbilityKitAgentStageGExecuteDispatchRequest GHCIAbilityKitAgentStageGExecuteDispatchRequestPreviewState;
 
 static FString HCI_JoinConsoleArgsAsText(const TArray<FString>& Args)
 {
@@ -5231,7 +5235,7 @@ static void HCI_RunAbilityKitAgentExecutePlanReviewPrepareStageGWriteEnableReque
 static bool HCI_TryParseStageGExecutePermitTamperModeArg(const FString& InValue, FString& OutTamperMode)
 {
 	const FString V = InValue.TrimStartAndEnd();
-	if (V == TEXT("none") || V == TEXT("digest") || V == TEXT("intent") || V == TEXT("handoff") || V == TEXT("write") || V == TEXT("ready"))
+	if (V == TEXT("none") || V == TEXT("digest") || V == TEXT("intent") || V == TEXT("handoff") || V == TEXT("permit") || V == TEXT("ready"))
 	{
 		OutTamperMode = V;
 		return true;
@@ -5449,6 +5453,241 @@ static void HCI_RunAbilityKitAgentExecutePlanReviewPrepareStageGExecutePermitTic
 	UE_LOG(LogHCIAbilityKitAgentDemo, Display, TEXT("[HCIAbilityKit][AgentExecutorStageGExecutePermitTicket] json request_id=%s bytes=%d"), Request.RequestId.IsEmpty() ? TEXT("-") : *Request.RequestId, JsonText.Len());
 	UE_LOG(LogHCIAbilityKitAgentDemo, Display, TEXT("%s"), *JsonText);
 }
+
+
+static bool HCI_TryParseStageGExecuteDispatchTamperModeArg(const FString& InValue, FString& OutTamperMode)
+{
+	const FString V = InValue.TrimStartAndEnd();
+	if (V == TEXT("none") || V == TEXT("digest") || V == TEXT("intent") || V == TEXT("handoff") || V == TEXT("write") || V == TEXT("ready"))
+	{
+		OutTamperMode = V;
+		return true;
+	}
+	return false;
+}
+
+static void HCI_LogAgentExecutorStageGExecuteDispatchRequestSummary(const FHCIAbilityKitAgentStageGExecuteDispatchRequest& Request)
+{
+	UE_LOG(
+		LogHCIAbilityKitAgentDemo,
+		Display,
+		TEXT("[HCIAbilityKit][AgentExecutorStageGExecuteDispatchRequest] summary request_id=%s stage_g_execute_permit_ticket_id=%s stage_g_write_enable_request_id=%s stage_g_execute_intent_id=%s sim_handoff_envelope_id=%s sim_archive_bundle_id=%s sim_final_report_id=%s sim_execute_receipt_id=%s execute_ticket_id=%s confirm_request_id=%s apply_request_id=%s review_request_id=%s selection_digest=%s archive_digest=%s handoff_digest=%s execute_intent_digest=%s stage_g_write_enable_digest=%s stage_g_execute_permit_digest=%s stage_g_execute_dispatch_digest=%s execute_target=%s handoff_target=%s user_confirmed=%s execute_dispatch_confirmed=%s ready_to_simulate_execute=%s simulated_dispatch_accepted=%s simulation_completed=%s terminal_status=%s archive_status=%s handoff_status=%s stage_g_status=%s stage_g_write_status=%s stage_g_execute_permit_status=%s stage_g_execute_dispatch_status=%s archive_ready=%s handoff_ready=%s write_enabled=%s ready_for_stage_g_entry=%s ready_for_stage_g_execute=%s stage_g_execute_permit_ready=%s stage_g_execute_dispatch_ready=%s error_code=%s reason=%s validation=ok"),
+		Request.RequestId.IsEmpty() ? TEXT("-") : *Request.RequestId,
+		Request.StageGExecutePermitTicketId.IsEmpty() ? TEXT("-") : *Request.StageGExecutePermitTicketId,
+		Request.StageGWriteEnableRequestId.IsEmpty() ? TEXT("-") : *Request.StageGWriteEnableRequestId,
+		Request.StageGExecuteIntentId.IsEmpty() ? TEXT("-") : *Request.StageGExecuteIntentId,
+		Request.SimHandoffEnvelopeId.IsEmpty() ? TEXT("-") : *Request.SimHandoffEnvelopeId,
+		Request.SimArchiveBundleId.IsEmpty() ? TEXT("-") : *Request.SimArchiveBundleId,
+		Request.SimFinalReportId.IsEmpty() ? TEXT("-") : *Request.SimFinalReportId,
+		Request.SimExecuteReceiptId.IsEmpty() ? TEXT("-") : *Request.SimExecuteReceiptId,
+		Request.ExecuteTicketId.IsEmpty() ? TEXT("-") : *Request.ExecuteTicketId,
+		Request.ConfirmRequestId.IsEmpty() ? TEXT("-") : *Request.ConfirmRequestId,
+		Request.ApplyRequestId.IsEmpty() ? TEXT("-") : *Request.ApplyRequestId,
+		Request.ReviewRequestId.IsEmpty() ? TEXT("-") : *Request.ReviewRequestId,
+		Request.SelectionDigest.IsEmpty() ? TEXT("-") : *Request.SelectionDigest,
+		Request.ArchiveDigest.IsEmpty() ? TEXT("-") : *Request.ArchiveDigest,
+		Request.HandoffDigest.IsEmpty() ? TEXT("-") : *Request.HandoffDigest,
+		Request.ExecuteIntentDigest.IsEmpty() ? TEXT("-") : *Request.ExecuteIntentDigest,
+		Request.StageGWriteEnableDigest.IsEmpty() ? TEXT("-") : *Request.StageGWriteEnableDigest,
+		Request.StageGExecutePermitDigest.IsEmpty() ? TEXT("-") : *Request.StageGExecutePermitDigest,
+		Request.StageGExecuteDispatchDigest.IsEmpty() ? TEXT("-") : *Request.StageGExecuteDispatchDigest,
+		Request.ExecuteTarget.IsEmpty() ? TEXT("-") : *Request.ExecuteTarget,
+		Request.HandoffTarget.IsEmpty() ? TEXT("-") : *Request.HandoffTarget,
+		Request.bUserConfirmed ? TEXT("true") : TEXT("false"),
+		Request.bExecuteDispatchConfirmed ? TEXT("true") : TEXT("false"),
+		Request.bReadyToSimulateExecute ? TEXT("true") : TEXT("false"),
+		Request.bSimulatedDispatchAccepted ? TEXT("true") : TEXT("false"),
+		Request.bSimulationCompleted ? TEXT("true") : TEXT("false"),
+		Request.TerminalStatus.IsEmpty() ? TEXT("-") : *Request.TerminalStatus,
+		Request.ArchiveStatus.IsEmpty() ? TEXT("-") : *Request.ArchiveStatus,
+		Request.HandoffStatus.IsEmpty() ? TEXT("-") : *Request.HandoffStatus,
+		Request.StageGStatus.IsEmpty() ? TEXT("-") : *Request.StageGStatus,
+		Request.StageGWriteStatus.IsEmpty() ? TEXT("-") : *Request.StageGWriteStatus,
+		Request.StageGExecutePermitStatus.IsEmpty() ? TEXT("-") : *Request.StageGExecutePermitStatus,
+		Request.StageGExecuteDispatchStatus.IsEmpty() ? TEXT("-") : *Request.StageGExecuteDispatchStatus,
+		Request.bArchiveReady ? TEXT("true") : TEXT("false"),
+		Request.bHandoffReady ? TEXT("true") : TEXT("false"),
+		Request.bWriteEnabled ? TEXT("true") : TEXT("false"),
+		Request.bReadyForStageGEntry ? TEXT("true") : TEXT("false"),
+		Request.bReadyForStageGExecute ? TEXT("true") : TEXT("false"),
+		Request.bStageGExecutePermitReady ? TEXT("true") : TEXT("false"),
+		Request.bStageGExecuteDispatchReady ? TEXT("true") : TEXT("false"),
+		Request.ErrorCode.IsEmpty() ? TEXT("-") : *Request.ErrorCode,
+		Request.Reason.IsEmpty() ? TEXT("-") : *Request.Reason);
+}
+
+static void HCI_LogAgentExecutorStageGExecuteDispatchRequestRows(const FHCIAbilityKitAgentStageGExecuteDispatchRequest& Request)
+{
+	for (int32 Index = 0; Index < Request.Items.Num(); ++Index)
+	{
+		const FHCIAbilityKitAgentApplyRequestItem& Item = Request.Items[Index];
+		UE_LOG(
+			LogHCIAbilityKitAgentDemo,
+			Display,
+			TEXT("[HCIAbilityKit][AgentExecutorStageGExecuteDispatchRequest] row=%d tool_name=%s risk=%s blocked=%s skip_reason=%s object_type=%s locate_strategy=%s asset_path=%s field=%s evidence_key=%s actor_path=%s"),
+			Index,
+			Item.ToolName.IsEmpty() ? TEXT("-") : *Item.ToolName,
+			*FHCIAbilityKitDryRunDiff::RiskToString(Item.Risk),
+			Item.bBlocked ? TEXT("true") : TEXT("false"),
+			Item.SkipReason.IsEmpty() ? TEXT("-") : *Item.SkipReason,
+			*FHCIAbilityKitDryRunDiff::ObjectTypeToString(Item.ObjectType),
+			*FHCIAbilityKitDryRunDiff::LocateStrategyToString(Item.LocateStrategy),
+			Item.AssetPath.IsEmpty() ? TEXT("-") : *Item.AssetPath,
+			Item.Field.IsEmpty() ? TEXT("-") : *Item.Field,
+			Item.EvidenceKey.IsEmpty() ? TEXT("-") : *Item.EvidenceKey,
+			Item.ActorPath.IsEmpty() ? TEXT("-") : *Item.ActorPath);
+	}
+}
+
+static bool HCI_TryBuildAgentExecutorStageGExecuteDispatchRequestFromLatestPreview(
+	const bool bExecuteDispatchConfirmed,
+	const FString& TamperMode,
+	FHCIAbilityKitAgentStageGExecuteDispatchRequest& OutRequest)
+{
+	if (GHCIAbilityKitAgentStageGExecutePermitTicketPreviewState.Items.Num() <= 0)
+	{
+		UE_LOG(LogHCIAbilityKitAgentDemo, Warning, TEXT("[HCIAbilityKit][AgentExecutorStageGExecuteDispatchRequest] prepare=unavailable reason=no_stage_g_execute_permit_ticket_preview_state"));
+		UE_LOG(LogHCIAbilityKitAgentDemo, Display, TEXT("[HCIAbilityKit][AgentExecutorStageGExecuteDispatchRequest] suggestion=先运行 HCIAbilityKit.AgentExecutePlanReviewPrepareStageGExecutePermitTicket"));
+		return false;
+	}
+	if (GHCIAbilityKitAgentStageGWriteEnableRequestPreviewState.Items.Num() <= 0)
+	{
+		UE_LOG(LogHCIAbilityKitAgentDemo, Warning, TEXT("[HCIAbilityKit][AgentExecutorStageGExecuteDispatchRequest] prepare=unavailable reason=no_stage_g_write_enable_request_preview_state"));
+		UE_LOG(LogHCIAbilityKitAgentDemo, Display, TEXT("[HCIAbilityKit][AgentExecutorStageGExecuteDispatchRequest] suggestion=先运行 HCIAbilityKit.AgentExecutePlanReviewPrepareStageGWriteEnableRequest"));
+		return false;
+	}
+	if (GHCIAbilityKitAgentStageGExecuteIntentPreviewState.Items.Num() <= 0)
+	{
+		UE_LOG(LogHCIAbilityKitAgentDemo, Warning, TEXT("[HCIAbilityKit][AgentExecutorStageGExecuteDispatchRequest] prepare=unavailable reason=no_stage_g_execute_intent_preview_state"));
+		UE_LOG(LogHCIAbilityKitAgentDemo, Display, TEXT("[HCIAbilityKit][AgentExecutorStageGExecuteDispatchRequest] suggestion=先运行 HCIAbilityKit.AgentExecutePlanReviewPrepareStageGExecuteIntent"));
+		return false;
+	}
+	if (GHCIAbilityKitAgentSimulateExecuteHandoffEnvelopePreviewState.Items.Num() <= 0)
+	{
+		UE_LOG(LogHCIAbilityKitAgentDemo, Warning, TEXT("[HCIAbilityKit][AgentExecutorStageGExecuteDispatchRequest] prepare=unavailable reason=no_sim_handoff_envelope_preview_state"));
+		UE_LOG(LogHCIAbilityKitAgentDemo, Display, TEXT("[HCIAbilityKit][AgentExecutorStageGExecuteDispatchRequest] suggestion=先运行 HCIAbilityKit.AgentExecutePlanReviewPrepareSimHandoffEnvelope"));
+		return false;
+	}
+	if (GHCIAbilityKitAgentSimulateExecuteArchiveBundlePreviewState.Items.Num() <= 0 ||
+		GHCIAbilityKitAgentSimulateExecuteFinalReportPreviewState.Items.Num() <= 0 ||
+		GHCIAbilityKitAgentSimulateExecuteReceiptPreviewState.Items.Num() <= 0 ||
+		GHCIAbilityKitAgentExecuteTicketPreviewState.Items.Num() <= 0 ||
+		GHCIAbilityKitAgentApplyConfirmRequestPreviewState.Items.Num() <= 0 ||
+		GHCIAbilityKitAgentApplyRequestPreviewState.Items.Num() <= 0 ||
+		GHCIAbilityKitAgentExecutorReviewDiffPreviewState.DiffItems.Num() <= 0)
+	{
+		UE_LOG(LogHCIAbilityKitAgentDemo, Warning, TEXT("[HCIAbilityKit][AgentExecutorStageGExecuteDispatchRequest] prepare=unavailable reason=missing_upstream_preview_state"));
+		UE_LOG(LogHCIAbilityKitAgentDemo, Display, TEXT("[HCIAbilityKit][AgentExecutorStageGExecuteDispatchRequest] suggestion=先按 F15/G1/G2/G3 链路生成 ... -> StageGExecutePermitTicket 预览"));
+		return false;
+	}
+
+	FHCIAbilityKitAgentStageGExecutePermitTicket WorkingTicket = GHCIAbilityKitAgentStageGExecutePermitTicketPreviewState;
+	if (TamperMode == TEXT("digest")) { WorkingTicket.SelectionDigest += TEXT("_tampered"); }
+	else if (TamperMode == TEXT("intent")) { WorkingTicket.StageGExecuteIntentId += TEXT("_stale"); }
+	else if (TamperMode == TEXT("handoff")) { WorkingTicket.SimHandoffEnvelopeId += TEXT("_stale"); }
+	else if (TamperMode == TEXT("permit")) { WorkingTicket.bStageGExecutePermitReady = false; WorkingTicket.StageGExecutePermitStatus = TEXT("blocked"); }
+	else if (TamperMode == TEXT("ready")) { WorkingTicket.bReadyForStageGExecute = false; WorkingTicket.StageGExecutePermitStatus = TEXT("blocked"); }
+
+	if (!FHCIAbilityKitAgentExecutorStageGExecuteDispatchRequestBridge::BuildStageGExecuteDispatchRequest(
+		WorkingTicket,
+		GHCIAbilityKitAgentStageGExecutePermitTicketPreviewState.RequestId,
+		GHCIAbilityKitAgentStageGWriteEnableRequestPreviewState,
+		GHCIAbilityKitAgentStageGExecuteIntentPreviewState,
+		GHCIAbilityKitAgentSimulateExecuteHandoffEnvelopePreviewState,
+		GHCIAbilityKitAgentSimulateExecuteArchiveBundlePreviewState,
+		GHCIAbilityKitAgentSimulateExecuteFinalReportPreviewState,
+		GHCIAbilityKitAgentSimulateExecuteReceiptPreviewState,
+		GHCIAbilityKitAgentExecuteTicketPreviewState,
+		GHCIAbilityKitAgentApplyConfirmRequestPreviewState,
+		GHCIAbilityKitAgentApplyRequestPreviewState,
+		GHCIAbilityKitAgentExecutorReviewDiffPreviewState,
+		bExecuteDispatchConfirmed,
+		OutRequest))
+	{
+		UE_LOG(LogHCIAbilityKitAgentDemo, Error, TEXT("[HCIAbilityKit][AgentExecutorStageGExecuteDispatchRequest] prepare_failed reason=bridge_failed"));
+		return false;
+	}
+
+	GHCIAbilityKitAgentStageGExecuteDispatchRequestPreviewState = OutRequest;
+	return true;
+}
+
+static bool HCI_TryParseStageGExecuteDispatchRequestCommandArgs(const TArray<FString>& Args, bool& OutExecuteDispatchConfirmed, FString& OutTamperMode)
+{
+	OutExecuteDispatchConfirmed = true;
+	OutTamperMode = TEXT("none");
+	if (Args.Num() == 0)
+	{
+		return true;
+	}
+	if (Args.Num() >= 1)
+	{
+		if (!HCI_TryParseBool01Arg(Args[0], OutExecuteDispatchConfirmed))
+		{
+			return false;
+		}
+	}
+	if (Args.Num() >= 2)
+	{
+		if (!HCI_TryParseStageGExecuteDispatchTamperModeArg(Args[1], OutTamperMode))
+		{
+			return false;
+		}
+	}
+	return Args.Num() <= 2;
+}
+
+static void HCI_RunAbilityKitAgentExecutePlanReviewPrepareStageGExecuteDispatchRequestCommand(const TArray<FString>& Args)
+{
+	bool bExecuteDispatchConfirmed = true;
+	FString TamperMode;
+	if (!HCI_TryParseStageGExecuteDispatchRequestCommandArgs(Args, bExecuteDispatchConfirmed, TamperMode))
+	{
+		UE_LOG(LogHCIAbilityKitAgentDemo, Error, TEXT("[HCIAbilityKit][AgentExecutorStageGExecuteDispatchRequest] invalid_args usage=HCIAbilityKit.AgentExecutePlanReviewPrepareStageGExecuteDispatchRequest [execute_dispatch_confirmed=0|1] [tamper=none|digest|intent|handoff|permit|ready]"));
+		return;
+	}
+
+	FHCIAbilityKitAgentStageGExecuteDispatchRequest Request;
+	if (!HCI_TryBuildAgentExecutorStageGExecuteDispatchRequestFromLatestPreview(bExecuteDispatchConfirmed, TamperMode, Request))
+	{
+		return;
+	}
+
+	HCI_LogAgentExecutorStageGExecuteDispatchRequestSummary(Request);
+	HCI_LogAgentExecutorStageGExecuteDispatchRequestRows(Request);
+	UE_LOG(LogHCIAbilityKitAgentDemo, Display, TEXT("[HCIAbilityKit][AgentExecutorStageGExecuteDispatchRequest] hint=也可运行 HCIAbilityKit.AgentExecutePlanReviewPrepareStageGExecuteDispatchRequestJson [execute_dispatch_confirmed] [tamper] 输出 StageGExecuteDispatchRequest JSON"));
+}
+
+static void HCI_RunAbilityKitAgentExecutePlanReviewPrepareStageGExecuteDispatchRequestJsonCommand(const TArray<FString>& Args)
+{
+	bool bExecuteDispatchConfirmed = true;
+	FString TamperMode;
+	if (!HCI_TryParseStageGExecuteDispatchRequestCommandArgs(Args, bExecuteDispatchConfirmed, TamperMode))
+	{
+		UE_LOG(LogHCIAbilityKitAgentDemo, Error, TEXT("[HCIAbilityKit][AgentExecutorStageGExecuteDispatchRequest] invalid_args usage=HCIAbilityKit.AgentExecutePlanReviewPrepareStageGExecuteDispatchRequestJson [execute_dispatch_confirmed=0|1] [tamper=none|digest|intent|handoff|permit|ready]"));
+		return;
+	}
+
+	FHCIAbilityKitAgentStageGExecuteDispatchRequest Request;
+	if (!HCI_TryBuildAgentExecutorStageGExecuteDispatchRequestFromLatestPreview(bExecuteDispatchConfirmed, TamperMode, Request))
+	{
+		return;
+	}
+
+	HCI_LogAgentExecutorStageGExecuteDispatchRequestSummary(Request);
+	HCI_LogAgentExecutorStageGExecuteDispatchRequestRows(Request);
+
+	FString JsonText;
+	if (!FHCIAbilityKitAgentStageGExecuteDispatchRequestJsonSerializer::SerializeToJsonString(Request, JsonText))
+	{
+		UE_LOG(LogHCIAbilityKitAgentDemo, Error, TEXT("[HCIAbilityKit][AgentExecutorStageGExecuteDispatchRequest] json_failed request_id=%s"), Request.RequestId.IsEmpty() ? TEXT("-") : *Request.RequestId);
+		return;
+	}
+
+	UE_LOG(LogHCIAbilityKitAgentDemo, Display, TEXT("[HCIAbilityKit][AgentExecutorStageGExecuteDispatchRequest] json request_id=%s bytes=%d"), Request.RequestId.IsEmpty() ? TEXT("-") : *Request.RequestId, JsonText.Len());
+	UE_LOG(LogHCIAbilityKitAgentDemo, Display, TEXT("%s"), *JsonText);
+}
+
 
 
 void FHCIAbilityKitAgentDemoConsoleCommands::Startup()
@@ -5748,6 +5987,22 @@ void FHCIAbilityKitAgentDemoConsoleCommands::Startup()
 			TEXT("G3 Build Stage-G execute permit ticket (dry-run only) and print JSON. Usage: HCIAbilityKit.AgentExecutePlanReviewPrepareStageGExecutePermitTicketJson [write_enable_confirmed=0|1] [tamper=none|digest|intent|handoff|write|ready]"),
 			FConsoleCommandWithArgsDelegate::CreateStatic(&HCI_RunAbilityKitAgentExecutePlanReviewPrepareStageGExecutePermitTicketJsonCommand));
 	}
+
+	if (!AgentExecutePlanReviewPrepareStageGExecuteDispatchRequestCommand.IsValid())
+	{
+		AgentExecutePlanReviewPrepareStageGExecuteDispatchRequestCommand = MakeUnique<FAutoConsoleCommand>(
+			TEXT("HCIAbilityKit.AgentExecutePlanReviewPrepareStageGExecuteDispatchRequest"),
+			TEXT("G4 Validate latest StageGExecutePermitTicket and build Stage-G execute dispatch request (dry-run only). Usage: HCIAbilityKit.AgentExecutePlanReviewPrepareStageGExecuteDispatchRequest [execute_dispatch_confirmed=0|1] [tamper=none|digest|intent|handoff|permit|ready]"),
+			FConsoleCommandWithArgsDelegate::CreateStatic(&HCI_RunAbilityKitAgentExecutePlanReviewPrepareStageGExecuteDispatchRequestCommand));
+	}
+
+	if (!AgentExecutePlanReviewPrepareStageGExecuteDispatchRequestJsonCommand.IsValid())
+	{
+		AgentExecutePlanReviewPrepareStageGExecuteDispatchRequestJsonCommand = MakeUnique<FAutoConsoleCommand>(
+			TEXT("HCIAbilityKit.AgentExecutePlanReviewPrepareStageGExecuteDispatchRequestJson"),
+			TEXT("G4 Build Stage-G execute dispatch request (dry-run only) and print JSON. Usage: HCIAbilityKit.AgentExecutePlanReviewPrepareStageGExecuteDispatchRequestJson [execute_dispatch_confirmed=0|1] [tamper=none|digest|intent|handoff|permit|ready]"),
+			FConsoleCommandWithArgsDelegate::CreateStatic(&HCI_RunAbilityKitAgentExecutePlanReviewPrepareStageGExecuteDispatchRequestJsonCommand));
+	}
 }
 
 void FHCIAbilityKitAgentDemoConsoleCommands::Shutdown()
@@ -5789,6 +6044,8 @@ void FHCIAbilityKitAgentDemoConsoleCommands::Shutdown()
 	AgentExecutePlanReviewPrepareStageGWriteEnableRequestJsonCommand.Reset();
 	AgentExecutePlanReviewPrepareStageGExecutePermitTicketCommand.Reset();
 	AgentExecutePlanReviewPrepareStageGExecutePermitTicketJsonCommand.Reset();
+	AgentExecutePlanReviewPrepareStageGExecuteDispatchRequestCommand.Reset();
+	AgentExecutePlanReviewPrepareStageGExecuteDispatchRequestJsonCommand.Reset();
 }
 
 

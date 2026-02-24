@@ -63,6 +63,28 @@ void FHCIAbilityKitToolRegistry::ResetToDefaults()
 		Tool.bDestructive = false;
 		Tool.Domain = TEXT("AssetCompliance");
 		Tool.Summary = TEXT("Read-only asset audit scan entry point.");
+
+		FHCIAbilityKitToolArgSchema DirectoryArg = MakeStringArg(TEXT("directory"));
+		DirectoryArg.bRequired = false;
+		DirectoryArg.bMustStartWithGamePath = true;
+		Tool.ArgsSchema.Add(MoveTemp(DirectoryArg));
+		RegisterDefault(MoveTemp(Tool));
+	}
+
+	{
+		FHCIAbilityKitToolDescriptor Tool;
+		Tool.ToolName = TEXT("SearchPath");
+		Tool.Capability = EHCIAbilityKitToolCapability::ReadOnly;
+		Tool.bSupportsDryRun = false;
+		Tool.bSupportsUndo = false;
+		Tool.bDestructive = false;
+		Tool.Domain = TEXT("NamingTraceability");
+		Tool.Summary = TEXT("Search candidate /Game folders by keyword for discovery-first planning.");
+
+		FHCIAbilityKitToolArgSchema KeywordArg = MakeStringArg(TEXT("keyword"));
+		KeywordArg.MinStringLength = 1;
+		KeywordArg.MaxStringLength = 64;
+		Tool.ArgsSchema.Add(MoveTemp(KeywordArg));
 		RegisterDefault(MoveTemp(Tool));
 	}
 

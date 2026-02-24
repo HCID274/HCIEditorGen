@@ -33,6 +33,7 @@ public class HCIAbilityKitEditor : ModuleRules
 				"AssetRegistry",    // 资产路径与类型校验
 				"Json",             // JSON 解析支持
 				"HTTP",             // LLM 调试探针
+				"EditorScriptingUtilities", // UEditorAssetLibrary (Stage I ToolAction)
 				"PythonScriptPlugin" // Python 脚本执行支持
 			});
 	}

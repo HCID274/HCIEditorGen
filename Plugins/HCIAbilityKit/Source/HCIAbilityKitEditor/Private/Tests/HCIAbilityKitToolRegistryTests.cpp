@@ -30,10 +30,11 @@ bool FHCIAbilityKitToolRegistryWhitelistFrozenTest::RunTest(const FString& Param
 	TestTrue(TEXT("Validation error should be empty"), Error.IsEmpty());
 
 	const TArray<FName> ToolNames = Registry.GetRegisteredToolNames();
-	TestEqual(TEXT("E1 whitelist should contain exactly 7 tools"), ToolNames.Num(), 7);
+	TestEqual(TEXT("E1 whitelist should contain exactly 8 tools"), ToolNames.Num(), 8);
 
 	const TArray<FName> ExpectedNames{
 		TEXT("ScanAssets"),
+		TEXT("SearchPath"),
 		TEXT("SetTextureMaxSize"),
 		TEXT("SetMeshLODGroup"),
 		TEXT("ScanLevelMeshRisks"),
@@ -152,6 +153,20 @@ bool FHCIAbilityKitToolRegistryArgsSchemaFrozenTest::RunTest(const FString& Para
 		TestEqual(TEXT("max_actor_count max"), MaxActorCountArg->MaxIntValue, 5000);
 	}
 
+	const FHCIAbilityKitToolDescriptor* SearchPathTool = Registry.FindTool(TEXT("SearchPath"));
+	TestNotNull(TEXT("SearchPath should exist"), SearchPathTool);
+	if (SearchPathTool)
+	{
+		const FHCIAbilityKitToolArgSchema* KeywordArg = FindArg(*SearchPathTool, TEXT("keyword"));
+		TestNotNull(TEXT("SearchPath.keyword should exist"), KeywordArg);
+		if (KeywordArg)
+		{
+			TestEqual(TEXT("keyword type should be string"), static_cast<uint8>(KeywordArg->ValueType), static_cast<uint8>(EHCIAbilityKitToolArgValueType::String));
+			TestEqual(TEXT("keyword min length"), KeywordArg->MinStringLength, 1);
+			TestEqual(TEXT("keyword max length"), KeywordArg->MaxStringLength, 64);
+		}
+	}
+
 	return true;
 }
 
@@ -207,4 +222,3 @@ bool FHCIAbilityKitToolRegistryDomainsAndFlagsTest::RunTest(const FString& Param
 }
 
 #endif
-

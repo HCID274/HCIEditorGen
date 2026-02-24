@@ -74,6 +74,16 @@ bool FHCIAbilityKitAgentPromptBuilder::BuildSystemPromptFromBundle(
 	FString& OutSystemPrompt,
 	FString& OutError)
 {
+	return BuildSystemPromptFromBundleWithEnvContext(UserInput, FString(), Options, OutSystemPrompt, OutError);
+}
+
+bool FHCIAbilityKitAgentPromptBuilder::BuildSystemPromptFromBundleWithEnvContext(
+	const FString& UserInput,
+	const FString& EnvContext,
+	const FHCIAbilityKitAgentPromptBundleOptions& Options,
+	FString& OutSystemPrompt,
+	FString& OutError)
+{
 	OutSystemPrompt.Reset();
 	OutError.Reset();
 
@@ -133,10 +143,25 @@ bool FHCIAbilityKitAgentPromptBuilder::BuildSystemPromptFromBundle(
 			*PromptTemplatePath);
 		return false;
 	}
+	if (!PromptTemplateText.Contains(Options.EnvContextPlaceholder))
+	{
+		OutError = FString::Printf(
+			TEXT("prompt_template_placeholder_missing placeholder=%s path=%s"),
+			*Options.EnvContextPlaceholder,
+			*PromptTemplatePath);
+		return false;
+	}
 
 	OutSystemPrompt = PromptTemplateText.Replace(
 		*Options.ToolsSchemaPlaceholder,
 		*SerializedToolsSchema,
+		ESearchCase::CaseSensitive);
+	const FString SafeEnvContext = EnvContext.TrimStartAndEnd().IsEmpty()
+		? TEXT("- scanned_assets: none")
+		: EnvContext;
+	OutSystemPrompt = OutSystemPrompt.Replace(
+		*Options.EnvContextPlaceholder,
+		*SafeEnvContext,
 		ESearchCase::CaseSensitive);
 	OutSystemPrompt = OutSystemPrompt.Replace(
 		*Options.UserInputPlaceholder,

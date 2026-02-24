@@ -98,6 +98,191 @@ static bool HCI_TextContainsAny(const FString& Text, std::initializer_list<const
 	return false;
 }
 
+static bool HCI_IsDirectoryStyleRequest(const FString& UserText)
+{
+	const FString Text = HCI_NormalizeText(UserText);
+	return HCI_TextContainsAny(Text, {TEXT("目录"), TEXT("文件夹"), TEXT("folder"), TEXT("directory"), TEXT("临时"), TEXT("temp"), TEXT("tmp")});
+}
+
+static bool HCI_IsGamePathTerminalChar(const TCHAR Ch)
+{
+	return FChar::IsWhitespace(Ch) ||
+		   Ch == TCHAR('"') ||
+		   Ch == TCHAR('\'') ||
+		   Ch == TCHAR(',') ||
+		   Ch == TCHAR(';') ||
+		   Ch == TCHAR(')') ||
+		   Ch == TCHAR('(') ||
+		   Ch == TCHAR(']') ||
+		   Ch == TCHAR('[');
+}
+
+static bool HCI_TryExtractFirstGamePathToken(const FString& UserText, FString& OutToken)
+{
+	OutToken.Reset();
+	const int32 Start = UserText.Find(TEXT("/Game/"), ESearchCase::IgnoreCase);
+	if (Start == INDEX_NONE)
+	{
+		return false;
+	}
+
+	int32 End = Start;
+	while (End < UserText.Len() && !HCI_IsGamePathTerminalChar(UserText[End]))
+	{
+		++End;
+	}
+
+	OutToken = UserText.Mid(Start, End - Start).TrimStartAndEnd();
+	return !OutToken.IsEmpty();
+}
+
+static FString HCI_DeriveDirectoryFromPathToken(const FString& PathToken)
+{
+	FString Candidate = PathToken;
+	Candidate.TrimStartAndEndInline();
+	if (Candidate.IsEmpty())
+	{
+		return FString();
+	}
+
+	if (Candidate.EndsWith(TEXT("/")))
+	{
+		Candidate.LeftChopInline(1, false);
+	}
+
+	const int32 DotIndex = Candidate.Find(TEXT("."), ESearchCase::CaseSensitive, ESearchDir::FromStart);
+	const bool bObjectPath = (DotIndex != INDEX_NONE);
+	if (bObjectPath)
+	{
+		Candidate = Candidate.Left(DotIndex);
+	}
+	else
+	{
+		return Candidate;
+	}
+
+	const int32 LastSlash = Candidate.Find(TEXT("/"), ESearchCase::CaseSensitive, ESearchDir::FromEnd);
+	if (LastSlash > 0)
+	{
+		return Candidate.Left(LastSlash);
+	}
+	return Candidate;
+}
+
+static FString HCI_DetermineEnvScanRoot(const FString& UserText)
+{
+	FString PathToken;
+	if (!HCI_TryExtractFirstGamePathToken(UserText, PathToken))
+	{
+		return FString();
+	}
+
+	const FString Derived = HCI_DeriveDirectoryFromPathToken(PathToken);
+	if (Derived.StartsWith(TEXT("/Game/")))
+	{
+		return Derived;
+	}
+	return FString();
+}
+
+static FString HCI_LeafNameFromObjectPath(const FString& ObjectPath)
+{
+	FString Token = ObjectPath;
+	const int32 SlashIndex = Token.Find(TEXT("/"), ESearchCase::CaseSensitive, ESearchDir::FromEnd);
+	if (SlashIndex != INDEX_NONE && SlashIndex + 1 < Token.Len())
+	{
+		Token = Token.Mid(SlashIndex + 1);
+	}
+
+	const int32 DotIndex = Token.Find(TEXT("."), ESearchCase::CaseSensitive, ESearchDir::FromStart);
+	if (DotIndex != INDEX_NONE)
+	{
+		Token = Token.Left(DotIndex);
+	}
+	return Token;
+}
+
+static FString HCI_SerializeEnvContext(
+	const FString& ScanRoot,
+	const TArray<FHCIAbilityKitAgentPlannerEnvAssetEntry>& Assets)
+{
+	const int32 MaxRows = 40;
+	FString Out = FString::Printf(TEXT("scan_root: %s\nasset_count: %d\nfile_list:\n"), *ScanRoot, Assets.Num());
+
+	const int32 EmitCount = FMath::Min(MaxRows, Assets.Num());
+	for (int32 Index = 0; Index < EmitCount; ++Index)
+	{
+		const FHCIAbilityKitAgentPlannerEnvAssetEntry& Entry = Assets[Index];
+		const FString Name = HCI_LeafNameFromObjectPath(Entry.ObjectPath);
+		const FString ClassName = Entry.AssetClass.IsEmpty() ? TEXT("Unknown") : Entry.AssetClass;
+		const FString SizeField = Entry.SizeBytes >= 0
+			? FString::Printf(TEXT("size_bytes=%lld"), static_cast<long long>(Entry.SizeBytes))
+			: TEXT("size_bytes=-");
+		Out += FString::Printf(
+			TEXT("- %s (%s, %s, path=%s)\n"),
+			Name.IsEmpty() ? TEXT("-") : *Name,
+			*ClassName,
+			*SizeField,
+			Entry.ObjectPath.IsEmpty() ? TEXT("-") : *Entry.ObjectPath);
+	}
+	if (Assets.Num() > MaxRows)
+	{
+		Out += FString::Printf(TEXT("- ... and %d more\n"), Assets.Num() - MaxRows);
+	}
+	if (Assets.Num() == 0)
+	{
+		Out += TEXT("- (empty)\n");
+	}
+	return Out;
+}
+
+static bool HCI_TryBuildAutoEnvContext(
+	const FString& UserText,
+	const FHCIAbilityKitAgentPlannerBuildOptions& Options,
+	FString& OutScanRoot,
+	FString& OutEnvContext,
+	int32& OutAssetCount,
+	bool& bOutInjected)
+{
+	OutScanRoot.Reset();
+	OutEnvContext.Reset();
+	OutAssetCount = 0;
+	bOutInjected = false;
+
+	if (!Options.bEnableAutoEnvContextScan)
+	{
+		return true;
+	}
+	if (!HCI_IsDirectoryStyleRequest(UserText))
+	{
+		return true;
+	}
+	if (!Options.ScanAssetsForEnvContext)
+	{
+		return true;
+	}
+
+	const FString ScanRoot = HCI_DetermineEnvScanRoot(UserText);
+	if (ScanRoot.IsEmpty())
+	{
+		return true;
+	}
+
+	TArray<FHCIAbilityKitAgentPlannerEnvAssetEntry> ScannedAssets;
+	FString ScanError;
+	if (!Options.ScanAssetsForEnvContext(ScanRoot, ScannedAssets, ScanError))
+	{
+		OutScanRoot = ScanRoot;
+		return true;
+	}
+
+	OutScanRoot = ScanRoot;
+	OutAssetCount = ScannedAssets.Num();
+	OutEnvContext = HCI_SerializeEnvContext(ScanRoot, ScannedAssets);
+	bOutInjected = true;
+	return true;
+}
+
 static TSharedPtr<FJsonObject> HCI_MakeNamingArgs()
 {
 	TSharedPtr<FJsonObject> Args = MakeShared<FJsonObject>();
@@ -145,7 +330,40 @@ static TSharedPtr<FJsonObject> HCI_MakeLodComplianceArgs()
 
 static TSharedPtr<FJsonObject> HCI_MakeScanAssetsArgs()
 {
-	return MakeShared<FJsonObject>();
+	TSharedPtr<FJsonObject> Args = MakeShared<FJsonObject>();
+	Args->SetStringField(TEXT("directory"), TEXT("/Game/Temp"));
+	return Args;
+}
+
+static TSharedPtr<FJsonObject> HCI_MakeScanAssetsArgsWithDirectory(const FString& Directory)
+{
+	TSharedPtr<FJsonObject> Args = MakeShared<FJsonObject>();
+	Args->SetStringField(TEXT("directory"), Directory);
+	return Args;
+}
+
+static TSharedPtr<FJsonObject> HCI_MakeSearchPathArgs(const FString& Keyword)
+{
+	TSharedPtr<FJsonObject> Args = MakeShared<FJsonObject>();
+	Args->SetStringField(TEXT("keyword"), Keyword);
+	return Args;
+}
+
+static FString HCI_PickSearchKeywordForFolderIntent(const FString& NormalizedText)
+{
+	if (HCI_TextContainsAny(NormalizedText, {TEXT("角色"), TEXT("character")}))
+	{
+		return TEXT("角色");
+	}
+	if (HCI_TextContainsAny(NormalizedText, {TEXT("美术"), TEXT("艺术"), TEXT("art")}))
+	{
+		return TEXT("Art");
+	}
+	if (HCI_TextContainsAny(NormalizedText, {TEXT("临时"), TEXT("temp"), TEXT("tmp")}))
+	{
+		return TEXT("Temp");
+	}
+	return TEXT("Temp");
 }
 
 static FHCIAbilityKitAgentPromptBundleOptions HCI_MakePromptBundleOptions(const FHCIAbilityKitAgentPlannerBuildOptions& Options)
@@ -295,6 +513,79 @@ static bool HCI_ValidateBuiltPlanOrSetError(
 	return false;
 }
 
+static bool HCI_EnsureScanAssetsFirstForDirectoryIntent(
+	const FString& UserText,
+	const FHCIAbilityKitToolRegistry& ToolRegistry,
+	const bool bForceDirectoryScanFirst,
+	FHCIAbilityKitAgentPlan& InOutPlan,
+	FString& InOutRouteReason,
+	FString& OutError)
+{
+	OutError.Reset();
+	if (!bForceDirectoryScanFirst)
+	{
+		return true;
+	}
+
+	if (!HCI_IsDirectoryStyleRequest(UserText))
+	{
+		return true;
+	}
+
+	const FString IntentLower = InOutPlan.Intent.ToLower();
+	const bool bNamingIntent =
+		IntentLower.Contains(TEXT("normalize")) ||
+		IntentLower.Contains(TEXT("naming")) ||
+		IntentLower.Contains(TEXT("rename")) ||
+		IntentLower.Contains(TEXT("move"));
+	if (!bNamingIntent)
+	{
+		return true;
+	}
+
+	const int32 ExistingIndex = InOutPlan.Steps.IndexOfByPredicate(
+		[](const FHCIAbilityKitAgentPlanStep& Step)
+		{
+			return Step.ToolName == TEXT("ScanAssets");
+		});
+
+	if (ExistingIndex == 0)
+	{
+		return true;
+	}
+
+	if (ExistingIndex > 0)
+	{
+		FHCIAbilityKitAgentPlanStep ExistingStep = InOutPlan.Steps[ExistingIndex];
+		InOutPlan.Steps.RemoveAt(ExistingIndex, 1, EAllowShrinking::No);
+		InOutPlan.Steps.Insert(MoveTemp(ExistingStep), 0);
+	}
+	else
+	{
+		FHCIAbilityKitAgentPlanStep ScanStep;
+		if (!HCI_StepFromTool(
+				ToolRegistry,
+				TEXT("s_scan_assets_preflight"),
+				TEXT("ScanAssets"),
+				HCI_MakeScanAssetsArgs(),
+				{TEXT("asset_path"), TEXT("result")},
+				ScanStep,
+				OutError))
+		{
+			return false;
+		}
+		InOutPlan.Steps.Insert(MoveTemp(ScanStep), 0);
+	}
+
+	if (!InOutRouteReason.Contains(TEXT("scan_first")))
+	{
+		InOutRouteReason = InOutRouteReason.IsEmpty()
+			? TEXT("directory_scan_first")
+			: InOutRouteReason + TEXT("_scan_first");
+	}
+	return true;
+}
+
 static bool HCI_TryBuildPlanFromLlmPlanJson(
 	const TSharedPtr<FJsonObject>& LlmPlanObject,
 	const FString& RequestId,
@@ -421,6 +712,9 @@ static bool HCI_BuildKeywordPlan(
 	const bool bNamingIntent =
 		HCI_TextContainsAny(Text, {TEXT("整理"), TEXT("归档"), TEXT("重命名"), TEXT("命名"), TEXT("organize"), TEXT("archive"), TEXT("rename"), TEXT("naming")}) &&
 		HCI_TextContainsAny(Text, {TEXT("临时"), TEXT("temp"), TEXT("tmp")});
+	const bool bDirectoryNamingIntent =
+		HCI_TextContainsAny(Text, {TEXT("整理"), TEXT("归档"), TEXT("重命名"), TEXT("命名"), TEXT("organize"), TEXT("archive"), TEXT("rename"), TEXT("naming")}) &&
+		HCI_TextContainsAny(Text, {TEXT("目录"), TEXT("文件夹"), TEXT("folder"), TEXT("directory")});
 
 	const bool bLevelRiskIntent =
 		HCI_TextContainsAny(Text, {TEXT("关卡"), TEXT("场景"), TEXT("level")}) &&
@@ -434,10 +728,23 @@ static bool HCI_BuildKeywordPlan(
 		OutPlan.Intent = TEXT("normalize_temp_assets_by_metadata");
 		OutRouteReason = TEXT("naming_traceability_temp_assets");
 
-		FHCIAbilityKitAgentPlanStep& Step = OutPlan.Steps.AddDefaulted_GetRef();
+		FHCIAbilityKitAgentPlanStep& ScanStep = OutPlan.Steps.AddDefaulted_GetRef();
 		if (!HCI_StepFromTool(
 				ToolRegistry,
 				TEXT("s1"),
+				TEXT("ScanAssets"),
+				HCI_MakeScanAssetsArgs(),
+				{TEXT("asset_path"), TEXT("result")},
+				ScanStep,
+				OutError))
+		{
+			return false;
+		}
+
+		FHCIAbilityKitAgentPlanStep& Step = OutPlan.Steps.AddDefaulted_GetRef();
+		if (!HCI_StepFromTool(
+				ToolRegistry,
+				TEXT("s2"),
 				TEXT("NormalizeAssetNamingByMetadata"),
 				HCI_MakeNamingArgs(),
 				{TEXT("asset_path"), TEXT("before"), TEXT("after")},
@@ -446,25 +753,58 @@ static bool HCI_BuildKeywordPlan(
 		{
 			return false;
 		}
-	}
-	else if (bLevelRiskIntent)
-	{
-		OutPlan.Intent = TEXT("scan_level_mesh_risks");
-		OutRouteReason = TEXT("level_risk_collision_material");
-
-		FHCIAbilityKitAgentPlanStep& Step = OutPlan.Steps.AddDefaulted_GetRef();
-		if (!HCI_StepFromTool(
-				ToolRegistry,
-				TEXT("s1"),
-				TEXT("ScanLevelMeshRisks"),
-				HCI_MakeLevelRiskArgs(),
-				{TEXT("actor_path"), TEXT("issue"), TEXT("evidence")},
-				Step,
-				OutError))
-		{
-			return false;
 		}
-	}
+		else if (bDirectoryNamingIntent)
+		{
+			OutPlan.Intent = TEXT("scan_assets");
+			OutRouteReason = TEXT("naming_traceability_search_then_scan");
+
+			const FString SearchKeyword = HCI_PickSearchKeywordForFolderIntent(Text);
+
+				FHCIAbilityKitAgentPlanStep& SearchStep = OutPlan.Steps.AddDefaulted_GetRef();
+				if (!HCI_StepFromTool(
+						ToolRegistry,
+						TEXT("step_1_search"),
+						TEXT("SearchPath"),
+						HCI_MakeSearchPathArgs(SearchKeyword),
+						{TEXT("matched_directories"), TEXT("best_directory"), TEXT("result")},
+						SearchStep,
+						OutError))
+			{
+				return false;
+			}
+
+				FHCIAbilityKitAgentPlanStep& ScanStep = OutPlan.Steps.AddDefaulted_GetRef();
+				if (!HCI_StepFromTool(
+						ToolRegistry,
+						TEXT("step_2_scan"),
+						TEXT("ScanAssets"),
+						HCI_MakeScanAssetsArgsWithDirectory(TEXT("{{step_1_search.matched_directories[0]}}")),
+						{TEXT("asset_paths"), TEXT("asset_count"), TEXT("result")},
+						ScanStep,
+						OutError))
+			{
+				return false;
+			}
+		}
+		else if (bLevelRiskIntent)
+		{
+			OutPlan.Intent = TEXT("scan_level_mesh_risks");
+			OutRouteReason = TEXT("level_risk_collision_material");
+
+			FHCIAbilityKitAgentPlanStep& Step = OutPlan.Steps.AddDefaulted_GetRef();
+			if (!HCI_StepFromTool(
+					ToolRegistry,
+					TEXT("s1"),
+					TEXT("ScanLevelMeshRisks"),
+					HCI_MakeLevelRiskArgs(),
+					{TEXT("actor_path"), TEXT("issue"), TEXT("evidence")},
+					Step,
+					OutError))
+			{
+				return false;
+			}
+		}
 	else if (bAssetComplianceIntent)
 	{
 		OutPlan.Intent = TEXT("batch_fix_asset_compliance");
@@ -625,6 +965,11 @@ struct FHCIAbilityKitAsyncPlanBuildState : public TSharedFromThis<FHCIAbilityKit
 	FString LastFallbackReason = HCI_FallbackReasonNone;
 	FString LastErrorCode = TEXT("-");
 	FString LastError;
+	bool bEnvContextPrepared = false;
+	bool bEnvContextInjected = false;
+	int32 EnvContextAssetCount = 0;
+	FString EnvContextScanRoot;
+	FString EnvContextText;
 	TSharedPtr<IHttpRequest, ESPMode::ThreadSafe> ActiveRequest;
 	FTSTicker::FDelegateHandle TimeoutHandle;
 	TAtomic<bool> bAttemptResolved{false};
@@ -711,6 +1056,9 @@ static void HCI_FinishAsyncWithKeywordFallback(const TSharedRef<FHCIAbilityKitAs
 	Metadata.bRetryUsed = State->AttemptsUsed > 1;
 	Metadata.bCircuitBreakerOpen = (GHCIAbilityKitAgentPlannerRuntimeState.CircuitOpenRemainingRequests > 0);
 	Metadata.ConsecutiveLlmFailures = GHCIAbilityKitAgentPlannerRuntimeState.ConsecutiveLlmFailures;
+	Metadata.bEnvContextInjected = State->bEnvContextInjected;
+	Metadata.EnvContextAssetCount = State->EnvContextAssetCount;
+	Metadata.EnvContextScanRoot = State->EnvContextScanRoot;
 	if (Metadata.bRetryUsed)
 	{
 		GHCIAbilityKitAgentPlannerRuntimeState.Metrics.RetryUsedRequests += 1;
@@ -759,12 +1107,25 @@ static void HCI_StartAsyncRealHttpAttempt(const TSharedRef<FHCIAbilityKitAsyncPl
 	ProviderConfig.bStream = State->Options.bLlmStream;
 	ProviderConfig.HttpTimeoutMs = State->Options.LlmHttpTimeoutMs;
 
-	FString SystemPrompt;
-	if (!FHCIAbilityKitAgentPromptBuilder::BuildSystemPromptFromBundle(
+	if (!State->bEnvContextPrepared)
+	{
+		State->bEnvContextPrepared = true;
+		HCI_TryBuildAutoEnvContext(
 			State->UserText,
-			HCI_MakePromptBundleOptions(State->Options),
-			SystemPrompt,
-			State->LastError))
+			State->Options,
+			State->EnvContextScanRoot,
+			State->EnvContextText,
+			State->EnvContextAssetCount,
+			State->bEnvContextInjected);
+	}
+
+	FString SystemPrompt;
+	if (!FHCIAbilityKitAgentPromptBuilder::BuildSystemPromptFromBundleWithEnvContext(
+				State->UserText,
+				State->EnvContextText,
+				HCI_MakePromptBundleOptions(State->Options),
+				SystemPrompt,
+				State->LastError))
 	{
 		State->LastFallbackReason = HCI_FallbackReasonContractInvalid;
 		State->LastErrorCode = TEXT("E4303");
@@ -891,6 +1252,20 @@ static void HCI_StartAsyncRealHttpAttempt(const TSharedRef<FHCIAbilityKitAsyncPl
 					HCI_FinishAsyncWithKeywordFallback(Pinned.ToSharedRef());
 					return;
 				}
+				if (!HCI_EnsureScanAssetsFirstForDirectoryIntent(
+						Pinned->UserText,
+						*Pinned->ToolRegistry,
+						Pinned->Options.bForceDirectoryScanFirst,
+						Plan,
+						RouteReason,
+						BuildError))
+				{
+					Pinned->LastFallbackReason = HCI_FallbackReasonContractInvalid;
+					Pinned->LastErrorCode = TEXT("E4303");
+					Pinned->LastError = BuildError;
+					HCI_FinishAsyncWithKeywordFallback(Pinned.ToSharedRef());
+					return;
+				}
 				if (!HCI_ValidateBuiltPlanOrSetError(Plan, *Pinned->ToolRegistry, BuildError))
 				{
 					Pinned->LastFallbackReason = HCI_FallbackReasonContractInvalid;
@@ -915,10 +1290,13 @@ static void HCI_StartAsyncRealHttpAttempt(const TSharedRef<FHCIAbilityKitAsyncPl
 			Metadata.bFallbackUsed = false;
 			Metadata.FallbackReason = HCI_FallbackReasonNone;
 			Metadata.ErrorCode = TEXT("-");
-			Metadata.LlmAttemptCount = Pinned->AttemptsUsed;
-			Metadata.bRetryUsed = Pinned->AttemptsUsed > 1;
-			Metadata.bCircuitBreakerOpen = false;
-			Metadata.ConsecutiveLlmFailures = 0;
+				Metadata.LlmAttemptCount = Pinned->AttemptsUsed;
+				Metadata.bRetryUsed = Pinned->AttemptsUsed > 1;
+				Metadata.bCircuitBreakerOpen = false;
+				Metadata.ConsecutiveLlmFailures = 0;
+				Metadata.bEnvContextInjected = Pinned->bEnvContextInjected;
+				Metadata.EnvContextAssetCount = Pinned->EnvContextAssetCount;
+				Metadata.EnvContextScanRoot = Pinned->EnvContextScanRoot;
 
 			HCI_CompleteAsyncPlanBuild(Pinned.ToSharedRef(), true, MoveTemp(Plan), MoveTemp(RouteReason), MoveTemp(Metadata), FString());
 		});

@@ -1,6 +1,7 @@
 #include "Commands/HCIAbilityKitAgentDemoConsoleCommands.h"
 #include "Commands/HCIAbilityKitAgentDemoState.h"
 #include "Commands/HCIAbilityKitAgentExecutorReviewLocateUtils.h"
+#include "UI/HCIAbilityKitAgentPlanPreviewWindow.h"
 
 #include "Agent/HCIAbilityKitAgentExecutionGate.h"
 #include "Agent/HCIAbilityKitAgentApplyConfirmRequest.h"
@@ -65,8 +66,11 @@
 #include "Agent/HCIAbilityKitDryRunDiffJsonSerializer.h"
 #include "Agent/HCIAbilityKitDryRunDiffSelection.h"
 #include "Agent/HCIAbilityKitToolRegistry.h"
+#include "AssetRegistry/AssetData.h"
+#include "AssetRegistry/AssetRegistryModule.h"
 #include "Common/HCIAbilityKitTimeFormat.h"
 #include "Dom/JsonObject.h"
+#include "EditorAssetLibrary.h"
 #include "HAL/FileManager.h"
 #include "HttpModule.h"
 #include "Interfaces/IHttpRequest.h"
@@ -80,6 +84,8 @@
 #include "Serialization/JsonSerializer.h"
 #include "Serialization/JsonWriter.h"
 #include "Templates/Atomic.h"
+#include "Modules/ModuleManager.h"
+#include "UObject/SoftObjectPath.h"
 
 DEFINE_LOG_CATEGORY_STATIC(LogHCIAbilityKitAgentDemo, Log, All);
 
@@ -101,6 +107,76 @@ static FString HCI_JoinConsoleArgsAsText(const TArray<FString>& Args)
 	}
 	Joined.TrimStartAndEndInline();
 	return Joined;
+}
+
+static int64 HCI_TryExtractAssetSizeFromTags(const FAssetData& AssetData)
+{
+	int64 SizeBytes = -1;
+	if (AssetData.GetTagValue(FName(TEXT("DiskSize")), SizeBytes))
+	{
+		return SizeBytes;
+	}
+	if (AssetData.GetTagValue(FName(TEXT("FileSize")), SizeBytes))
+	{
+		return SizeBytes;
+	}
+
+	FString SizeText;
+	if (AssetData.GetTagValue(FName(TEXT("DiskSize")), SizeText) && LexTryParseString(SizeBytes, *SizeText))
+	{
+		return SizeBytes;
+	}
+	if (AssetData.GetTagValue(FName(TEXT("FileSize")), SizeText) && LexTryParseString(SizeBytes, *SizeText))
+	{
+		return SizeBytes;
+	}
+	return -1;
+}
+
+static bool HCI_ScanAssetsForPlannerEnvContext(
+	const FString& ScanRoot,
+	TArray<FHCIAbilityKitAgentPlannerEnvAssetEntry>& OutAssets,
+	FString& OutError)
+{
+	OutAssets.Reset();
+	OutError.Reset();
+
+	FString SafeRoot = ScanRoot.TrimStartAndEnd();
+	if (SafeRoot.IsEmpty() || !SafeRoot.StartsWith(TEXT("/Game/")))
+	{
+		SafeRoot = TEXT("/Game/Temp");
+	}
+
+	const TArray<FString> AssetPaths = UEditorAssetLibrary::ListAssets(SafeRoot, true, false);
+	FAssetRegistryModule& AssetRegistryModule = FModuleManager::LoadModuleChecked<FAssetRegistryModule>(TEXT("AssetRegistry"));
+	IAssetRegistry& AssetRegistry = AssetRegistryModule.Get();
+
+	OutAssets.Reserve(AssetPaths.Num());
+	for (const FString& ObjectPath : AssetPaths)
+	{
+		FHCIAbilityKitAgentPlannerEnvAssetEntry Entry;
+		Entry.ObjectPath = ObjectPath;
+
+		FAssetData AssetData = AssetRegistry.GetAssetByObjectPath(FSoftObjectPath(ObjectPath));
+		if (AssetData.IsValid())
+		{
+			Entry.AssetClass = AssetData.AssetClassPath.GetAssetName().ToString();
+			Entry.SizeBytes = HCI_TryExtractAssetSizeFromTags(AssetData);
+		}
+		else
+		{
+			Entry.AssetClass = TEXT("Unknown");
+			Entry.SizeBytes = -1;
+		}
+
+		OutAssets.Add(MoveTemp(Entry));
+	}
+
+	OutAssets.Sort([](const FHCIAbilityKitAgentPlannerEnvAssetEntry& Lhs, const FHCIAbilityKitAgentPlannerEnvAssetEntry& Rhs)
+	{
+		return Lhs.ObjectPath < Rhs.ObjectPath;
+	});
+	return true;
 }
 
 static FString HCI_JsonObjectToCompactString(const TSharedPtr<FJsonObject>& JsonObject)
@@ -1421,26 +1497,29 @@ static void HCI_LogAgentPlanWithProviderSummary(
 	const FHCIAbilityKitAgentPlannerResultMetadata& PlannerMetadata,
 	const FHCIAbilityKitAgentPlanValidationResult& Validation)
 {
-	UE_LOG(
-		LogHCIAbilityKitAgentDemo,
-		Display,
-		TEXT("[HCIAbilityKit][AgentPlanLLM] case=%s summary request_id=%s intent=%s input=%s provider=%s provider_mode=%s fallback_used=%s fallback_reason=%s error_code=%s llm_attempts=%d retry_used=%s circuit_open=%s consecutive_llm_failures=%d plan_validation=%s validation_code=%s validation_reason=%s route_reason=%s steps=%d"),
-		CaseName,
-		*Plan.RequestId,
-		*Plan.Intent,
-		*UserText,
+		UE_LOG(
+			LogHCIAbilityKitAgentDemo,
+			Display,
+			TEXT("[HCIAbilityKit][AgentPlanLLM] case=%s summary request_id=%s intent=%s input=%s provider=%s provider_mode=%s fallback_used=%s fallback_reason=%s error_code=%s llm_attempts=%d retry_used=%s circuit_open=%s consecutive_llm_failures=%d env_context_injected=%s env_assets=%d env_scan_root=%s plan_validation=%s validation_code=%s validation_reason=%s route_reason=%s steps=%d"),
+			CaseName,
+			*Plan.RequestId,
+			*Plan.Intent,
+			*UserText,
 		*PlannerMetadata.PlannerProvider,
 		*PlannerMetadata.ProviderMode,
 		PlannerMetadata.bFallbackUsed ? TEXT("true") : TEXT("false"),
 		*PlannerMetadata.FallbackReason,
 		*PlannerMetadata.ErrorCode,
 		PlannerMetadata.LlmAttemptCount,
-		PlannerMetadata.bRetryUsed ? TEXT("true") : TEXT("false"),
-		PlannerMetadata.bCircuitBreakerOpen ? TEXT("true") : TEXT("false"),
-		PlannerMetadata.ConsecutiveLlmFailures,
-		Validation.bValid ? TEXT("ok") : TEXT("fail"),
-		Validation.ErrorCode.IsEmpty() ? TEXT("-") : *Validation.ErrorCode,
-		Validation.Reason.IsEmpty() ? TEXT("-") : *Validation.Reason,
+			PlannerMetadata.bRetryUsed ? TEXT("true") : TEXT("false"),
+			PlannerMetadata.bCircuitBreakerOpen ? TEXT("true") : TEXT("false"),
+			PlannerMetadata.ConsecutiveLlmFailures,
+			PlannerMetadata.bEnvContextInjected ? TEXT("true") : TEXT("false"),
+			PlannerMetadata.EnvContextAssetCount,
+				PlannerMetadata.EnvContextScanRoot.IsEmpty() ? TEXT("") : *PlannerMetadata.EnvContextScanRoot,
+			Validation.bValid ? TEXT("ok") : TEXT("fail"),
+			Validation.ErrorCode.IsEmpty() ? TEXT("-") : *Validation.ErrorCode,
+			Validation.Reason.IsEmpty() ? TEXT("-") : *Validation.Reason,
 		*RouteReason,
 		Plan.Steps.Num());
 }
@@ -1641,10 +1720,12 @@ void HCI_RunAbilityKitAgentPlanWithRealLLMDemoCommand(const TArray<FString>& Arg
 	FHCIAbilityKitAgentPlannerBuildOptions PlannerOptions;
 	PlannerOptions.bPreferLlm = true;
 	PlannerOptions.bUseRealHttpProvider = true;
-	PlannerOptions.LlmMockMode = EHCIAbilityKitAgentPlannerLlmMockMode::None;
-	PlannerOptions.LlmRetryCount = 1;
-	PlannerOptions.bLlmEnableThinking = false;
-	PlannerOptions.bLlmStream = false;
+		PlannerOptions.LlmMockMode = EHCIAbilityKitAgentPlannerLlmMockMode::None;
+		PlannerOptions.LlmRetryCount = 1;
+		PlannerOptions.bEnableAutoEnvContextScan = true;
+		PlannerOptions.ScanAssetsForEnvContext = HCI_ScanAssetsForPlannerEnvContext;
+		PlannerOptions.bLlmEnableThinking = false;
+		PlannerOptions.bLlmStream = false;
 	PlannerOptions.LlmHttpTimeoutMs = 30000;
 	if (Mode == TEXT("http_fail"))
 	{
@@ -1700,12 +1781,15 @@ void HCI_RunAbilityKitAgentPlanWithRealLLMDemoCommand(const TArray<FString>& Arg
 				return;
 			}
 
-			HCI_State().AgentPlanPreviewState = Plan;
-			const FString CaseLabel = FString::Printf(TEXT("real_http_%s"), *Mode);
-			HCI_LogAgentPlanWithProviderSummary(*CaseLabel, UserText, RouteReason, Plan, PlannerMetadata, Validation);
-			HCI_LogAgentPlanRows(*CaseLabel, UserText, RouteReason, Plan);
-		});
-}
+				HCI_State().AgentPlanPreviewState = Plan;
+				const FString CaseLabel = FString::Printf(TEXT("real_http_%s"), *Mode);
+				HCI_LogAgentPlanWithProviderSummary(*CaseLabel, UserText, RouteReason, Plan, PlannerMetadata, Validation);
+				HCI_LogAgentPlanRows(*CaseLabel, UserText, RouteReason, Plan);
+				FHCIAbilityKitAgentPlanPreviewWindow::OpenWindow(
+					Plan,
+					PlannerMetadata.bEnvContextInjected ? PlannerMetadata.EnvContextAssetCount : INDEX_NONE);
+			});
+	}
 
 void HCI_RunAbilityKitAgentPlanWithLLMFallbackDemoCommand(const TArray<FString>& Args)
 {
@@ -2099,6 +2183,38 @@ void HCI_RunAbilityKitAgentPlanDemoJsonCommand(const TArray<FString>& Args)
 		*Plan.Intent,
 		*RouteReason,
 		*JsonText);
+}
+
+void HCI_RunAbilityKitAgentPlanPreviewUiCommand(const TArray<FString>& Args)
+{
+	const FString UserText =
+		Args.Num() > 0 ? HCI_JoinConsoleArgsAsText(Args) : FString(TEXT("整理临时目录资产，按规范命名并归档"));
+
+	FHCIAbilityKitAgentPlan Plan;
+	FString RouteReason;
+	FString Error;
+	if (!HCI_BuildAgentPlanDemoPlan(UserText, TEXT("req_cli_i1_preview_ui"), Plan, RouteReason, Error))
+	{
+		UE_LOG(
+			LogHCIAbilityKitAgentDemo,
+			Error,
+			TEXT("[HCIAbilityKit][AgentPlanPreviewUI] build_failed input=%s reason=%s"),
+			*UserText,
+			*Error);
+		return;
+	}
+
+	HCI_State().AgentPlanPreviewState = Plan;
+	FHCIAbilityKitAgentPlanPreviewWindow::OpenWindow(Plan);
+
+	UE_LOG(
+		LogHCIAbilityKitAgentDemo,
+		Display,
+		TEXT("[HCIAbilityKit][AgentPlanPreviewUI] opened request_id=%s intent=%s route_reason=%s steps=%d"),
+		*Plan.RequestId,
+		*Plan.Intent,
+		*RouteReason,
+		Plan.Steps.Num());
 }
 
 static FHCIAbilityKitAgentPlan HCI_MakeAgentPlanValidateTexturePlan(const TCHAR* RequestId)

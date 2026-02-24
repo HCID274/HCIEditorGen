@@ -8,6 +8,7 @@ struct HCIABILITYKITRUNTIME_API FHCIAbilityKitAgentPromptBundleOptions
 	FString PromptTemplateFileName = TEXT("prompt.md");
 	FString ToolsSchemaFileName = TEXT("tools_schema.json");
 	FString ToolsSchemaPlaceholder = TEXT("{{TOOLS_SCHEMA}}");
+	FString EnvContextPlaceholder = TEXT("{{ENV_CONTEXT}}");
 	FString UserInputPlaceholder = TEXT("{{USER_INPUT}}");
 };
 
@@ -21,6 +22,13 @@ public:
 
 	static bool BuildSystemPromptFromBundle(
 		const FString& UserInput,
+		const FHCIAbilityKitAgentPromptBundleOptions& Options,
+		FString& OutSystemPrompt,
+		FString& OutError);
+
+	static bool BuildSystemPromptFromBundleWithEnvContext(
+		const FString& UserInput,
+		const FString& EnvContext,
 		const FHCIAbilityKitAgentPromptBundleOptions& Options,
 		FString& OutSystemPrompt,
 		FString& OutError);

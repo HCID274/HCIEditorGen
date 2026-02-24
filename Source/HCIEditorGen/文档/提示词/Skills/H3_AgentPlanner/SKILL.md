@@ -12,13 +12,13 @@
 
 ## 依赖
 
-- Tool Registry 冻结白名单（7 工具）与参数边界。
+- Tool Registry 冻结白名单（含 SearchPath）与参数边界。
 - `tools_schema.json` 中声明的 `args` JSON Schema。
 
 ## 文件职责
 
 - `SKILL.md`：技能说明与维护规则（本文件）。
-- `prompt.md`：System Prompt 模板，包含 `{{TOOLS_SCHEMA}}` 与 `{{USER_INPUT}}` 占位符。
+- `prompt.md`：System Prompt 模板，包含 `{{TOOLS_SCHEMA}}`、`{{ENV_CONTEXT}}` 与 `{{USER_INPUT}}` 占位符。
 - `tools_schema.json`：严格工具约束，是 `args` 边界唯一文档源。
 
 ## 维护规则

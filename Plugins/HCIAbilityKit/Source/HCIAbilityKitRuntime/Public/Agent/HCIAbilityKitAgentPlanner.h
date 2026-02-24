@@ -15,6 +15,13 @@ enum class EHCIAbilityKitAgentPlannerLlmMockMode : uint8
 	EmptyResponse
 };
 
+struct HCIABILITYKITRUNTIME_API FHCIAbilityKitAgentPlannerEnvAssetEntry
+{
+	FString ObjectPath;
+	FString AssetClass;
+	int64 SizeBytes = -1;
+};
+
 struct HCIABILITYKITRUNTIME_API FHCIAbilityKitAgentPlannerBuildOptions
 {
 	bool bPreferLlm = false;
@@ -31,6 +38,10 @@ struct HCIABILITYKITRUNTIME_API FHCIAbilityKitAgentPlannerBuildOptions
 	FString PromptBundleRelativeDir = TEXT("Source/HCIEditorGen/文档/提示词/Skills/H3_AgentPlanner");
 	FString PromptTemplateFileName = TEXT("prompt.md");
 	FString PromptToolsSchemaFileName = TEXT("tools_schema.json");
+	bool bForceDirectoryScanFirst = true;
+	bool bEnableAutoEnvContextScan = true;
+	FString EnvContextDefaultScanRoot;
+	TFunction<bool(const FString&, TArray<FHCIAbilityKitAgentPlannerEnvAssetEntry>&, FString&)> ScanAssetsForEnvContext;
 	int32 LlmHttpTimeoutMs = 12000;
 	bool bLlmEnableThinking = false;
 	bool bLlmStream = false;
@@ -47,6 +58,9 @@ struct HCIABILITYKITRUNTIME_API FHCIAbilityKitAgentPlannerResultMetadata
 	bool bRetryUsed = false;
 	bool bCircuitBreakerOpen = false;
 	int32 ConsecutiveLlmFailures = 0;
+	bool bEnvContextInjected = false;
+	int32 EnvContextAssetCount = 0;
+	FString EnvContextScanRoot;
 };
 
 struct HCIABILITYKITRUNTIME_API FHCIAbilityKitAgentPlannerMetricsSnapshot

@@ -68,6 +68,14 @@ void FHCIAbilityKitAgentDemoConsoleCommands::StartupCoreCommands()
 			FConsoleCommandWithArgsDelegate::CreateStatic(&HCI_RunAbilityKitAgentPlanDemoJsonCommand));
 	}
 
+	if (!AgentPlanPreviewUiCommand.IsValid())
+	{
+		AgentPlanPreviewUiCommand = MakeUnique<FAutoConsoleCommand>(
+			TEXT("HCIAbilityKit.AgentPlanPreviewUI"),
+			TEXT("Stage I1 draft plan preview UI. Usage: HCIAbilityKit.AgentPlanPreviewUI [natural language text...]"),
+			FConsoleCommandWithArgsDelegate::CreateStatic(&HCI_RunAbilityKitAgentPlanPreviewUiCommand));
+	}
+
 	if (!AgentPlanValidateDemoCommand.IsValid())
 	{
 		AgentPlanValidateDemoCommand = MakeUnique<FAutoConsoleCommand>(
@@ -107,6 +115,7 @@ void FHCIAbilityKitAgentDemoConsoleCommands::ShutdownCoreCommands()
 	AgentExecutePlanFailDemoCommand.Reset();
 	AgentExecutePlanDemoCommand.Reset();
 	AgentPlanValidateDemoCommand.Reset();
+	AgentPlanPreviewUiCommand.Reset();
 	AgentPlanDemoJsonCommand.Reset();
 	AgentPlanDemoCommand.Reset();
 	AgentLodSafetyDemoCommand.Reset();

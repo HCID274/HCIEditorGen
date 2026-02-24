@@ -10,6 +10,7 @@ void HCI_RunAbilityKitAgentRbacDemoCommand(const TArray<FString>& Args);
 void HCI_RunAbilityKitAgentLodSafetyDemoCommand(const TArray<FString>& Args);
 void HCI_RunAbilityKitAgentPlanDemoCommand(const TArray<FString>& Args);
 void HCI_RunAbilityKitAgentPlanDemoJsonCommand(const TArray<FString>& Args);
+void HCI_RunAbilityKitAgentPlanPreviewUiCommand(const TArray<FString>& Args);
 void HCI_RunAbilityKitAgentPlanWithLLMDemoCommand(const TArray<FString>& Args);
 void HCI_RunAbilityKitAgentPlanWithRealLLMDemoCommand(const TArray<FString>& Args);
 void HCI_RunAbilityKitAgentPlanWithRealLLMProbeCommand(const TArray<FString>& Args);

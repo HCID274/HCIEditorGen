@@ -3,6 +3,7 @@
 #include "CoreMinimal.h"
 
 #include "Agent/HCIAbilityKitAgentPlan.h"
+#include "Agent/HCIAbilityKitAgentToolAction.h"
 #include "Agent/HCIAbilityKitAgentPlanValidator.h"
 #include "Agent/HCIAbilityKitToolRegistry.h"
 
@@ -40,6 +41,9 @@ struct HCIABILITYKITRUNTIME_API FHCIAbilityKitAgentExecutorOptions
 	int32 SimulatedFailureStepIndex = INDEX_NONE; // 0-based; INDEX_NONE disables simulation
 	FString SimulatedFailureErrorCode = TEXT("E4101");
 	FString SimulatedFailureReason = TEXT("simulated_tool_execution_failed");
+
+	// Stage I draft: optional tool action implementations for DryRun/Execute.
+	TMap<FName, TSharedPtr<IHCIAbilityKitAgentToolAction>> ToolActions;
 };
 
 struct HCIABILITYKITRUNTIME_API FHCIAbilityKitAgentExecutorStepResult

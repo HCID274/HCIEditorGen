@@ -1,11 +1,315 @@
 #include "Agent/HCIAbilityKitAgentExecutor.h"
 
 #include "Agent/HCIAbilityKitAgentExecutionGate.h"
+#include "AssetRegistry/AssetRegistryModule.h"
 #include "Common/HCIAbilityKitTimeFormat.h"
 #include "Dom/JsonObject.h"
+#include "Dom/JsonValue.h"
+#include "Internationalization/Regex.h"
+#include "Modules/ModuleManager.h"
+
+DEFINE_LOG_CATEGORY_STATIC(LogHCIAbilityKitAgentExecutor, Log, All);
 
 namespace
 {
+static bool HCI_ParseVariableTemplate(
+	const FString& InText,
+	FString& OutStepId,
+	FString& OutEvidenceKey,
+	bool& bOutHasIndex,
+	int32& OutIndex)
+{
+	OutStepId.Reset();
+	OutEvidenceKey.Reset();
+	bOutHasIndex = false;
+	OutIndex = INDEX_NONE;
+
+	const FString Trimmed = InText.TrimStartAndEnd();
+	const FRegexPattern Pattern(TEXT("^\\{\\{\\s*([A-Za-z0-9_]+)\\.([A-Za-z0-9_]+)(?:\\[(\\d+)\\])?\\s*\\}\\}$"));
+	FRegexMatcher Matcher(Pattern, Trimmed);
+	if (!Matcher.FindNext())
+	{
+		return false;
+	}
+
+	OutStepId = Matcher.GetCaptureGroup(1);
+	OutEvidenceKey = Matcher.GetCaptureGroup(2);
+	const FString IndexString = Matcher.GetCaptureGroup(3);
+	if (!IndexString.IsEmpty())
+	{
+		int32 ParsedIndex = INDEX_NONE;
+		if (!LexTryParseString(ParsedIndex, *IndexString) || ParsedIndex < 0)
+		{
+			return false;
+		}
+		bOutHasIndex = true;
+		OutIndex = ParsedIndex;
+	}
+	return !OutStepId.IsEmpty() && !OutEvidenceKey.IsEmpty();
+}
+
+static bool HCI_StringMayContainVariableTemplate(const FString& InText)
+{
+	return InText.Contains(TEXT("{{")) && InText.Contains(TEXT("}}"));
+}
+
+static bool HCI_JsonValueContainsVariableTemplate(const TSharedPtr<FJsonValue>& Value)
+{
+	if (!Value.IsValid())
+	{
+		return false;
+	}
+
+	switch (Value->Type)
+	{
+	case EJson::String:
+		return HCI_StringMayContainVariableTemplate(Value->AsString());
+	case EJson::Array:
+	{
+		for (const TSharedPtr<FJsonValue>& Item : Value->AsArray())
+		{
+			if (HCI_JsonValueContainsVariableTemplate(Item))
+			{
+				return true;
+			}
+		}
+		return false;
+	}
+	case EJson::Object:
+	{
+		const TSharedPtr<FJsonObject> Obj = Value->AsObject();
+		if (!Obj.IsValid())
+		{
+			return false;
+		}
+		for (const TPair<FString, TSharedPtr<FJsonValue>>& Pair : Obj->Values)
+		{
+			if (HCI_JsonValueContainsVariableTemplate(Pair.Value))
+			{
+				return true;
+			}
+		}
+		return false;
+	}
+	default:
+		return false;
+	}
+}
+
+static bool HCI_JsonObjectContainsVariableTemplate(const TSharedPtr<FJsonObject>& Obj)
+{
+	if (!Obj.IsValid())
+	{
+		return false;
+	}
+
+	for (const TPair<FString, TSharedPtr<FJsonValue>>& Pair : Obj->Values)
+	{
+		if (HCI_JsonValueContainsVariableTemplate(Pair.Value))
+		{
+			return true;
+		}
+	}
+	return false;
+}
+
+static bool HCI_PlanContainsVariableTemplate(const FHCIAbilityKitAgentPlan& Plan)
+{
+	for (const FHCIAbilityKitAgentPlanStep& Step : Plan.Steps)
+	{
+		if (HCI_JsonObjectContainsVariableTemplate(Step.Args))
+		{
+			return true;
+		}
+	}
+	return false;
+}
+
+static bool HCI_TryResolveEvidenceReference(
+	const TMap<FString, FString>& Evidence,
+	const FString& EvidenceKey,
+	const bool bHasIndex,
+	const int32 Index,
+	FString& OutValue)
+{
+	OutValue.Reset();
+
+	if (bHasIndex)
+	{
+		const FString IndexedKey = FString::Printf(TEXT("%s[%d]"), *EvidenceKey, Index);
+		if (const FString* IndexedValue = Evidence.Find(IndexedKey))
+		{
+			OutValue = *IndexedValue;
+			return !OutValue.IsEmpty();
+		}
+
+		if (const FString* BaseValue = Evidence.Find(EvidenceKey))
+		{
+			TArray<FString> Tokens;
+			BaseValue->ParseIntoArray(Tokens, TEXT("|"), true);
+			if (Tokens.IsValidIndex(Index))
+			{
+				OutValue = Tokens[Index];
+				return !OutValue.IsEmpty();
+			}
+		}
+		return false;
+	}
+
+	if (const FString* Value = Evidence.Find(EvidenceKey))
+	{
+		OutValue = *Value;
+		return !OutValue.IsEmpty();
+	}
+	return false;
+}
+
+static bool HCI_ResolveJsonValueInternal(
+	const TSharedPtr<FJsonValue>& InValue,
+	const TMap<FString, TMap<FString, FString>>& StepEvidenceContext,
+	TSharedPtr<FJsonValue>& OutValue,
+	FString& OutErrorCode,
+	FString& OutReason)
+{
+	if (!InValue.IsValid())
+	{
+		OutValue = InValue;
+		return true;
+	}
+
+	switch (InValue->Type)
+	{
+	case EJson::String:
+	{
+		FString Raw = InValue->AsString();
+		if (!HCI_StringMayContainVariableTemplate(Raw))
+		{
+			OutValue = MakeShared<FJsonValueString>(Raw);
+			return true;
+		}
+
+		FString StepId;
+		FString EvidenceKey;
+		bool bHasIndex = false;
+		int32 Index = INDEX_NONE;
+		if (!HCI_ParseVariableTemplate(Raw, StepId, EvidenceKey, bHasIndex, Index))
+		{
+			OutErrorCode = TEXT("E4311");
+			OutReason = TEXT("variable_template_invalid");
+			return false;
+		}
+
+		const TMap<FString, FString>* StepEvidence = StepEvidenceContext.Find(StepId);
+		if (StepEvidence == nullptr)
+		{
+			OutErrorCode = TEXT("E4311");
+			OutReason = TEXT("variable_source_step_missing");
+			return false;
+		}
+
+		FString ResolvedValue;
+		if (!HCI_TryResolveEvidenceReference(*StepEvidence, EvidenceKey, bHasIndex, Index, ResolvedValue))
+		{
+			OutErrorCode = TEXT("E4311");
+			OutReason = TEXT("variable_reference_unresolved");
+			return false;
+		}
+
+		OutValue = MakeShared<FJsonValueString>(ResolvedValue);
+		return true;
+	}
+
+	case EJson::Array:
+	{
+		TArray<TSharedPtr<FJsonValue>> ResolvedArray;
+		const TArray<TSharedPtr<FJsonValue>>& InArray = InValue->AsArray();
+		ResolvedArray.Reserve(InArray.Num());
+		for (const TSharedPtr<FJsonValue>& Item : InArray)
+		{
+			TSharedPtr<FJsonValue> ResolvedItem;
+			if (!HCI_ResolveJsonValueInternal(Item, StepEvidenceContext, ResolvedItem, OutErrorCode, OutReason))
+			{
+				return false;
+			}
+			if (!ResolvedItem.IsValid())
+			{
+				ResolvedItem = MakeShared<FJsonValueNull>();
+			}
+			ResolvedArray.Add(ResolvedItem);
+		}
+		OutValue = MakeShared<FJsonValueArray>(ResolvedArray);
+		return true;
+	}
+
+	case EJson::Object:
+	{
+		const TSharedPtr<FJsonObject> InObj = InValue->AsObject();
+		if (!InObj.IsValid())
+		{
+			OutValue = InValue;
+			return true;
+		}
+
+		TSharedPtr<FJsonObject> ResolvedObj = MakeShared<FJsonObject>();
+		for (const TPair<FString, TSharedPtr<FJsonValue>>& Pair : InObj->Values)
+		{
+			TSharedPtr<FJsonValue> ResolvedChild;
+			if (!HCI_ResolveJsonValueInternal(Pair.Value, StepEvidenceContext, ResolvedChild, OutErrorCode, OutReason))
+			{
+				return false;
+			}
+			if (!ResolvedChild.IsValid())
+			{
+				ResolvedChild = MakeShared<FJsonValueNull>();
+			}
+			ResolvedObj->SetField(Pair.Key, ResolvedChild);
+		}
+
+		OutValue = MakeShared<FJsonValueObject>(ResolvedObj);
+		return true;
+	}
+
+	default:
+		OutValue = InValue;
+		return true;
+	}
+}
+
+static bool HCI_ResolveStepArguments(
+	const FHCIAbilityKitAgentPlanStep& InStep,
+	const TMap<FString, TMap<FString, FString>>& StepEvidenceContext,
+	FHCIAbilityKitAgentPlanStep& OutResolvedStep,
+	FString& OutErrorCode,
+	FString& OutReason)
+{
+	OutResolvedStep = InStep;
+	OutErrorCode.Reset();
+	OutReason.Reset();
+
+	if (!InStep.Args.IsValid())
+	{
+		return true;
+	}
+
+	TSharedPtr<FJsonObject> ResolvedArgs = MakeShared<FJsonObject>();
+	for (const TPair<FString, TSharedPtr<FJsonValue>>& Pair : InStep.Args->Values)
+	{
+		TSharedPtr<FJsonValue> ResolvedValue;
+		if (!HCI_ResolveJsonValueInternal(Pair.Value, StepEvidenceContext, ResolvedValue, OutErrorCode, OutReason))
+		{
+			return false;
+		}
+		if (!ResolvedValue.IsValid())
+		{
+			ResolvedValue = MakeShared<FJsonValueNull>();
+		}
+		ResolvedArgs->SetField(Pair.Key, ResolvedValue);
+	}
+
+	OutResolvedStep.Args = MoveTemp(ResolvedArgs);
+	return true;
+}
+
 static FString HCI_GetCapabilityString(const FHCIAbilityKitToolDescriptor* Tool)
 {
 	return Tool ? FHCIAbilityKitToolRegistry::CapabilityToString(Tool->Capability) : FString(TEXT("-"));
@@ -228,6 +532,168 @@ static FHCIAbilityKitAgentExecutorPreflightDecision HCI_EvaluateExecutorPrefligh
 
 	return Preflight;
 }
+
+static bool HCI_TryRunToolAction(
+	const FHCIAbilityKitAgentPlan& Plan,
+	const FHCIAbilityKitAgentPlanStep& Step,
+	const FHCIAbilityKitAgentExecutorOptions& Options,
+	FHCIAbilityKitAgentExecutorStepResult& OutStepResult)
+{
+	const TSharedPtr<IHCIAbilityKitAgentToolAction>* FoundAction = Options.ToolActions.Find(Step.ToolName);
+	if (FoundAction == nullptr || !FoundAction->IsValid())
+	{
+		return false;
+	}
+
+	FHCIAbilityKitAgentToolActionRequest ActionRequest;
+	ActionRequest.RequestId = Plan.RequestId;
+	ActionRequest.StepId = Step.StepId;
+	ActionRequest.ToolName = Step.ToolName;
+	ActionRequest.Args = Step.Args;
+
+	FHCIAbilityKitAgentToolActionResult ActionResult;
+	const bool bCallOk = Options.bDryRun
+		? (*FoundAction)->DryRun(ActionRequest, ActionResult)
+		: (*FoundAction)->Execute(ActionRequest, ActionResult);
+
+	OutStepResult.TargetCountEstimate = FMath::Max(OutStepResult.TargetCountEstimate, ActionResult.EstimatedAffectedCount);
+	OutStepResult.Evidence = MoveTemp(ActionResult.Evidence);
+	OutStepResult.bSucceeded = bCallOk && ActionResult.bSucceeded;
+	OutStepResult.Status = OutStepResult.bSucceeded ? TEXT("succeeded") : TEXT("failed");
+	OutStepResult.ErrorCode = ActionResult.ErrorCode;
+	OutStepResult.Reason = ActionResult.Reason;
+	OutStepResult.FailurePhase = OutStepResult.bSucceeded ? TEXT("-") : TEXT("execute");
+	return true;
+}
+
+static bool HCI_TryValidateStepWithResolvedPrefix(
+	const FHCIAbilityKitAgentPlan& Plan,
+	const TArray<FHCIAbilityKitAgentPlanStep>& ResolvedPrefixSteps,
+	const FHCIAbilityKitAgentPlanStep& CurrentResolvedStep,
+	const FHCIAbilityKitToolRegistry& ToolRegistry,
+	const FHCIAbilityKitAgentPlanValidationContext& ValidationContext,
+	FHCIAbilityKitAgentPlanValidationResult& OutValidation)
+{
+	FHCIAbilityKitAgentPlan PrefixPlan;
+	PrefixPlan.PlanVersion = Plan.PlanVersion;
+	PrefixPlan.RequestId = Plan.RequestId;
+	PrefixPlan.Intent = Plan.Intent;
+	PrefixPlan.Steps = ResolvedPrefixSteps;
+	PrefixPlan.Steps.Add(CurrentResolvedStep);
+	return FHCIAbilityKitAgentPlanValidator::ValidatePlan(PrefixPlan, ToolRegistry, ValidationContext, OutValidation);
+}
+
+static bool HCI_IsDirectoryLikeArgName(const FString& ArgName)
+{
+	return ArgName.Equals(TEXT("directory"), ESearchCase::CaseSensitive) ||
+		   ArgName.Equals(TEXT("target_root"), ESearchCase::CaseSensitive) ||
+		   ArgName.Equals(TEXT("target_path"), ESearchCase::CaseSensitive);
+}
+
+static bool HCI_DirectoryExistsInAssetRegistry(const FString& DirectoryPath)
+{
+	if (!DirectoryPath.StartsWith(TEXT("/Game/")))
+	{
+		return false;
+	}
+
+	FAssetRegistryModule* AssetRegistryModule =
+		FModuleManager::GetModulePtr<FAssetRegistryModule>(TEXT("AssetRegistry"));
+	if (AssetRegistryModule == nullptr)
+	{
+		AssetRegistryModule = &FModuleManager::LoadModuleChecked<FAssetRegistryModule>(TEXT("AssetRegistry"));
+	}
+	if (AssetRegistryModule == nullptr)
+	{
+		return false;
+	}
+
+	TArray<FString> CachedPaths;
+	AssetRegistryModule->Get().GetAllCachedPaths(CachedPaths);
+	return CachedPaths.ContainsByPredicate(
+		[&DirectoryPath](const FString& Path)
+		{
+			return Path.Equals(DirectoryPath, ESearchCase::IgnoreCase);
+		});
+}
+
+static bool HCI_TryDetectPipelineBypassWarning(
+	const FHCIAbilityKitAgentPlan& Plan,
+	const int32 StepIndex,
+	const FHCIAbilityKitAgentPlanStep& OriginalStep,
+	const FHCIAbilityKitAgentPlanStep& ResolvedStep,
+	const TMap<FString, TMap<FString, FString>>& StepEvidenceContext,
+	FString& OutDetail)
+{
+	OutDetail.Reset();
+	if (StepIndex <= 0)
+	{
+		return false;
+	}
+	if (!OriginalStep.Args.IsValid() || !ResolvedStep.Args.IsValid())
+	{
+		return false;
+	}
+
+	const FHCIAbilityKitAgentPlanStep& PrevStep = Plan.Steps[StepIndex - 1];
+	if (PrevStep.ToolName != TEXT("SearchPath") || PrevStep.StepId.IsEmpty())
+	{
+		return false;
+	}
+
+	const TMap<FString, FString>* PrevEvidence = StepEvidenceContext.Find(PrevStep.StepId);
+	if (PrevEvidence == nullptr)
+	{
+		return false;
+	}
+
+	const FString* MatchedDirectoriesValue = PrevEvidence->Find(TEXT("matched_directories"));
+	if (MatchedDirectoriesValue == nullptr || MatchedDirectoriesValue->IsEmpty())
+	{
+		return false;
+	}
+
+	for (const TPair<FString, TSharedPtr<FJsonValue>>& ResolvedArg : ResolvedStep.Args->Values)
+	{
+		if (!HCI_IsDirectoryLikeArgName(ResolvedArg.Key))
+		{
+			continue;
+		}
+		if (!ResolvedArg.Value.IsValid() || ResolvedArg.Value->Type != EJson::String)
+		{
+			continue;
+		}
+
+		const FString ResolvedPath = ResolvedArg.Value->AsString().TrimStartAndEnd();
+		if (!ResolvedPath.StartsWith(TEXT("/Game/")))
+		{
+			continue;
+		}
+		if (HCI_DirectoryExistsInAssetRegistry(ResolvedPath))
+		{
+			continue;
+		}
+
+		const TSharedPtr<FJsonValue>* RawArgValue = OriginalStep.Args->Values.Find(ResolvedArg.Key);
+		const FString RawText = (RawArgValue != nullptr && RawArgValue->IsValid() && (*RawArgValue)->Type == EJson::String)
+			? (*RawArgValue)->AsString()
+			: FString();
+		const bool bUsesPipelineTemplate = HCI_StringMayContainVariableTemplate(RawText);
+		if (bUsesPipelineTemplate)
+		{
+			continue;
+		}
+
+		OutDetail = FString::Printf(
+			TEXT("规划器未正确使用管道变量 arg=%s resolved_path=%s expected_template={{%s.matched_directories[0]}}"),
+			*ResolvedArg.Key,
+			*ResolvedPath,
+			*PrevStep.StepId);
+		return true;
+	}
+
+	return false;
+}
 }
 
 bool FHCIAbilityKitAgentExecutor::ExecutePlan(
@@ -253,7 +719,10 @@ bool FHCIAbilityKitAgentExecutor::ExecutePlan(
 	OutResult.bPreflightEnabled = Options.bEnablePreflightGates;
 	OutResult.StartedAtUtc = FHCIAbilityKitTimeFormat::FormatNowBeijingIso8601();
 
-	if (Options.bValidatePlanBeforeExecute)
+	const bool bContainsVariableTemplate = HCI_PlanContainsVariableTemplate(Plan);
+	const bool bUsePerStepValidation = Options.bValidatePlanBeforeExecute && bContainsVariableTemplate;
+
+	if (Options.bValidatePlanBeforeExecute && !bUsePerStepValidation)
 	{
 		FHCIAbilityKitAgentPlanValidationResult ValidationResult;
 		if (!FHCIAbilityKitAgentPlanValidator::ValidatePlan(Plan, ToolRegistry, ValidationContext, ValidationResult))
@@ -275,15 +744,69 @@ bool FHCIAbilityKitAgentExecutor::ExecutePlan(
 	OutResult.bAccepted = true;
 	OutResult.StepResults.Reserve(Plan.Steps.Num());
 	bool bSawFailure = false;
+	TMap<FString, TMap<FString, FString>> StepEvidenceContext;
+	TArray<FHCIAbilityKitAgentPlanStep> ResolvedValidatedPrefixSteps;
+	ResolvedValidatedPrefixSteps.Reserve(Plan.Steps.Num());
 
 	for (int32 StepIndex = 0; StepIndex < Plan.Steps.Num(); ++StepIndex)
 	{
 		const FHCIAbilityKitAgentPlanStep& Step = Plan.Steps[StepIndex];
-		const FHCIAbilityKitToolDescriptor* Tool = ToolRegistry.FindTool(Step.ToolName);
-		FHCIAbilityKitAgentExecutorStepResult& StepResult = HCI_AddStepResultSkeleton(Step, StepIndex, ToolRegistry, OutResult);
-		StepResult.bAttempted = true;
+		FHCIAbilityKitAgentPlanStep ResolvedStep;
+		FString ResolveErrorCode;
+		FString ResolveReason;
+			const bool bResolveOk = HCI_ResolveStepArguments(Step, StepEvidenceContext, ResolvedStep, ResolveErrorCode, ResolveReason);
+			const FHCIAbilityKitToolDescriptor* Tool = ToolRegistry.FindTool(Step.ToolName);
+			FHCIAbilityKitAgentExecutorStepResult& StepResult = HCI_AddStepResultSkeleton(ResolvedStep, StepIndex, ToolRegistry, OutResult);
+			StepResult.bAttempted = true;
+			bool bHasPipelineBypassWarning = false;
+			FString PipelineBypassWarningDetail;
+			if (bResolveOk)
+			{
+				bHasPipelineBypassWarning = HCI_TryDetectPipelineBypassWarning(
+					Plan,
+					StepIndex,
+					Step,
+					ResolvedStep,
+					StepEvidenceContext,
+					PipelineBypassWarningDetail);
+			}
 
-		if (Tool == nullptr)
+		if (!bResolveOk)
+		{
+			StepResult.bSucceeded = false;
+			StepResult.Status = TEXT("failed");
+			StepResult.ErrorCode = ResolveErrorCode.IsEmpty() ? TEXT("E4311") : ResolveErrorCode;
+			StepResult.Reason = ResolveReason.IsEmpty() ? TEXT("resolve_arguments_failed") : ResolveReason;
+			StepResult.FailurePhase = TEXT("precheck");
+		}
+		else if (bUsePerStepValidation)
+		{
+			FHCIAbilityKitAgentPlanValidationResult ValidationResult;
+			if (!HCI_TryValidateStepWithResolvedPrefix(
+					Plan,
+					ResolvedValidatedPrefixSteps,
+					ResolvedStep,
+					ToolRegistry,
+					ValidationContext,
+					ValidationResult))
+			{
+				StepResult.bSucceeded = false;
+				StepResult.Status = TEXT("failed");
+				StepResult.ErrorCode = ValidationResult.ErrorCode;
+				StepResult.Reason = ValidationResult.Reason;
+				StepResult.FailurePhase = TEXT("precheck");
+			}
+			else
+			{
+				ResolvedValidatedPrefixSteps.Add(ResolvedStep);
+			}
+		}
+
+		if (StepResult.Status == TEXT("failed"))
+		{
+			// precheck failed; continue to unified failure convergence branch below
+		}
+		else if (Tool == nullptr)
 		{
 			StepResult.bSucceeded = false;
 			StepResult.Status = TEXT("failed");
@@ -291,10 +814,10 @@ bool FHCIAbilityKitAgentExecutor::ExecutePlan(
 			StepResult.Reason = TEXT("tool_not_whitelisted");
 			StepResult.FailurePhase = TEXT("execute");
 		}
-		else
-		{
-			const FHCIAbilityKitAgentExecutorPreflightDecision PreflightDecision =
-				HCI_EvaluateExecutorPreflight(Plan, Step, StepResult, ToolRegistry, Options);
+			else
+			{
+				const FHCIAbilityKitAgentExecutorPreflightDecision PreflightDecision =
+					HCI_EvaluateExecutorPreflight(Plan, ResolvedStep, StepResult, ToolRegistry, Options);
 			if (!PreflightDecision.bAllowed)
 			{
 				StepResult.bSucceeded = false;
@@ -316,20 +839,56 @@ bool FHCIAbilityKitAgentExecutor::ExecutePlan(
 			}
 			else
 			{
-				for (const FString& EvidenceKey : Step.ExpectedEvidence)
+				const bool bHandledByAction = HCI_TryRunToolAction(Plan, ResolvedStep, Options, StepResult);
+				if (bHandledByAction && !StepResult.bSucceeded)
 				{
-					StepResult.Evidence.Add(EvidenceKey, HCI_BuildEvidenceValue(EvidenceKey, Step));
+					// Action returned a failed dry-run/execute result.
 				}
+				else if (bHandledByAction)
+				{
+					if (StepResult.Reason.IsEmpty())
+					{
+						StepResult.Reason = Options.bDryRun ? TEXT("tool_action_dry_run_success") : TEXT("tool_action_execute_success");
+					}
+					StepResult.PreflightGate = Options.bEnablePreflightGates ? TEXT("passed") : TEXT("-");
+				}
+				else
+				{
+					for (const FString& EvidenceKey : Step.ExpectedEvidence)
+					{
+						StepResult.Evidence.Add(EvidenceKey, HCI_BuildEvidenceValue(EvidenceKey, ResolvedStep));
+					}
 
-				StepResult.bSucceeded = true;
-				StepResult.Status = TEXT("succeeded");
-				StepResult.Reason = Options.bDryRun ? TEXT("simulated_dry_run_success") : TEXT("simulated_apply_success");
-				StepResult.PreflightGate = Options.bEnablePreflightGates ? TEXT("passed") : TEXT("-");
+					StepResult.bSucceeded = true;
+					StepResult.Status = TEXT("succeeded");
+					StepResult.Reason = Options.bDryRun ? TEXT("simulated_dry_run_success") : TEXT("simulated_apply_success");
+					StepResult.PreflightGate = Options.bEnablePreflightGates ? TEXT("passed") : TEXT("-");
+				}
+				}
 			}
-		}
 
-		if (StepResult.bSucceeded)
-		{
+			if (bHasPipelineBypassWarning)
+			{
+				StepResult.Evidence.Add(TEXT("planning_warning_code"), TEXT("W5101"));
+				StepResult.Evidence.Add(TEXT("planning_warning_reason"), TEXT("planner_pipeline_variable_not_used_after_search"));
+				StepResult.Evidence.Add(
+					TEXT("planning_warning_detail"),
+					PipelineBypassWarningDetail.IsEmpty() ? TEXT("规划器未正确使用管道变量") : PipelineBypassWarningDetail);
+				UE_LOG(
+					LogHCIAbilityKitAgentExecutor,
+					Warning,
+					TEXT("[HCIAbilityKit][AgentExecutor] warning_code=W5101 step_id=%s tool=%s reason=planner_pipeline_variable_not_used_after_search detail=%s"),
+					*StepResult.StepId,
+					*StepResult.ToolName,
+					PipelineBypassWarningDetail.IsEmpty() ? TEXT("规划器未正确使用管道变量") : *PipelineBypassWarningDetail);
+			}
+
+			if (StepResult.bSucceeded)
+			{
+			if (!StepResult.StepId.IsEmpty())
+			{
+				StepEvidenceContext.Add(StepResult.StepId, StepResult.Evidence);
+			}
 			OutResult.SucceededSteps += 1;
 			continue;
 		}

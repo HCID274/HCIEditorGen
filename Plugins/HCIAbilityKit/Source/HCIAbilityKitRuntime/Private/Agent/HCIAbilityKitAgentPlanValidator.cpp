@@ -94,6 +94,13 @@ static bool HCI_TryGetIntExact(const TSharedPtr<FJsonValue>& Value, int32& OutIn
 	return true;
 }
 
+static bool HCI_IsVariableTemplateString(const FString& Value)
+{
+	const FRegexPattern Pattern(TEXT("^\\{\\{\\s*[A-Za-z0-9_]+\\.[A-Za-z0-9_]+(?:\\[\\d+\\])?\\s*\\}\\}$"));
+	FRegexMatcher Matcher(Pattern, Value.TrimStartAndEnd());
+	return Matcher.FindNext();
+}
+
 static const FHCIAbilityKitToolArgSchema* HCI_FindArgSchema(
 	const FHCIAbilityKitToolDescriptor& Tool,
 	const FString& ArgName)
@@ -131,6 +138,16 @@ static bool HCI_ValidateStringValue(
 	FHCIAbilityKitAgentPlanValidationResult& OutResult)
 {
 	const FString FieldPath = HCI_MakeArgFieldPath(StepIndex, Schema.ArgName.ToString());
+	const bool bIsVariableTemplate = HCI_IsVariableTemplateString(Parsed);
+	if (bIsVariableTemplate)
+	{
+		// Variable piping placeholders are only allowed on /Game path-like args.
+		if (!Schema.bMustStartWithGamePath)
+		{
+			return HCI_Fail(OutResult, TEXT("E4009"), FieldPath, TEXT("variable_template_not_allowed_for_arg"), StepIndex, &Step);
+		}
+		return true;
+	}
 
 	if (Schema.MinStringLength != INDEX_NONE && Parsed.Len() < Schema.MinStringLength)
 	{

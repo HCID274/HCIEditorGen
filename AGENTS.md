@@ -56,6 +56,7 @@ Scope: whole repo.
 - 代码结构发生变化（新增/删除/移动关键代码文件）时，必须同步更新：`Source/HCIEditorGen/文档/04_代码框架总览_树状图.md`（树内中文注释需与实际一致）。
 - 任何范围/里程碑变化，先改文档再改代码。
 - 保持文档轻量，不扩散到无关主题。
+- 用户在 UE 手测中明确反馈 `Pass` 后，助手必须主动完成文档收口（至少更新 `00_总进度.md` 与涉及变更的主计划/结构文档）；收口完成后必须停下并等待用户下一步命令。
 - Prompt 文档唯一入口：`Source/HCIEditorGen/文档/提示词/README.md`；采用 Skills Bundle 结构（`SKILL.md + prompt.md + tools_schema.json`）。
 - Prompt 运行时注入占位符冻结：`{{TOOLS_SCHEMA}}`、`{{USER_INPUT}}`。
 - 新增字段/新增工具/约束变更时，必须先更新对应 Skill 的 `tools_schema.json`，再改代码；禁止“代码先行、文档补录”。

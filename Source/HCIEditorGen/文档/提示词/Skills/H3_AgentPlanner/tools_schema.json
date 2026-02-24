@@ -11,12 +11,13 @@
   "properties": {
     "allowed_tools": {
       "type": "array",
-      "minItems": 7,
-      "maxItems": 7,
+      "minItems": 8,
+      "maxItems": 8,
       "items": {
         "type": "string",
         "enum": [
           "ScanAssets",
+          "SearchPath",
           "SetTextureMaxSize",
           "SetMeshLODGroup",
           "ScanLevelMeshRisks",
@@ -32,6 +33,7 @@
       "additionalProperties": false,
       "required": [
         "ScanAssets",
+        "SearchPath",
         "SetTextureMaxSize",
         "SetMeshLODGroup",
         "ScanLevelMeshRisks",
@@ -43,7 +45,26 @@
         "ScanAssets": {
           "type": "object",
           "additionalProperties": false,
-          "properties": {}
+          "properties": {
+            "directory": {
+              "type": "string",
+              "pattern": "^/Game/.*"
+            }
+          }
+        },
+        "SearchPath": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "keyword"
+          ],
+          "properties": {
+            "keyword": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64
+            }
+          }
         },
         "SetTextureMaxSize": {
           "type": "object",
@@ -254,6 +275,7 @@
                 "type": "string",
                 "enum": [
                   "ScanAssets",
+                  "SearchPath",
                   "SetTextureMaxSize",
                   "SetMeshLODGroup",
                   "ScanLevelMeshRisks",
@@ -275,6 +297,22 @@
               }
             },
             "allOf": [
+              {
+                "if": {
+                  "properties": {
+                    "tool_name": {
+                      "const": "SearchPath"
+                    }
+                  }
+                },
+                "then": {
+                  "properties": {
+                    "args": {
+                      "$ref": "#/properties/tool_args_json_schema/properties/SearchPath"
+                    }
+                  }
+                }
+              },
               {
                 "if": {
                   "properties": {

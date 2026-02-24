@@ -263,4 +263,49 @@ bool FHCIAbilityKitAgentPlanValidatorNamingMetadataInsufficientReturnsE4012Test:
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FHCIAbilityKitAgentPlanValidatorVariableSourceMustPrecedeConsumerTest,
+	"HCIAbilityKit.Editor.AgentPlanValidation.VariableSourceMustPrecedeConsumer",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FHCIAbilityKitAgentPlanValidatorVariableSourceMustPrecedeConsumerTest::RunTest(const FString& Parameters)
+{
+	FHCIAbilityKitToolRegistry& Registry = FHCIAbilityKitToolRegistry::Get();
+	Registry.ResetToDefaults();
+
+	FHCIAbilityKitAgentPlan Plan;
+	Plan.PlanVersion = 1;
+	Plan.RequestId = TEXT("req_f2_variable_order");
+	Plan.Intent = TEXT("scan_assets");
+
+	FHCIAbilityKitAgentPlanStep& ScanStep = Plan.Steps.AddDefaulted_GetRef();
+	ScanStep.StepId = TEXT("step_2_scan");
+	ScanStep.ToolName = TEXT("ScanAssets");
+	ScanStep.RiskLevel = EHCIAbilityKitAgentPlanRiskLevel::ReadOnly;
+	ScanStep.bRequiresConfirm = false;
+	ScanStep.RollbackStrategy = TEXT("all_or_nothing");
+	ScanStep.ExpectedEvidence = {TEXT("asset_paths"), TEXT("asset_count"), TEXT("result")};
+	ScanStep.Args = MakeShared<FJsonObject>();
+	ScanStep.Args->SetStringField(TEXT("directory"), TEXT("{{step_1_search.matched_directories[0]}}"));
+
+	FHCIAbilityKitAgentPlanStep& SearchStep = Plan.Steps.AddDefaulted_GetRef();
+	SearchStep.StepId = TEXT("step_1_search");
+	SearchStep.ToolName = TEXT("SearchPath");
+	SearchStep.RiskLevel = EHCIAbilityKitAgentPlanRiskLevel::ReadOnly;
+	SearchStep.bRequiresConfirm = false;
+	SearchStep.RollbackStrategy = TEXT("all_or_nothing");
+	SearchStep.ExpectedEvidence = {TEXT("matched_directories"), TEXT("best_directory"), TEXT("result")};
+	SearchStep.Args = MakeShared<FJsonObject>();
+	SearchStep.Args->SetStringField(TEXT("keyword"), TEXT("MNew"));
+
+	FHCIAbilityKitAgentPlanValidationResult Result;
+	TestFalse(
+		TEXT("Consumer step should fail when source step appears later"),
+		FHCIAbilityKitAgentPlanValidator::ValidatePlan(Plan, Registry, Result));
+	TestEqual(TEXT("Error code"), Result.ErrorCode, FString(TEXT("E4009")));
+	TestEqual(TEXT("Reason"), Result.Reason, FString(TEXT("variable_source_step_must_precede_consumer")));
+	TestTrue(TEXT("Field should point to directory"), Result.Field.Contains(TEXT("steps[0].args.directory")));
+	return true;
+}
+
 #endif

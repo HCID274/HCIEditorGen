@@ -12,6 +12,7 @@
 #include "Serialization/JsonReader.h"
 #include "Serialization/JsonSerializer.h"
 #include "Templates/Atomic.h"
+#include "Internationalization/Regex.h"
 
 namespace
 {
@@ -492,6 +493,207 @@ static TSharedPtr<FJsonObject> HCI_NormalizeStepArgsBySchema(
 	}
 
 	return NormalizedArgs;
+}
+
+static bool HCI_TryParseVariableTemplateStepId(const FString& InText, FString& OutStepId)
+{
+	OutStepId.Reset();
+	const FString Trimmed = InText.TrimStartAndEnd();
+	const FRegexPattern Pattern(TEXT("^\\{\\{\\s*([A-Za-z0-9_]+)\\.[A-Za-z0-9_]+(?:\\[\\d+\\])?\\s*\\}\\}$"));
+	FRegexMatcher Matcher(Pattern, Trimmed);
+	if (!Matcher.FindNext())
+	{
+		return false;
+	}
+	OutStepId = Matcher.GetCaptureGroup(1);
+	return !OutStepId.IsEmpty();
+}
+
+static void HCI_CollectStepDependencyIdsFromJsonValue(
+	const TSharedPtr<FJsonValue>& InValue,
+	TSet<FString>& OutStepIds)
+{
+	if (!InValue.IsValid())
+	{
+		return;
+	}
+
+	switch (InValue->Type)
+	{
+	case EJson::String:
+	{
+		FString SourceStepId;
+		if (HCI_TryParseVariableTemplateStepId(InValue->AsString(), SourceStepId))
+		{
+			OutStepIds.Add(SourceStepId);
+		}
+		break;
+	}
+	case EJson::Array:
+		for (const TSharedPtr<FJsonValue>& Item : InValue->AsArray())
+		{
+			HCI_CollectStepDependencyIdsFromJsonValue(Item, OutStepIds);
+		}
+		break;
+	case EJson::Object:
+	{
+		const TSharedPtr<FJsonObject> Obj = InValue->AsObject();
+		if (!Obj.IsValid())
+		{
+			return;
+		}
+		for (const TPair<FString, TSharedPtr<FJsonValue>>& Pair : Obj->Values)
+		{
+			HCI_CollectStepDependencyIdsFromJsonValue(Pair.Value, OutStepIds);
+		}
+		break;
+	}
+	default:
+		break;
+	}
+}
+
+static bool HCI_ReorderPlanStepsByVariableDependencies(
+	FHCIAbilityKitAgentPlan& InOutPlan,
+	bool& bOutReordered,
+	FString& OutError)
+{
+	bOutReordered = false;
+	OutError.Reset();
+
+	const int32 StepCount = InOutPlan.Steps.Num();
+	if (StepCount <= 1)
+	{
+		return true;
+	}
+
+	TMap<FString, int32> StepIndexById;
+	StepIndexById.Reserve(StepCount);
+	for (int32 StepIndex = 0; StepIndex < StepCount; ++StepIndex)
+	{
+		const FString& StepId = InOutPlan.Steps[StepIndex].StepId;
+		if (StepId.IsEmpty())
+		{
+			continue;
+		}
+		if (StepIndexById.Contains(StepId))
+		{
+			OutError = FString::Printf(TEXT("llm_plan_duplicate_step_id step_id=%s"), *StepId);
+			return false;
+		}
+		StepIndexById.Add(StepId, StepIndex);
+	}
+
+	TArray<TSet<int32>> OutEdges;
+	OutEdges.SetNum(StepCount);
+	TArray<int32> InDegree;
+	InDegree.Init(0, StepCount);
+
+	for (int32 StepIndex = 0; StepIndex < StepCount; ++StepIndex)
+	{
+		const FHCIAbilityKitAgentPlanStep& Step = InOutPlan.Steps[StepIndex];
+		if (!Step.Args.IsValid())
+		{
+			continue;
+		}
+
+		TSet<FString> DependencyStepIds;
+		for (const TPair<FString, TSharedPtr<FJsonValue>>& Pair : Step.Args->Values)
+		{
+			HCI_CollectStepDependencyIdsFromJsonValue(Pair.Value, DependencyStepIds);
+		}
+
+		for (const FString& DependencyStepId : DependencyStepIds)
+		{
+			const int32* DependencyIndexPtr = StepIndexById.Find(DependencyStepId);
+			if (DependencyIndexPtr == nullptr)
+			{
+				OutError = FString::Printf(
+					TEXT("llm_plan_variable_source_step_missing step_id=%s referenced_by=%s"),
+					*DependencyStepId,
+					*Step.StepId);
+				return false;
+			}
+
+			const int32 DependencyIndex = *DependencyIndexPtr;
+			if (DependencyIndex == StepIndex)
+			{
+				OutError = FString::Printf(
+					TEXT("llm_plan_variable_source_step_self_reference step_id=%s"),
+					*Step.StepId);
+				return false;
+			}
+
+			if (!OutEdges[DependencyIndex].Contains(StepIndex))
+			{
+				OutEdges[DependencyIndex].Add(StepIndex);
+				InDegree[StepIndex] += 1;
+			}
+		}
+	}
+
+	TArray<int32> Ready;
+	Ready.Reserve(StepCount);
+	for (int32 StepIndex = 0; StepIndex < StepCount; ++StepIndex)
+	{
+		if (InDegree[StepIndex] == 0)
+		{
+			Ready.Add(StepIndex);
+		}
+	}
+	Ready.Sort();
+
+	TArray<int32> OrderedIndices;
+	OrderedIndices.Reserve(StepCount);
+	while (Ready.Num() > 0)
+	{
+		const int32 Current = Ready[0];
+		Ready.RemoveAt(0, 1, EAllowShrinking::No);
+		OrderedIndices.Add(Current);
+
+		TArray<int32> Dependents = OutEdges[Current].Array();
+		Dependents.Sort();
+		for (const int32 DependentIndex : Dependents)
+		{
+			InDegree[DependentIndex] -= 1;
+			if (InDegree[DependentIndex] == 0)
+			{
+				Ready.Add(DependentIndex);
+				Ready.Sort();
+			}
+		}
+	}
+
+	if (OrderedIndices.Num() != StepCount)
+	{
+		OutError = TEXT("llm_plan_variable_dependency_cycle_detected");
+		return false;
+	}
+
+	bool bOrderChanged = false;
+	for (int32 Index = 0; Index < StepCount; ++Index)
+	{
+		if (OrderedIndices[Index] != Index)
+		{
+			bOrderChanged = true;
+			break;
+		}
+	}
+
+	if (!bOrderChanged)
+	{
+		return true;
+	}
+
+	TArray<FHCIAbilityKitAgentPlanStep> ReorderedSteps;
+	ReorderedSteps.Reserve(StepCount);
+	for (const int32 SourceIndex : OrderedIndices)
+	{
+		ReorderedSteps.Add(InOutPlan.Steps[SourceIndex]);
+	}
+	InOutPlan.Steps = MoveTemp(ReorderedSteps);
+	bOutReordered = true;
+	return true;
 }
 
 static bool HCI_ValidateBuiltPlanOrSetError(
@@ -1252,24 +1454,39 @@ static void HCI_StartAsyncRealHttpAttempt(const TSharedRef<FHCIAbilityKitAsyncPl
 					HCI_FinishAsyncWithKeywordFallback(Pinned.ToSharedRef());
 					return;
 				}
-				if (!HCI_EnsureScanAssetsFirstForDirectoryIntent(
-						Pinned->UserText,
-						*Pinned->ToolRegistry,
-						Pinned->Options.bForceDirectoryScanFirst,
-						Plan,
-						RouteReason,
-						BuildError))
-				{
-					Pinned->LastFallbackReason = HCI_FallbackReasonContractInvalid;
-					Pinned->LastErrorCode = TEXT("E4303");
-					Pinned->LastError = BuildError;
-					HCI_FinishAsyncWithKeywordFallback(Pinned.ToSharedRef());
-					return;
-				}
-				if (!HCI_ValidateBuiltPlanOrSetError(Plan, *Pinned->ToolRegistry, BuildError))
-				{
-					Pinned->LastFallbackReason = HCI_FallbackReasonContractInvalid;
-					Pinned->LastErrorCode = TEXT("E4303");
+					if (!HCI_EnsureScanAssetsFirstForDirectoryIntent(
+							Pinned->UserText,
+							*Pinned->ToolRegistry,
+							Pinned->Options.bForceDirectoryScanFirst,
+							Plan,
+							RouteReason,
+							BuildError))
+					{
+						Pinned->LastFallbackReason = HCI_FallbackReasonContractInvalid;
+						Pinned->LastErrorCode = TEXT("E4303");
+						Pinned->LastError = BuildError;
+						HCI_FinishAsyncWithKeywordFallback(Pinned.ToSharedRef());
+						return;
+					}
+					bool bStepOrderReordered = false;
+					if (!HCI_ReorderPlanStepsByVariableDependencies(Plan, bStepOrderReordered, BuildError))
+					{
+						Pinned->LastFallbackReason = HCI_FallbackReasonContractInvalid;
+						Pinned->LastErrorCode = TEXT("E4303");
+						Pinned->LastError = BuildError;
+						HCI_FinishAsyncWithKeywordFallback(Pinned.ToSharedRef());
+						return;
+					}
+					if (bStepOrderReordered && !RouteReason.Contains(TEXT("step_order_normalized")))
+					{
+						RouteReason = RouteReason.IsEmpty()
+							? TEXT("llm_step_order_normalized")
+							: RouteReason + TEXT("_step_order_normalized");
+					}
+					if (!HCI_ValidateBuiltPlanOrSetError(Plan, *Pinned->ToolRegistry, BuildError))
+					{
+						Pinned->LastFallbackReason = HCI_FallbackReasonContractInvalid;
+						Pinned->LastErrorCode = TEXT("E4303");
 					Pinned->LastError = BuildError;
 					HCI_FinishAsyncWithKeywordFallback(Pinned.ToSharedRef());
 					return;

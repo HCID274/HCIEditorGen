@@ -1504,6 +1504,20 @@ static FHCIAbilityKitAgentPlannerBuildOptions HCI_MakeRealHttpPlannerOptions()
 	return PlannerOptions;
 }
 
+static FHCIAbilityKitAgentPlanPreviewContext HCI_MakePlanPreviewContext(
+	const FString& RouteReason,
+	const FHCIAbilityKitAgentPlannerResultMetadata& PlannerMetadata)
+{
+	FHCIAbilityKitAgentPlanPreviewContext Context;
+	Context.RouteReason = RouteReason;
+	Context.PlannerProvider = PlannerMetadata.PlannerProvider;
+	Context.ProviderMode = PlannerMetadata.ProviderMode;
+	Context.bFallbackUsed = PlannerMetadata.bFallbackUsed;
+	Context.FallbackReason = PlannerMetadata.FallbackReason;
+	Context.EnvScannedAssetCount = PlannerMetadata.bEnvContextInjected ? PlannerMetadata.EnvContextAssetCount : INDEX_NONE;
+	return Context;
+}
+
 static void HCI_LogAgentPlanWithProviderSummary(
 	const TCHAR* CaseName,
 	const FString& UserText,
@@ -1787,13 +1801,14 @@ void HCI_RunAbilityKitAgentPlanWithRealLLMDemoCommand(const TArray<FString>& Arg
 				return;
 			}
 
-				HCI_State().AgentPlanPreviewState = Plan;
-				const FString CaseLabel = FString::Printf(TEXT("real_http_%s"), *Mode);
-				HCI_LogAgentPlanWithProviderSummary(*CaseLabel, UserText, RouteReason, Plan, PlannerMetadata, Validation);
-				HCI_LogAgentPlanRows(*CaseLabel, UserText, RouteReason, Plan);
-				FHCIAbilityKitAgentPlanPreviewWindow::OpenWindow(
-					Plan,
-					PlannerMetadata.bEnvContextInjected ? PlannerMetadata.EnvContextAssetCount : INDEX_NONE);
+					HCI_State().AgentPlanPreviewState = Plan;
+					const FString CaseLabel = FString::Printf(TEXT("real_http_%s"), *Mode);
+					HCI_LogAgentPlanWithProviderSummary(*CaseLabel, UserText, RouteReason, Plan, PlannerMetadata, Validation);
+					HCI_LogAgentPlanRows(*CaseLabel, UserText, RouteReason, Plan);
+					const FHCIAbilityKitAgentPlanPreviewContext PreviewContext = HCI_MakePlanPreviewContext(RouteReason, PlannerMetadata);
+					FHCIAbilityKitAgentPlanPreviewWindow::OpenWindow(
+						Plan,
+						PreviewContext);
 			});
 	}
 
@@ -2267,9 +2282,10 @@ void HCI_RunAbilityKitAgentPlanPreviewUiCommand(const TArray<FString>& Args)
 			HCI_State().AgentPlanPreviewState = Plan;
 			HCI_LogAgentPlanWithProviderSummary(TEXT("preview_ui_real_http"), UserText, RouteReason, Plan, PlannerMetadata, Validation);
 			HCI_LogAgentPlanRows(TEXT("preview_ui_real_http"), UserText, RouteReason, Plan);
+			const FHCIAbilityKitAgentPlanPreviewContext PreviewContext = HCI_MakePlanPreviewContext(RouteReason, PlannerMetadata);
 			FHCIAbilityKitAgentPlanPreviewWindow::OpenWindow(
 				Plan,
-				PlannerMetadata.bEnvContextInjected ? PlannerMetadata.EnvContextAssetCount : INDEX_NONE);
+				PreviewContext);
 
 			UE_LOG(
 				LogHCIAbilityKitAgentDemo,

@@ -1,0 +1,92 @@
+#if WITH_DEV_AUTOMATION_TESTS
+
+#include "UI/HCIAbilityKitAgentPlanPreviewWindow.h"
+
+#include "Dom/JsonObject.h"
+#include "Dom/JsonValue.h"
+#include "Misc/AutomationTest.h"
+
+namespace
+{
+static FHCIAbilityKitAgentPlan MakeBasePlan(const FString& RequestId)
+{
+	FHCIAbilityKitAgentPlan Plan;
+	Plan.PlanVersion = 1;
+	Plan.RequestId = RequestId;
+	Plan.Intent = TEXT("normalize_temp_assets_by_metadata");
+	return Plan;
+}
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FHCIAbilityKitAgentPlanPreviewRowsPendingStateTest,
+	"HCIAbilityKit.Editor.AgentPreviewUI.Rows.PendingStateForPlaceholderStep",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FHCIAbilityKitAgentPlanPreviewRowsPendingStateTest::RunTest(const FString& Parameters)
+{
+	FHCIAbilityKitAgentPlan Plan = MakeBasePlan(TEXT("req_test_preview_pending"));
+	FHCIAbilityKitAgentPlanStep& Step = Plan.Steps.AddDefaulted_GetRef();
+	Step.StepId = TEXT("step_2_scan");
+	Step.ToolName = TEXT("ScanAssets");
+	Step.RiskLevel = EHCIAbilityKitAgentPlanRiskLevel::ReadOnly;
+	Step.bRequiresConfirm = false;
+	Step.RollbackStrategy = TEXT("all_or_nothing");
+	Step.Args = MakeShared<FJsonObject>();
+	Step.Args->SetStringField(TEXT("directory"), TEXT("{{step_1_search.matched_directories[0]}}"));
+
+	const TArray<TSharedPtr<FHCIAbilityKitAgentPlanPreviewRow>> Rows = FHCIAbilityKitAgentPlanPreviewWindow::BuildRows(Plan);
+	TestEqual(TEXT("rows count"), Rows.Num(), 1);
+	if (Rows.Num() != 1 || !Rows[0].IsValid())
+	{
+		return false;
+	}
+
+	const TSharedPtr<FHCIAbilityKitAgentPlanPreviewRow>& Row = Rows[0];
+	TestEqual(TEXT("asset count label should be pending"), Row->AssetCountLabel, FString(TEXT("? (Pending)")));
+	TestFalse(TEXT("locate should be disabled for placeholder step"), Row->bLocateEnabled);
+	TestEqual(TEXT("locate tooltip"), Row->LocateTooltip, FString(TEXT("等待前置步骤结果")));
+	TestEqual(TEXT("step state"), Row->StepStateLabel, FString(TEXT("pending_inputs")));
+	TestTrue(TEXT("args preview keeps placeholder"), Row->ArgsPreview.Contains(TEXT("{{step_1_search.matched_directories[0]}}")));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FHCIAbilityKitAgentPlanPreviewRowsMissingAssetStateTest,
+	"HCIAbilityKit.Editor.AgentPreviewUI.Rows.AssetMissingStateForInvalidAssetPath",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FHCIAbilityKitAgentPlanPreviewRowsMissingAssetStateTest::RunTest(const FString& Parameters)
+{
+	FHCIAbilityKitAgentPlan Plan = MakeBasePlan(TEXT("req_test_preview_missing_asset"));
+	FHCIAbilityKitAgentPlanStep& Step = Plan.Steps.AddDefaulted_GetRef();
+	Step.StepId = TEXT("step_3_rename");
+	Step.ToolName = TEXT("RenameAsset");
+	Step.RiskLevel = EHCIAbilityKitAgentPlanRiskLevel::Write;
+	Step.bRequiresConfirm = true;
+	Step.RollbackStrategy = TEXT("all_or_nothing");
+	Step.Args = MakeShared<FJsonObject>();
+
+	TArray<TSharedPtr<FJsonValue>> AssetPaths;
+	AssetPaths.Add(MakeShared<FJsonValueString>(TEXT("/Game/__HCI_NotExists__/SM_NotExists.SM_NotExists")));
+	Step.Args->SetArrayField(TEXT("asset_paths"), AssetPaths);
+	Step.Args->SetStringField(TEXT("new_name"), TEXT("SM_Renamed"));
+
+	const TArray<TSharedPtr<FHCIAbilityKitAgentPlanPreviewRow>> Rows = FHCIAbilityKitAgentPlanPreviewWindow::BuildRows(Plan);
+	TestEqual(TEXT("rows count"), Rows.Num(), 1);
+	if (Rows.Num() != 1 || !Rows[0].IsValid())
+	{
+		return false;
+	}
+
+	const TSharedPtr<FHCIAbilityKitAgentPlanPreviewRow>& Row = Rows[0];
+	TestEqual(TEXT("asset count label should keep numeric count"), Row->AssetCountLabel, FString(TEXT("1")));
+	TestFalse(TEXT("locate should be disabled for missing assets"), Row->bLocateEnabled);
+	TestEqual(TEXT("locate tooltip"), Row->LocateTooltip, FString(TEXT("资产在路径下不存在")));
+	TestEqual(TEXT("step state"), Row->StepStateLabel, FString(TEXT("asset_missing")));
+	TestTrue(TEXT("args preview includes key new_name"), Row->ArgsPreview.Contains(TEXT("new_name")));
+	TestTrue(TEXT("args preview includes value SM_Renamed"), Row->ArgsPreview.Contains(TEXT("SM_Renamed")));
+	return true;
+}
+
+#endif

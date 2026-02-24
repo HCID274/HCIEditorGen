@@ -455,6 +455,131 @@ static bool HCI_CheckNamingMetadataSafetyMock(
 
 	return true;
 }
+
+struct FHCIAbilityKitVariableTemplateRef
+{
+	FString SourceStepId;
+	FString FieldPath;
+};
+
+static bool HCI_TryParseVariableTemplateReference(const FString& InText, FString& OutSourceStepId)
+{
+	OutSourceStepId.Reset();
+	const FString Trimmed = InText.TrimStartAndEnd();
+	const FRegexPattern Pattern(TEXT("^\\{\\{\\s*([A-Za-z0-9_]+)\\.[A-Za-z0-9_]+(?:\\[\\d+\\])?\\s*\\}\\}$"));
+	FRegexMatcher Matcher(Pattern, Trimmed);
+	if (!Matcher.FindNext())
+	{
+		return false;
+	}
+
+	OutSourceStepId = Matcher.GetCaptureGroup(1);
+	return !OutSourceStepId.IsEmpty();
+}
+
+static void HCI_CollectVariableTemplateRefsFromJsonValue(
+	const TSharedPtr<FJsonValue>& InValue,
+	const FString& InFieldPath,
+	TArray<FHCIAbilityKitVariableTemplateRef>& OutRefs)
+{
+	if (!InValue.IsValid())
+	{
+		return;
+	}
+
+	switch (InValue->Type)
+	{
+	case EJson::String:
+	{
+		FString SourceStepId;
+		if (HCI_TryParseVariableTemplateReference(InValue->AsString(), SourceStepId))
+		{
+			FHCIAbilityKitVariableTemplateRef& Ref = OutRefs.AddDefaulted_GetRef();
+			Ref.SourceStepId = SourceStepId;
+			Ref.FieldPath = InFieldPath;
+		}
+		break;
+	}
+	case EJson::Array:
+	{
+		const TArray<TSharedPtr<FJsonValue>>& Items = InValue->AsArray();
+		for (int32 ItemIndex = 0; ItemIndex < Items.Num(); ++ItemIndex)
+		{
+			HCI_CollectVariableTemplateRefsFromJsonValue(
+				Items[ItemIndex],
+				FString::Printf(TEXT("%s[%d]"), *InFieldPath, ItemIndex),
+				OutRefs);
+		}
+		break;
+	}
+	case EJson::Object:
+	{
+		const TSharedPtr<FJsonObject> Obj = InValue->AsObject();
+		if (!Obj.IsValid())
+		{
+			return;
+		}
+		for (const TPair<FString, TSharedPtr<FJsonValue>>& Pair : Obj->Values)
+		{
+			HCI_CollectVariableTemplateRefsFromJsonValue(
+				Pair.Value,
+				InFieldPath + TEXT(".") + Pair.Key,
+				OutRefs);
+		}
+		break;
+	}
+	default:
+		break;
+	}
+}
+
+static bool HCI_ValidateVariableTemplateReferences(
+	const int32 StepIndex,
+	const FHCIAbilityKitAgentPlanStep& Step,
+	const TMap<FString, int32>& StepIndexById,
+	FHCIAbilityKitAgentPlanValidationResult& OutResult)
+{
+	if (!Step.Args.IsValid())
+	{
+		return true;
+	}
+
+	TArray<FHCIAbilityKitVariableTemplateRef> TemplateRefs;
+	for (const TPair<FString, TSharedPtr<FJsonValue>>& Pair : Step.Args->Values)
+	{
+		HCI_CollectVariableTemplateRefsFromJsonValue(
+			Pair.Value,
+			HCI_MakeArgFieldPath(StepIndex, Pair.Key),
+			TemplateRefs);
+	}
+
+	for (const FHCIAbilityKitVariableTemplateRef& Ref : TemplateRefs)
+	{
+		const int32* SourceStepIndexPtr = StepIndexById.Find(Ref.SourceStepId);
+		if (SourceStepIndexPtr == nullptr)
+		{
+			return HCI_Fail(
+				OutResult,
+				TEXT("E4009"),
+				Ref.FieldPath,
+				TEXT("variable_source_step_missing"),
+				StepIndex,
+				&Step);
+		}
+		if (*SourceStepIndexPtr >= StepIndex)
+		{
+			return HCI_Fail(
+				OutResult,
+				TEXT("E4009"),
+				Ref.FieldPath,
+				TEXT("variable_source_step_must_precede_consumer"),
+				StepIndex,
+				&Step);
+		}
+	}
+
+	return true;
+}
 }
 
 bool FHCIAbilityKitAgentPlanValidator::ValidatePlan(
@@ -481,6 +606,27 @@ bool FHCIAbilityKitAgentPlanValidator::ValidatePlan(
 	}
 
 	int32 HighestRiskRank = 0;
+	TMap<FString, int32> StepIndexById;
+	StepIndexById.Reserve(Plan.Steps.Num());
+	for (int32 StepIndex = 0; StepIndex < Plan.Steps.Num(); ++StepIndex)
+	{
+		const FHCIAbilityKitAgentPlanStep& Step = Plan.Steps[StepIndex];
+		if (Step.StepId.IsEmpty())
+		{
+			continue;
+		}
+		if (StepIndexById.Contains(Step.StepId))
+		{
+			return HCI_Fail(
+				OutResult,
+				TEXT("E4001"),
+				FString::Printf(TEXT("steps[%d].step_id"), StepIndex),
+				TEXT("duplicate_step_id"),
+				StepIndex,
+				&Step);
+		}
+		StepIndexById.Add(Step.StepId, StepIndex);
+	}
 
 	for (int32 StepIndex = 0; StepIndex < Plan.Steps.Num(); ++StepIndex)
 	{
@@ -521,10 +667,14 @@ bool FHCIAbilityKitAgentPlanValidator::ValidatePlan(
 				&Step);
 		}
 
-		if (!HCI_ValidateArgsAgainstSchema(*Tool, Step, StepIndex, OutResult))
-		{
-			return false;
-		}
+			if (!HCI_ValidateArgsAgainstSchema(*Tool, Step, StepIndex, OutResult))
+			{
+				return false;
+			}
+			if (!HCI_ValidateVariableTemplateReferences(StepIndex, Step, StepIndexById, OutResult))
+			{
+				return false;
+			}
 
 		if (!HCI_CheckNamingMetadataSafetyMock(Context, Step, StepIndex, OutResult))
 		{

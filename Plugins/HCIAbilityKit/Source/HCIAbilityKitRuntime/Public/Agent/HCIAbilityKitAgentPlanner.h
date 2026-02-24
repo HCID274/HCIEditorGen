@@ -28,6 +28,9 @@ struct HCIABILITYKITRUNTIME_API FHCIAbilityKitAgentPlannerBuildOptions
 	FString LlmApiUrl = TEXT("https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions");
 	FString LlmModel = TEXT("qwen3.5-plus");
 	FString LlmApiKeyConfigPath = TEXT("Saved/HCIAbilityKit/Config/llm_provider.local.json");
+	FString PromptBundleRelativeDir = TEXT("Source/HCIEditorGen/文档/提示词/Skills/H3_AgentPlanner");
+	FString PromptTemplateFileName = TEXT("prompt.md");
+	FString PromptToolsSchemaFileName = TEXT("tools_schema.json");
 	int32 LlmHttpTimeoutMs = 12000;
 	bool bLlmEnableThinking = false;
 	bool bLlmStream = false;

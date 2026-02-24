@@ -11,6 +11,13 @@ public:
 	void Shutdown();
 
 private:
+	void StartupCoreCommands();
+	void StartupLlmCommands();
+	void StartupReviewCommands();
+	void ShutdownCoreCommands();
+	void ShutdownLlmCommands();
+	void ShutdownReviewCommands();
+
 	TUniquePtr<FAutoConsoleCommand> AgentConfirmGateDemoCommand;
 	TUniquePtr<FAutoConsoleCommand> AgentBlastRadiusDemoCommand;
 	TUniquePtr<FAutoConsoleCommand> AgentTransactionDemoCommand;

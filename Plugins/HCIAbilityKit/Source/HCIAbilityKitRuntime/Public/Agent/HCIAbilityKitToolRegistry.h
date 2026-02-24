@@ -55,6 +55,7 @@ class HCIABILITYKITRUNTIME_API FHCIAbilityKitToolRegistry
 {
 public:
 	static FHCIAbilityKitToolRegistry& Get();
+	static const FHCIAbilityKitToolRegistry& GetReadOnly();
 
 	void ResetToDefaults();
 	bool RegisterTool(const FHCIAbilityKitToolDescriptor& InDescriptor, FString* OutError = nullptr);
@@ -83,4 +84,3 @@ private:
 	mutable TArray<FHCIAbilityKitToolDescriptor> Tools;
 	mutable TMap<FName, int32> ToolIndexByName;
 };
-

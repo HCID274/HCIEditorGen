@@ -236,8 +236,7 @@ static void HCI_RunAbilityKitToolRegistryDumpCommand(const TArray<FString>& Args
 {
 	const FString OptionalToolFilter = (Args.Num() >= 1) ? Args[0].TrimStartAndEnd() : FString();
 
-	FHCIAbilityKitToolRegistry& Registry = FHCIAbilityKitToolRegistry::Get();
-	Registry.ResetToDefaults();
+	const FHCIAbilityKitToolRegistry& Registry = FHCIAbilityKitToolRegistry::GetReadOnly();
 
 	FString ValidationError;
 	if (!Registry.ValidateFrozenDefaults(ValidationError))
@@ -1967,4 +1966,5 @@ void FHCIAbilityKitEditorModule::ShutdownModule()
 }
 
 IMPLEMENT_MODULE(FHCIAbilityKitEditorModule, HCIAbilityKitEditor)
+
 

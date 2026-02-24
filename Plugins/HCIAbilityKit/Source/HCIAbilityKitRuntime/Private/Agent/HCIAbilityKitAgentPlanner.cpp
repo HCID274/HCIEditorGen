@@ -1,20 +1,17 @@
 #include "Agent/HCIAbilityKitAgentPlanner.h"
 
+#include "Agent/HCIAbilityKitAgentLlmClient.h"
 #include "Agent/HCIAbilityKitAgentPlan.h"
 #include "Agent/HCIAbilityKitAgentPlanValidator.h"
+#include "Agent/HCIAbilityKitAgentPromptBuilder.h"
 #include "Agent/HCIAbilityKitToolRegistry.h"
 #include "Containers/Ticker.h"
 #include "Dom/JsonObject.h"
-#include "HttpModule.h"
 #include "Interfaces/IHttpRequest.h"
 #include "Interfaces/IHttpResponse.h"
-#include "Policies/CondensedJsonPrintPolicy.h"
 #include "Serialization/JsonReader.h"
 #include "Serialization/JsonSerializer.h"
-#include "Serialization/JsonWriter.h"
 #include "Templates/Atomic.h"
-#include "Misc/FileHelper.h"
-#include "Misc/Paths.h"
 
 namespace
 {
@@ -28,11 +25,7 @@ static const TCHAR* const HCI_FallbackReasonEmptyResponse = TEXT("llm_empty_resp
 static const TCHAR* const HCI_FallbackReasonCircuitOpen = TEXT("llm_circuit_open");
 static const TCHAR* const HCI_FallbackReasonHttpError = TEXT("llm_http_error");
 static const TCHAR* const HCI_FallbackReasonConfigMissing = TEXT("llm_config_missing");
-static const TCHAR* const HCI_PlannerSkillBundleRelativeDir = TEXT("Source/HCIEditorGen/文档/提示词/Skills/H3_AgentPlanner");
-static const TCHAR* const HCI_PlannerPromptTemplateFileName = TEXT("prompt.md");
-static const TCHAR* const HCI_PlannerToolsSchemaFileName = TEXT("tools_schema.json");
-static const TCHAR* const HCI_PlannerToolsSchemaPlaceholder = TEXT("{{TOOLS_SCHEMA}}");
-static const TCHAR* const HCI_PlannerUserInputPlaceholder = TEXT("{{USER_INPUT}}");
+static const TCHAR* const HCI_FallbackReasonSyncRealHttpDeprecated = TEXT("llm_sync_real_http_deprecated");
 
 struct FHCIAbilityKitAgentPlannerRuntimeState
 {
@@ -155,82 +148,13 @@ static TSharedPtr<FJsonObject> HCI_MakeScanAssetsArgs()
 	return MakeShared<FJsonObject>();
 }
 
-static bool HCI_TryBuildSystemPromptFromSkillBundle(
-	const FString& UserInput,
-	FString& OutSystemPrompt,
-	FString& OutError)
+static FHCIAbilityKitAgentPromptBundleOptions HCI_MakePromptBundleOptions(const FHCIAbilityKitAgentPlannerBuildOptions& Options)
 {
-	OutSystemPrompt.Reset();
-	OutError.Reset();
-
-	const FString BundleDir = FPaths::ConvertRelativePathToFull(FPaths::ProjectDir(), HCI_PlannerSkillBundleRelativeDir);
-	const FString PromptTemplatePath = FPaths::Combine(BundleDir, HCI_PlannerPromptTemplateFileName);
-	const FString ToolsSchemaPath = FPaths::Combine(BundleDir, HCI_PlannerToolsSchemaFileName);
-
-	FString PromptTemplateText;
-	if (!FFileHelper::LoadFileToString(PromptTemplateText, *PromptTemplatePath))
-	{
-		OutError = FString::Printf(TEXT("prompt_template_read_failed path=%s"), *PromptTemplatePath);
-		return false;
-	}
-
-	FString ToolsSchemaText;
-	if (!FFileHelper::LoadFileToString(ToolsSchemaText, *ToolsSchemaPath))
-	{
-		OutError = FString::Printf(TEXT("tools_schema_read_failed path=%s"), *ToolsSchemaPath);
-		return false;
-	}
-
-	TSharedPtr<FJsonObject> ToolsSchemaObject;
-	{
-		const TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(ToolsSchemaText);
-		if (!FJsonSerializer::Deserialize(Reader, ToolsSchemaObject) || !ToolsSchemaObject.IsValid())
-		{
-			OutError = FString::Printf(TEXT("tools_schema_invalid_json path=%s"), *ToolsSchemaPath);
-			return false;
-		}
-	}
-
-	FString SerializedToolsSchema;
-	{
-		const TSharedRef<TJsonWriter<TCHAR, TCondensedJsonPrintPolicy<TCHAR>>> Writer =
-			TJsonWriterFactory<TCHAR, TCondensedJsonPrintPolicy<TCHAR>>::Create(&SerializedToolsSchema);
-		FJsonSerializer::Serialize(ToolsSchemaObject.ToSharedRef(), Writer);
-	}
-
-	if (!PromptTemplateText.Contains(HCI_PlannerToolsSchemaPlaceholder))
-	{
-		OutError = FString::Printf(
-			TEXT("prompt_template_placeholder_missing placeholder=%s path=%s"),
-			HCI_PlannerToolsSchemaPlaceholder,
-			*PromptTemplatePath);
-		return false;
-	}
-	if (!PromptTemplateText.Contains(HCI_PlannerUserInputPlaceholder))
-	{
-		OutError = FString::Printf(
-			TEXT("prompt_template_placeholder_missing placeholder=%s path=%s"),
-			HCI_PlannerUserInputPlaceholder,
-			*PromptTemplatePath);
-		return false;
-	}
-
-	OutSystemPrompt = PromptTemplateText.Replace(
-		HCI_PlannerToolsSchemaPlaceholder,
-		*SerializedToolsSchema,
-		ESearchCase::CaseSensitive);
-	OutSystemPrompt = OutSystemPrompt.Replace(
-		HCI_PlannerUserInputPlaceholder,
-		*UserInput,
-		ESearchCase::CaseSensitive);
-	OutSystemPrompt.TrimStartAndEndInline();
-	if (OutSystemPrompt.IsEmpty())
-	{
-		OutError = TEXT("system_prompt_empty_after_bundle_injection");
-		return false;
-	}
-
-	return true;
+	FHCIAbilityKitAgentPromptBundleOptions BundleOptions;
+	BundleOptions.SkillBundleRelativeDir = Options.PromptBundleRelativeDir;
+	BundleOptions.PromptTemplateFileName = Options.PromptTemplateFileName;
+	BundleOptions.ToolsSchemaFileName = Options.PromptToolsSchemaFileName;
+	return BundleOptions;
 }
 
 static bool HCI_TryGetStringArrayField(const TSharedPtr<FJsonObject>& Object, const FString& FieldName, TArray<FString>& OutValues)
@@ -468,245 +392,6 @@ static bool HCI_TryBuildPlanFromLlmPlanJson(
 	if (!FHCIAbilityKitAgentPlanContract::ValidateMinimalContract(OutPlan, ContractError))
 	{
 		OutError = ContractError;
-		return false;
-	}
-
-	return true;
-}
-
-static bool HCI_SendLlmHttpRequestBlocking(
-	const FString& ApiUrl,
-	const FString& Model,
-	const FHCIAbilityKitAgentPlannerBuildOptions& Options,
-	const FString& UserText,
-	const FString& SystemPrompt,
-	const FString& ApiKey,
-	FString& OutResponseBody,
-	FString& OutError)
-{
-	(void)ApiUrl;
-	(void)Model;
-	(void)Options;
-	(void)UserText;
-	(void)SystemPrompt;
-	(void)ApiKey;
-	OutResponseBody.Reset();
-	OutError = TEXT("real_http_provider_requires_async_api");
-	return false;
-}
-
-static bool HCI_TryLoadLlmConfigFile(
-	const FHCIAbilityKitAgentPlannerBuildOptions& Options,
-	FString& OutApiKey,
-	FString& OutApiUrl,
-	FString& OutModel,
-	FString& OutError)
-{
-	OutApiKey.Reset();
-	OutApiUrl = Options.LlmApiUrl;
-	OutModel = Options.LlmModel;
-	OutError.Reset();
-
-	FString ConfigPath = Options.LlmApiKeyConfigPath;
-	if (ConfigPath.IsEmpty())
-	{
-		OutError = TEXT("llm_config_path_empty");
-		return false;
-	}
-
-	if (FPaths::IsRelative(ConfigPath))
-	{
-		ConfigPath = FPaths::ConvertRelativePathToFull(FPaths::ProjectDir(), ConfigPath);
-	}
-
-	if (!FPaths::FileExists(ConfigPath))
-	{
-		OutError = FString::Printf(TEXT("llm_config_file_not_found path=%s"), *ConfigPath);
-		return false;
-	}
-
-	FString ConfigText;
-	if (!FFileHelper::LoadFileToString(ConfigText, *ConfigPath))
-	{
-		OutError = FString::Printf(TEXT("llm_config_file_read_failed path=%s"), *ConfigPath);
-		return false;
-	}
-
-	TSharedPtr<FJsonObject> Root;
-	{
-		const TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(ConfigText);
-		if (!FJsonSerializer::Deserialize(Reader, Root) || !Root.IsValid())
-		{
-			OutError = TEXT("llm_config_invalid_json");
-			return false;
-		}
-	}
-
-	if (!Root->TryGetStringField(TEXT("api_key"), OutApiKey) || OutApiKey.TrimStartAndEnd().IsEmpty())
-	{
-		OutError = TEXT("llm_config_missing_api_key");
-		return false;
-	}
-
-	FString OverrideApiUrl;
-	if (Root->TryGetStringField(TEXT("api_url"), OverrideApiUrl) && !OverrideApiUrl.TrimStartAndEnd().IsEmpty())
-	{
-		OutApiUrl = OverrideApiUrl;
-	}
-
-	FString OverrideModel;
-	if (Root->TryGetStringField(TEXT("model"), OverrideModel) && !OverrideModel.TrimStartAndEnd().IsEmpty())
-	{
-		OutModel = OverrideModel;
-	}
-
-	return true;
-}
-
-static bool HCI_TryBuildRealHttpLlmPlan(
-	const FString& UserText,
-	const FString& RequestId,
-	const FHCIAbilityKitToolRegistry& ToolRegistry,
-	const FHCIAbilityKitAgentPlannerBuildOptions& Options,
-	const int32 AttemptIndex,
-	FHCIAbilityKitAgentPlan& OutPlan,
-	FString& OutRouteReason,
-	FString& OutFallbackReason,
-	FString& OutErrorCode,
-	FString& OutError)
-{
-	(void)AttemptIndex;
-	OutPlan = FHCIAbilityKitAgentPlan();
-	OutRouteReason.Reset();
-	OutFallbackReason = HCI_FallbackReasonNone;
-	OutErrorCode = TEXT("-");
-	OutError.Reset();
-
-	FString ApiKey;
-	FString ApiUrl;
-	FString Model;
-	FString ConfigError;
-	if (!HCI_TryLoadLlmConfigFile(Options, ApiKey, ApiUrl, Model, ConfigError))
-	{
-		OutFallbackReason = HCI_FallbackReasonConfigMissing;
-		OutErrorCode = TEXT("E4307");
-		OutError = ConfigError.IsEmpty() ? FString::Printf(TEXT("llm_api_key_missing config=%s"), *Options.LlmApiKeyConfigPath) : ConfigError;
-		return false;
-	}
-
-	FString SystemPrompt;
-	if (!HCI_TryBuildSystemPromptFromSkillBundle(UserText, SystemPrompt, OutError))
-	{
-		OutFallbackReason = HCI_FallbackReasonContractInvalid;
-		OutErrorCode = TEXT("E4303");
-		return false;
-	}
-
-	FString ResponseBody;
-	FString HttpError;
-	if (!HCI_SendLlmHttpRequestBlocking(ApiUrl, Model, Options, UserText, SystemPrompt, ApiKey, ResponseBody, HttpError))
-	{
-		if (HttpError == TEXT("llm_request_timeout"))
-		{
-			OutFallbackReason = HCI_FallbackReasonTimeout;
-			OutErrorCode = TEXT("E4301");
-			OutError = TEXT("llm_request_timeout");
-		}
-		else
-		{
-			OutFallbackReason = HCI_FallbackReasonHttpError;
-			OutErrorCode = TEXT("E4306");
-			OutError = HttpError;
-		}
-		return false;
-	}
-
-	TSharedPtr<FJsonObject> ResponseObject;
-	{
-		const TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(ResponseBody);
-		if (!FJsonSerializer::Deserialize(Reader, ResponseObject) || !ResponseObject.IsValid())
-		{
-			OutFallbackReason = HCI_FallbackReasonInvalidJson;
-			OutErrorCode = TEXT("E4302");
-			OutError = TEXT("llm_response_invalid_json");
-			return false;
-		}
-	}
-
-	const TArray<TSharedPtr<FJsonValue>>* Choices = nullptr;
-	if (!ResponseObject->TryGetArrayField(TEXT("choices"), Choices) || Choices == nullptr || Choices->Num() <= 0)
-	{
-		OutFallbackReason = HCI_FallbackReasonContractInvalid;
-		OutErrorCode = TEXT("E4303");
-		OutError = TEXT("llm_response_missing_choices");
-		return false;
-	}
-
-	const TSharedPtr<FJsonObject> ChoiceObject = (*Choices)[0].IsValid() ? (*Choices)[0]->AsObject() : nullptr;
-	TSharedPtr<FJsonObject> MessageObject;
-	if (ChoiceObject.IsValid())
-	{
-		const TSharedPtr<FJsonObject>* MessageObjectPtr = nullptr;
-		if (ChoiceObject->TryGetObjectField(TEXT("message"), MessageObjectPtr) && MessageObjectPtr != nullptr && MessageObjectPtr->IsValid())
-		{
-			MessageObject = *MessageObjectPtr;
-		}
-	}
-	if (!MessageObject.IsValid())
-	{
-		OutFallbackReason = HCI_FallbackReasonContractInvalid;
-		OutErrorCode = TEXT("E4303");
-		OutError = TEXT("llm_response_missing_message");
-		return false;
-	}
-
-	FString Content;
-	if (!MessageObject->TryGetStringField(TEXT("content"), Content))
-	{
-		OutFallbackReason = HCI_FallbackReasonContractInvalid;
-		OutErrorCode = TEXT("E4303");
-		OutError = TEXT("llm_response_missing_content");
-		return false;
-	}
-	if (Content.TrimStartAndEnd().IsEmpty())
-	{
-		OutFallbackReason = HCI_FallbackReasonEmptyResponse;
-		OutErrorCode = TEXT("E4304");
-		OutError = TEXT("llm_empty_response");
-		return false;
-	}
-
-	FString LlmPlanJsonText;
-	if (!HCI_TryExtractJsonObjectString(Content, LlmPlanJsonText))
-	{
-		OutFallbackReason = HCI_FallbackReasonInvalidJson;
-		OutErrorCode = TEXT("E4302");
-		OutError = TEXT("llm_content_no_json_object");
-		return false;
-	}
-
-	TSharedPtr<FJsonObject> LlmPlanObject;
-	{
-		const TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(LlmPlanJsonText);
-		if (!FJsonSerializer::Deserialize(Reader, LlmPlanObject) || !LlmPlanObject.IsValid())
-		{
-			OutFallbackReason = HCI_FallbackReasonInvalidJson;
-			OutErrorCode = TEXT("E4302");
-			OutError = TEXT("llm_plan_invalid_json");
-			return false;
-		}
-	}
-
-	if (!HCI_TryBuildPlanFromLlmPlanJson(LlmPlanObject, RequestId, ToolRegistry, OutPlan, OutRouteReason, OutError))
-	{
-		OutFallbackReason = HCI_FallbackReasonContractInvalid;
-		OutErrorCode = TEXT("E4303");
-		return false;
-	}
-	if (!HCI_ValidateBuiltPlanOrSetError(OutPlan, ToolRegistry, OutError))
-	{
-		OutFallbackReason = HCI_FallbackReasonContractInvalid;
-		OutErrorCode = TEXT("E4303");
 		return false;
 	}
 
@@ -1055,11 +740,14 @@ static void HCI_StartAsyncRealHttpAttempt(const TSharedRef<FHCIAbilityKitAsyncPl
 	State->AttemptsUsed += 1;
 	State->bAttemptResolved.Store(false);
 
-	FString ApiKey;
-	FString ApiUrl;
-	FString Model;
+	FHCIAbilityKitAgentLlmProviderConfig ProviderConfig;
 	FString ConfigError;
-	if (!HCI_TryLoadLlmConfigFile(State->Options, ApiKey, ApiUrl, Model, ConfigError))
+	if (!FHCIAbilityKitAgentLlmClient::LoadProviderConfigFromJsonFile(
+			State->Options.LlmApiKeyConfigPath,
+			State->Options.LlmApiUrl,
+			State->Options.LlmModel,
+			ProviderConfig,
+			ConfigError))
 	{
 		State->LastFallbackReason = HCI_FallbackReasonConfigMissing;
 		State->LastErrorCode = TEXT("E4307");
@@ -1067,9 +755,16 @@ static void HCI_StartAsyncRealHttpAttempt(const TSharedRef<FHCIAbilityKitAsyncPl
 		HCI_FinishAsyncWithKeywordFallback(State);
 		return;
 	}
+	ProviderConfig.bEnableThinking = State->Options.bLlmEnableThinking;
+	ProviderConfig.bStream = State->Options.bLlmStream;
+	ProviderConfig.HttpTimeoutMs = State->Options.LlmHttpTimeoutMs;
 
 	FString SystemPrompt;
-	if (!HCI_TryBuildSystemPromptFromSkillBundle(State->UserText, SystemPrompt, State->LastError))
+	if (!FHCIAbilityKitAgentPromptBuilder::BuildSystemPromptFromBundle(
+			State->UserText,
+			HCI_MakePromptBundleOptions(State->Options),
+			SystemPrompt,
+			State->LastError))
 	{
 		State->LastFallbackReason = HCI_FallbackReasonContractInvalid;
 		State->LastErrorCode = TEXT("E4303");
@@ -1077,37 +772,29 @@ static void HCI_StartAsyncRealHttpAttempt(const TSharedRef<FHCIAbilityKitAsyncPl
 		return;
 	}
 
-	TSharedPtr<FJsonObject> RequestObject = MakeShared<FJsonObject>();
-	RequestObject->SetStringField(TEXT("model"), Model);
-	RequestObject->SetBoolField(TEXT("stream"), State->Options.bLlmStream);
-	RequestObject->SetBoolField(TEXT("enable_thinking"), State->Options.bLlmEnableThinking);
-	TArray<TSharedPtr<FJsonValue>> Messages;
-	{
-		TSharedPtr<FJsonObject> SystemMessage = MakeShared<FJsonObject>();
-		SystemMessage->SetStringField(TEXT("role"), TEXT("system"));
-		SystemMessage->SetStringField(TEXT("content"), SystemPrompt);
-		Messages.Add(MakeShared<FJsonValueObject>(SystemMessage));
-	}
-	{
-		TSharedPtr<FJsonObject> UserMessage = MakeShared<FJsonObject>();
-		UserMessage->SetStringField(TEXT("role"), TEXT("user"));
-		UserMessage->SetStringField(TEXT("content"), State->UserText);
-		Messages.Add(MakeShared<FJsonValueObject>(UserMessage));
-	}
-	RequestObject->SetArrayField(TEXT("messages"), Messages);
-
 	FString RequestBody;
+	if (!FHCIAbilityKitAgentLlmClient::BuildChatCompletionsRequestBody(
+			SystemPrompt,
+			State->UserText,
+			ProviderConfig,
+			RequestBody,
+			State->LastError))
 	{
-		TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&RequestBody);
-		FJsonSerializer::Serialize(RequestObject.ToSharedRef(), Writer);
+		State->LastFallbackReason = HCI_FallbackReasonContractInvalid;
+		State->LastErrorCode = TEXT("E4303");
+		HCI_FinishAsyncWithKeywordFallback(State);
+		return;
 	}
 
-	State->ActiveRequest = FHttpModule::Get().CreateRequest();
-	State->ActiveRequest->SetURL(ApiUrl);
-	State->ActiveRequest->SetVerb(TEXT("POST"));
-	State->ActiveRequest->SetHeader(TEXT("Authorization"), FString::Printf(TEXT("Bearer %s"), *ApiKey));
-	State->ActiveRequest->SetHeader(TEXT("Content-Type"), TEXT("application/json"));
-	State->ActiveRequest->SetContentAsString(RequestBody);
+	State->ActiveRequest = FHCIAbilityKitAgentLlmClient::CreateChatCompletionsHttpRequest(ProviderConfig, RequestBody);
+	if (!State->ActiveRequest.IsValid())
+	{
+		State->LastFallbackReason = HCI_FallbackReasonHttpError;
+		State->LastErrorCode = TEXT("E4306");
+		State->LastError = TEXT("llm_http_create_request_failed");
+		HCI_FinishAsyncWithKeywordFallback(State);
+		return;
+	}
 
 	TWeakPtr<FHCIAbilityKitAsyncPlanBuildState, ESPMode::ThreadSafe> WeakState = State;
 	State->ActiveRequest->OnProcessRequestComplete().BindLambda(
@@ -1147,66 +834,28 @@ static void HCI_StartAsyncRealHttpAttempt(const TSharedRef<FHCIAbilityKitAsyncPl
 				return;
 			}
 
-			const FString ResponseBody = HttpResponse->GetContentAsString();
-			TSharedPtr<FJsonObject> ResponseObject;
-			{
-				const TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(ResponseBody);
-				if (!FJsonSerializer::Deserialize(Reader, ResponseObject) || !ResponseObject.IsValid())
+				FString Content;
+				FString LlmErrorCode;
+				FString LlmError;
+				if (!FHCIAbilityKitAgentLlmClient::TryExtractMessageContentFromResponse(HttpResponse->GetContentAsString(), Content, LlmErrorCode, LlmError))
 				{
-					Pinned->LastFallbackReason = HCI_FallbackReasonInvalidJson;
-					Pinned->LastErrorCode = TEXT("E4302");
-					Pinned->LastError = TEXT("llm_response_invalid_json");
+					Pinned->LastErrorCode = LlmErrorCode.IsEmpty() ? TEXT("E4303") : LlmErrorCode;
+					Pinned->LastError = LlmError;
+					if (Pinned->LastErrorCode == TEXT("E4302"))
+					{
+						Pinned->LastFallbackReason = HCI_FallbackReasonInvalidJson;
+					}
+					else if (Pinned->LastErrorCode == TEXT("E4304"))
+					{
+						Pinned->LastFallbackReason = HCI_FallbackReasonEmptyResponse;
+					}
+					else
+					{
+						Pinned->LastFallbackReason = HCI_FallbackReasonContractInvalid;
+					}
 					HCI_FinishAsyncWithKeywordFallback(Pinned.ToSharedRef());
 					return;
 				}
-			}
-
-			const TArray<TSharedPtr<FJsonValue>>* Choices = nullptr;
-			if (!ResponseObject->TryGetArrayField(TEXT("choices"), Choices) || Choices == nullptr || Choices->Num() <= 0)
-			{
-				Pinned->LastFallbackReason = HCI_FallbackReasonContractInvalid;
-				Pinned->LastErrorCode = TEXT("E4303");
-				Pinned->LastError = TEXT("llm_response_missing_choices");
-				HCI_FinishAsyncWithKeywordFallback(Pinned.ToSharedRef());
-				return;
-			}
-
-			const TSharedPtr<FJsonObject> ChoiceObject = (*Choices)[0].IsValid() ? (*Choices)[0]->AsObject() : nullptr;
-			TSharedPtr<FJsonObject> MessageObject;
-			if (ChoiceObject.IsValid())
-			{
-				const TSharedPtr<FJsonObject>* MessageObjectPtr = nullptr;
-				if (ChoiceObject->TryGetObjectField(TEXT("message"), MessageObjectPtr) && MessageObjectPtr != nullptr && MessageObjectPtr->IsValid())
-				{
-					MessageObject = *MessageObjectPtr;
-				}
-			}
-			if (!MessageObject.IsValid())
-			{
-				Pinned->LastFallbackReason = HCI_FallbackReasonContractInvalid;
-				Pinned->LastErrorCode = TEXT("E4303");
-				Pinned->LastError = TEXT("llm_response_missing_message");
-				HCI_FinishAsyncWithKeywordFallback(Pinned.ToSharedRef());
-				return;
-			}
-
-			FString Content;
-			if (!MessageObject->TryGetStringField(TEXT("content"), Content))
-			{
-				Pinned->LastFallbackReason = HCI_FallbackReasonContractInvalid;
-				Pinned->LastErrorCode = TEXT("E4303");
-				Pinned->LastError = TEXT("llm_response_missing_content");
-				HCI_FinishAsyncWithKeywordFallback(Pinned.ToSharedRef());
-				return;
-			}
-			if (Content.TrimStartAndEnd().IsEmpty())
-			{
-				Pinned->LastFallbackReason = HCI_FallbackReasonEmptyResponse;
-				Pinned->LastErrorCode = TEXT("E4304");
-				Pinned->LastError = TEXT("llm_empty_response");
-				HCI_FinishAsyncWithKeywordFallback(Pinned.ToSharedRef());
-				return;
-			}
 
 			FString LlmPlanJsonText;
 			if (!HCI_TryExtractJsonObjectString(Content, LlmPlanJsonText))
@@ -1377,8 +1026,20 @@ bool FHCIAbilityKitAgentPlanner::BuildPlanFromNaturalLanguageWithProvider(
 		{
 			return false;
 		}
-		OutError.Reset();
-		return true;
+			OutError.Reset();
+			return true;
+		}
+
+	if (Options.bUseRealHttpProvider)
+	{
+		OutMetadata.PlannerProvider = HCI_KeywordProviderName;
+		OutMetadata.ProviderMode = TEXT("real_http");
+		OutMetadata.bFallbackUsed = true;
+		OutMetadata.FallbackReason = HCI_FallbackReasonSyncRealHttpDeprecated;
+		OutMetadata.ErrorCode = TEXT("E4310");
+		OutMetadata.ConsecutiveLlmFailures = GHCIAbilityKitAgentPlannerRuntimeState.ConsecutiveLlmFailures;
+		OutError = TEXT("real_http_provider_requires_async_api");
+		return false;
 	}
 
 	const int32 RetryCount = FMath::Max(0, Options.LlmRetryCount);
@@ -1392,30 +1053,17 @@ bool FHCIAbilityKitAgentPlanner::BuildPlanFromNaturalLanguageWithProvider(
 	for (int32 AttemptIndex = 1; AttemptIndex <= MaxAttempts; ++AttemptIndex)
 	{
 		AttemptsUsed = AttemptIndex;
-		const bool bAttemptSucceeded =
-			Options.bUseRealHttpProvider
-				? HCI_TryBuildRealHttpLlmPlan(
-					  UserText,
-					  RequestId,
-					  ToolRegistry,
-					  Options,
-					  AttemptIndex,
-					  OutPlan,
-					  OutRouteReason,
-					  LastFallbackReason,
-					  LastErrorCode,
-					  LastError)
-				: HCI_TryBuildMockLlmPlan(
-					  UserText,
-					  RequestId,
-					  ToolRegistry,
-					  Options,
-					  AttemptIndex,
-					  OutPlan,
-					  OutRouteReason,
-					  LastFallbackReason,
-					  LastErrorCode,
-					  LastError);
+		const bool bAttemptSucceeded = HCI_TryBuildMockLlmPlan(
+			UserText,
+			RequestId,
+			ToolRegistry,
+			Options,
+			AttemptIndex,
+			OutPlan,
+			OutRouteReason,
+			LastFallbackReason,
+			LastErrorCode,
+			LastError);
 		if (bAttemptSucceeded)
 		{
 			bLlmSucceeded = true;

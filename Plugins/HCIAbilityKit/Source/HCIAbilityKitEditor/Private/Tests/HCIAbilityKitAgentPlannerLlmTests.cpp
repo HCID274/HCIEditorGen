@@ -259,11 +259,11 @@ bool FHCIAbilityKitAgentPlannerLlmMetricsSnapshotTest::RunTest(const FString& Pa
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
-	FHCIAbilityKitAgentPlannerRealHttpMissingConfigFallbackTest,
-	"HCIAbilityKit.Editor.AgentPlanLLM.RealHttpMissingConfigFallsBackToKeyword",
+	FHCIAbilityKitAgentPlannerRealHttpSyncDeprecatedTest,
+	"HCIAbilityKit.Editor.AgentPlanLLM.RealHttpSyncRequiresAsyncApi",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
-bool FHCIAbilityKitAgentPlannerRealHttpMissingConfigFallbackTest::RunTest(const FString& Parameters)
+bool FHCIAbilityKitAgentPlannerRealHttpSyncDeprecatedTest::RunTest(const FString& Parameters)
 {
 	FHCIAbilityKitAgentPlanner::ResetMetricsForTesting();
 	FHCIAbilityKitToolRegistry& Registry = FHCIAbilityKitToolRegistry::Get();
@@ -286,13 +286,14 @@ bool FHCIAbilityKitAgentPlannerRealHttpMissingConfigFallbackTest::RunTest(const 
 		Options,
 		Plan,
 		RouteReason,
-		Metadata,
-		Error);
-	TestTrue(TEXT("Missing config should still fallback and build"), bBuilt);
+			Metadata,
+			Error);
+	TestFalse(TEXT("Sync real_http should be rejected"), bBuilt);
 	TestEqual(TEXT("Provider should be keyword_fallback"), Metadata.PlannerProvider, FString(TEXT("keyword_fallback")));
 	TestEqual(TEXT("Provider mode should be real_http"), Metadata.ProviderMode, FString(TEXT("real_http")));
-	TestEqual(TEXT("Fallback reason should be llm_config_missing"), Metadata.FallbackReason, FString(TEXT("llm_config_missing")));
-	TestEqual(TEXT("Error code should be E4307"), Metadata.ErrorCode, FString(TEXT("E4307")));
+	TestEqual(TEXT("Fallback reason should be llm_sync_real_http_deprecated"), Metadata.FallbackReason, FString(TEXT("llm_sync_real_http_deprecated")));
+	TestEqual(TEXT("Error code should be E4310"), Metadata.ErrorCode, FString(TEXT("E4310")));
+	TestEqual(TEXT("Error should require async API"), Error, FString(TEXT("real_http_provider_requires_async_api")));
 	return true;
 }
 

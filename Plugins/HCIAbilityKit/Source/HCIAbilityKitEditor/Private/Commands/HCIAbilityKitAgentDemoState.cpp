@@ -1,0 +1,30 @@
+#include "Commands/HCIAbilityKitAgentDemoState.h"
+
+void FHCIAbilityKitAgentDemoState::ResetPreviewStates()
+{
+	AgentPlanPreviewState = FHCIAbilityKitAgentPlan();
+	AgentExecutorReviewDiffPreviewState = FHCIAbilityKitDryRunDiffReport();
+	AgentApplyRequestPreviewState = FHCIAbilityKitAgentApplyRequest();
+	AgentApplyConfirmRequestPreviewState = FHCIAbilityKitAgentApplyConfirmRequest();
+	AgentExecuteTicketPreviewState = FHCIAbilityKitAgentExecuteTicket();
+	AgentSimulateExecuteReceiptPreviewState = FHCIAbilityKitAgentSimulateExecuteReceipt();
+	AgentSimulateExecuteFinalReportPreviewState = FHCIAbilityKitAgentSimulateExecuteFinalReport();
+	AgentSimulateExecuteArchiveBundlePreviewState = FHCIAbilityKitAgentSimulateExecuteArchiveBundle();
+	AgentSimulateExecuteHandoffEnvelopePreviewState = FHCIAbilityKitAgentSimulateExecuteHandoffEnvelope();
+	AgentStageGExecuteIntentPreviewState = FHCIAbilityKitAgentStageGExecuteIntent();
+	AgentStageGWriteEnableRequestPreviewState = FHCIAbilityKitAgentStageGWriteEnableRequest();
+	AgentStageGExecutePermitTicketPreviewState = FHCIAbilityKitAgentStageGExecutePermitTicket();
+	AgentStageGExecuteDispatchRequestPreviewState = FHCIAbilityKitAgentStageGExecuteDispatchRequest();
+	AgentStageGExecuteDispatchReceiptPreviewState = FHCIAbilityKitAgentStageGExecuteDispatchReceipt();
+	AgentStageGExecuteCommitRequestPreviewState = FHCIAbilityKitAgentStageGExecuteCommitRequest();
+	AgentStageGExecuteCommitReceiptPreviewState = FHCIAbilityKitAgentStageGExecuteCommitReceipt();
+	AgentStageGExecuteFinalReportPreviewState = FHCIAbilityKitAgentStageGExecuteFinalReport();
+	AgentStageGExecuteArchiveBundlePreviewState = FHCIAbilityKitAgentStageGExecuteArchiveBundle();
+	AgentStageGExecutionReadinessReportPreviewState = FHCIAbilityKitAgentStageGExecutionReadinessReport();
+}
+
+FHCIAbilityKitAgentDemoState& HCI_GetAgentDemoState()
+{
+	static FHCIAbilityKitAgentDemoState State;
+	return State;
+}

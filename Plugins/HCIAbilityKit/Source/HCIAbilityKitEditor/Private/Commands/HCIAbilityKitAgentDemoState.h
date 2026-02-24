@@ -1,0 +1,53 @@
+#pragma once
+
+#include "CoreMinimal.h"
+#include "Agent/HCIAbilityKitAgentApplyConfirmRequest.h"
+#include "Agent/HCIAbilityKitAgentApplyRequest.h"
+#include "Agent/HCIAbilityKitAgentExecuteTicket.h"
+#include "Agent/HCIAbilityKitAgentPlan.h"
+#include "Agent/HCIAbilityKitAgentSimulateExecuteArchiveBundle.h"
+#include "Agent/HCIAbilityKitAgentSimulateExecuteFinalReport.h"
+#include "Agent/HCIAbilityKitAgentSimulateExecuteHandoffEnvelope.h"
+#include "Agent/HCIAbilityKitAgentSimulateExecuteReceipt.h"
+#include "Agent/HCIAbilityKitAgentStageGExecuteArchiveBundle.h"
+#include "Agent/HCIAbilityKitAgentStageGExecuteCommitReceipt.h"
+#include "Agent/HCIAbilityKitAgentStageGExecuteCommitRequest.h"
+#include "Agent/HCIAbilityKitAgentStageGExecuteDispatchReceipt.h"
+#include "Agent/HCIAbilityKitAgentStageGExecuteDispatchRequest.h"
+#include "Agent/HCIAbilityKitAgentStageGExecuteFinalReport.h"
+#include "Agent/HCIAbilityKitAgentStageGExecuteIntent.h"
+#include "Agent/HCIAbilityKitAgentStageGExecutePermitTicket.h"
+#include "Agent/HCIAbilityKitAgentStageGExecutionReadinessReport.h"
+#include "Agent/HCIAbilityKitAgentStageGWriteEnableRequest.h"
+#include "Agent/HCIAbilityKitDryRunDiff.h"
+#include "Interfaces/IHttpRequest.h"
+#include "Templates/Atomic.h"
+
+struct FHCIAbilityKitAgentDemoState
+{
+	FHCIAbilityKitAgentPlan AgentPlanPreviewState;
+	FHCIAbilityKitDryRunDiffReport AgentExecutorReviewDiffPreviewState;
+	FHCIAbilityKitAgentApplyRequest AgentApplyRequestPreviewState;
+	FHCIAbilityKitAgentApplyConfirmRequest AgentApplyConfirmRequestPreviewState;
+	FHCIAbilityKitAgentExecuteTicket AgentExecuteTicketPreviewState;
+	FHCIAbilityKitAgentSimulateExecuteReceipt AgentSimulateExecuteReceiptPreviewState;
+	FHCIAbilityKitAgentSimulateExecuteFinalReport AgentSimulateExecuteFinalReportPreviewState;
+	FHCIAbilityKitAgentSimulateExecuteArchiveBundle AgentSimulateExecuteArchiveBundlePreviewState;
+	FHCIAbilityKitAgentSimulateExecuteHandoffEnvelope AgentSimulateExecuteHandoffEnvelopePreviewState;
+	FHCIAbilityKitAgentStageGExecuteIntent AgentStageGExecuteIntentPreviewState;
+	FHCIAbilityKitAgentStageGWriteEnableRequest AgentStageGWriteEnableRequestPreviewState;
+	FHCIAbilityKitAgentStageGExecutePermitTicket AgentStageGExecutePermitTicketPreviewState;
+	FHCIAbilityKitAgentStageGExecuteDispatchRequest AgentStageGExecuteDispatchRequestPreviewState;
+	FHCIAbilityKitAgentStageGExecuteDispatchReceipt AgentStageGExecuteDispatchReceiptPreviewState;
+	FHCIAbilityKitAgentStageGExecuteCommitRequest AgentStageGExecuteCommitRequestPreviewState;
+	FHCIAbilityKitAgentStageGExecuteCommitReceipt AgentStageGExecuteCommitReceiptPreviewState;
+	FHCIAbilityKitAgentStageGExecuteFinalReport AgentStageGExecuteFinalReportPreviewState;
+	FHCIAbilityKitAgentStageGExecuteArchiveBundle AgentStageGExecuteArchiveBundlePreviewState;
+	FHCIAbilityKitAgentStageGExecutionReadinessReport AgentStageGExecutionReadinessReportPreviewState;
+	TAtomic<bool> bRealLlmPlanCommandInFlight{false};
+	TArray<TSharedPtr<IHttpRequest, ESPMode::ThreadSafe>> RealLlmProbeRequests;
+
+	void ResetPreviewStates();
+};
+
+FHCIAbilityKitAgentDemoState& HCI_GetAgentDemoState();

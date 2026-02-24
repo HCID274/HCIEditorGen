@@ -26,7 +26,8 @@ public class HCIAbilityKitRuntime : ModuleRules
 				"Json",
 				"JsonUtilities",
 				"HTTP",
-				"AssetRegistry"
+				"AssetRegistry",
+				"Projects"
 			});
 	}
 }

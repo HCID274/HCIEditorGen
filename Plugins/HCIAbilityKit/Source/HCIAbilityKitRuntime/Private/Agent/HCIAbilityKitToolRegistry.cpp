@@ -35,6 +35,13 @@ FHCIAbilityKitToolRegistry& FHCIAbilityKitToolRegistry::Get()
 	return Instance;
 }
 
+const FHCIAbilityKitToolRegistry& FHCIAbilityKitToolRegistry::GetReadOnly()
+{
+	const FHCIAbilityKitToolRegistry& Registry = Get();
+	Registry.EnsureDefaultTools();
+	return Registry;
+}
+
 void FHCIAbilityKitToolRegistry::ResetToDefaults()
 {
 	Tools.Reset();
@@ -385,4 +392,3 @@ void FHCIAbilityKitToolRegistry::EnsureDefaultTools() const
 
 	const_cast<FHCIAbilityKitToolRegistry*>(this)->ResetToDefaults();
 }
-

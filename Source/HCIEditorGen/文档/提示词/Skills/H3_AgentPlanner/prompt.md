@@ -57,15 +57,21 @@ Step 5 - JSON Generation:
 - For directory-first cases, do not start with `NormalizeAssetNamingByMetadata` / `RenameAsset` / `MoveAsset` directly.
 - Emit an intermediate scan-first plan first, then let downstream execution evidence drive rename/move planning.
 - Always bind `ScanAssets.args.directory` to `{{step_1_search.matched_directories[0]}}` after `SearchPath`.
+- For semantic alias phrases (e.g. "临时目录"), `SearchPath.args.keyword` MUST use a canonical searchable token from `COMMON_UE_PATHS` (example: `Temp`), not the raw phrase.
 
 ## COMMON_UE_PATHS (semantic mapping)
 - "临时目录", "临时文件夹", "temp folder", "那个文件夹" -> `/Game/Temp`
 - "艺术资产", "模型目录", "美术目录", "art assets" -> `/Game/Art`
 - "关卡目录", "场景目录", "level folder" -> `/Game/Maps`
+- Canonical search keywords:
+  - `/Game/Temp` -> `Temp`
+  - `/Game/Art` -> `Art`
+  - `/Game/Maps` -> `Maps`
 
 ## DISCOVERY-FIRST POLICY (when ENV_CONTEXT is empty)
 - Case A: non-absolute directory reference:
-  - MUST start with `SearchPath` using the user-mentioned folder keyword (or mapped keyword from `COMMON_UE_PATHS`).
+  - MUST start with `SearchPath` using the user-mentioned folder keyword.
+  - If the folder phrase matches `COMMON_UE_PATHS`, `SearchPath.keyword` MUST be rewritten to canonical keyword (`Temp`/`Art`/`Maps`).
   - Then use `ScanAssets` on `{{step_1_search.matched_directories[0]}}`.
   - Then output write steps (`NormalizeAssetNamingByMetadata` / `RenameAsset` / `MoveAsset`) using scanned evidence only.
 - Case B: explicit absolute path in user input:

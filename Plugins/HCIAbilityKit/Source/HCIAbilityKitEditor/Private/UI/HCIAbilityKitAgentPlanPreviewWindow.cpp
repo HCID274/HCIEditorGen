@@ -188,6 +188,12 @@ static int32 HCI_TryGetIntEvidence(const TMap<FString, FString>& Evidence, const
 	return LexTryParseString(Parsed, **Value) ? Parsed : DefaultValue;
 }
 
+static bool HCI_IsWriteLikeRisk(const EHCIAbilityKitAgentPlanRiskLevel RiskLevel)
+{
+	return RiskLevel == EHCIAbilityKitAgentPlanRiskLevel::Write ||
+		   RiskLevel == EHCIAbilityKitAgentPlanRiskLevel::Destructive;
+}
+
 class SHCIAbilityKitAgentPlanPreviewWindow final : public SCompoundWidget
 {
 public:
@@ -208,14 +214,16 @@ public:
 		Rows = InArgs._Rows;
 		Context = InArgs._Context;
 
-		const auto RunPlan = [this](const bool bDryRun)
-		{
-			const FHCIAbilityKitToolRegistry& ToolRegistry = FHCIAbilityKitToolRegistry::GetReadOnly();
-			FHCIAbilityKitAgentExecutorOptions Options;
-			Options.bDryRun = bDryRun;
-			Options.bValidatePlanBeforeExecute = true;
-			Options.TerminationPolicy = EHCIAbilityKitAgentExecutorTerminationPolicy::ContinueOnFailure;
-			HCIAbilityKitAgentToolActions::BuildStageIDraftActions(Options.ToolActions);
+			const auto RunPlan = [this](const bool bDryRun, const bool bUserConfirmedWriteSteps)
+			{
+				const FHCIAbilityKitToolRegistry& ToolRegistry = FHCIAbilityKitToolRegistry::GetReadOnly();
+				FHCIAbilityKitAgentExecutorOptions Options;
+				Options.bDryRun = bDryRun;
+				Options.bValidatePlanBeforeExecute = true;
+				Options.TerminationPolicy = EHCIAbilityKitAgentExecutorTerminationPolicy::ContinueOnFailure;
+				Options.bEnablePreflightGates = true;
+				Options.bUserConfirmedWriteSteps = bUserConfirmedWriteSteps;
+				HCIAbilityKitAgentToolActions::BuildStageIDraftActions(Options.ToolActions);
 
 			FHCIAbilityKitAgentExecutorRunResult RunResult;
 			const bool bRunOk = FHCIAbilityKitAgentExecutor::ExecutePlan(
@@ -234,31 +242,35 @@ public:
 				}
 			}
 
-			const FString ModeLabel = bDryRun ? TEXT("DryRun") : TEXT("Commit");
-			const FString Summary = FString::Printf(
-				TEXT("%s: ok=%s terminal=%s succeeded=%d failed=%d scanned_assets=%d"),
-				*ModeLabel,
-				bRunOk ? TEXT("true") : TEXT("false"),
-				*RunResult.TerminalStatus,
-				RunResult.SucceededSteps,
-				RunResult.FailedSteps,
-				ScannedAssets);
+				const FString ModeLabel = bDryRun ? TEXT("DryRun") : TEXT("Commit");
+				const FString Summary = FString::Printf(
+					TEXT("%s: ok=%s execution_mode=%s terminal=%s reason=%s succeeded=%d failed=%d scanned_assets=%d"),
+					*ModeLabel,
+					bRunOk ? TEXT("true") : TEXT("false"),
+					*RunResult.ExecutionMode,
+					*RunResult.TerminalStatus,
+					*RunResult.TerminalReason,
+					RunResult.SucceededSteps,
+					RunResult.FailedSteps,
+					ScannedAssets);
 			if (RunSummaryText.IsValid())
 			{
 				RunSummaryText->SetText(FText::FromString(Summary));
 			}
 
-			UE_LOG(
-				LogHCIAbilityKitAgentPlanPreview,
-				Display,
-				TEXT("[HCIAbilityKit][AgentPlanPreview] mode=%s executed request_id=%s steps=%d terminal=%s succeeded=%d failed=%d scanned_assets=%d"),
-				bDryRun ? TEXT("dry_run") : TEXT("execute"),
-				*Plan.RequestId,
-				Plan.Steps.Num(),
-				*RunResult.TerminalStatus,
-				RunResult.SucceededSteps,
-				RunResult.FailedSteps,
-				ScannedAssets);
+				UE_LOG(
+					LogHCIAbilityKitAgentPlanPreview,
+					Display,
+					TEXT("[HCIAbilityKit][AgentPlanPreview] mode=%s execution_mode=%s executed request_id=%s steps=%d terminal=%s terminal_reason=%s succeeded=%d failed=%d scanned_assets=%d"),
+					bDryRun ? TEXT("dry_run") : TEXT("execute"),
+					*RunResult.ExecutionMode,
+					*Plan.RequestId,
+					Plan.Steps.Num(),
+					*RunResult.TerminalStatus,
+					*RunResult.TerminalReason,
+					RunResult.SucceededSteps,
+					RunResult.FailedSteps,
+					ScannedAssets);
 		};
 
 		TSharedRef<SVerticalBox> RowsBox = SNew(SVerticalBox);
@@ -390,38 +402,44 @@ public:
 					+ SHorizontalBox::Slot()
 					.AutoWidth()
 					[
-						SNew(SButton)
-						.Text(FText::FromString(TEXT("模拟执行（草案）")))
-						.OnClicked_Lambda([this, RunPlan]()
-						{
-							RunPlan(true);
-							return FReply::Handled();
-						})
-					]
+							SNew(SButton)
+							.Text(FText::FromString(TEXT("模拟执行（草案）")))
+							.OnClicked_Lambda([this, RunPlan]()
+							{
+								RunPlan(true, true);
+								return FReply::Handled();
+							})
+						]
 					+ SHorizontalBox::Slot()
 					.AutoWidth()
 					.Padding(8.0f, 0.0f, 0.0f, 0.0f)
 					[
-						SNew(SButton)
-						.Text(FText::FromString(TEXT("确认并执行（Commit Changes）")))
-						.OnClicked_Lambda([this, RunPlan]()
-						{
-							const EAppReturnType::Type UserDecision = FMessageDialog::Open(
-								EAppMsgType::YesNo,
-								FText::FromString(TEXT("AI 即将真实修改项目资产，操作不可逆，是否继续？")));
-							if (UserDecision != EAppReturnType::Yes)
+							SNew(SButton)
+							.Text(FText::FromString(TEXT("确认并执行（Commit Changes）")))
+							.OnClicked_Lambda([this, RunPlan]()
 							{
-								if (RunSummaryText.IsValid())
+								const FString ConfirmText = FHCIAbilityKitAgentPlanPreviewWindow::BuildCommitConfirmMessage(Plan);
+								const EAppReturnType::Type UserDecision = FMessageDialog::Open(
+									EAppMsgType::YesNo,
+									FText::FromString(ConfirmText));
+								if (UserDecision != EAppReturnType::Yes)
 								{
-									RunSummaryText->SetText(FText::FromString(TEXT("Commit: 用户取消执行")));
+									UE_LOG(
+										LogHCIAbilityKitAgentPlanPreview,
+										Display,
+										TEXT("[HCIAbilityKit][AgentPlanPreview] mode=execute cancelled_by_user request_id=%s"),
+										*Plan.RequestId);
+									if (RunSummaryText.IsValid())
+									{
+										RunSummaryText->SetText(FText::FromString(TEXT("Commit: 用户取消执行（未触发真实写操作）")));
+									}
+									return FReply::Handled();
 								}
-								return FReply::Handled();
-							}
 
-							RunPlan(false);
-							return FReply::Handled();
-						})
-					]
+								RunPlan(false, true);
+								return FReply::Handled();
+							})
+						]
 					+ SHorizontalBox::Slot()
 					.AutoWidth()
 					.Padding(8.0f, 0.0f, 0.0f, 0.0f)
@@ -511,12 +529,51 @@ TArray<TSharedPtr<FHCIAbilityKitAgentPlanPreviewRow>> FHCIAbilityKitAgentPlanPre
 	return Rows;
 }
 
+FHCIAbilityKitAgentPlanCommitRiskSummary FHCIAbilityKitAgentPlanPreviewWindow::BuildCommitRiskSummary(const FHCIAbilityKitAgentPlan& Plan)
+{
+	FHCIAbilityKitAgentPlanCommitRiskSummary Summary;
+	Summary.TotalSteps = Plan.Steps.Num();
+	for (const FHCIAbilityKitAgentPlanStep& Step : Plan.Steps)
+	{
+		if (!HCI_IsWriteLikeRisk(Step.RiskLevel))
+		{
+			continue;
+		}
+
+		++Summary.WriteLikeSteps;
+		if (Step.RiskLevel == EHCIAbilityKitAgentPlanRiskLevel::Destructive)
+		{
+			++Summary.DestructiveSteps;
+		}
+	}
+
+	Summary.bRequiresConfirmDialog = Summary.WriteLikeSteps > 0;
+	return Summary;
+}
+
+FString FHCIAbilityKitAgentPlanPreviewWindow::BuildCommitConfirmMessage(const FHCIAbilityKitAgentPlan& Plan)
+{
+	const FHCIAbilityKitAgentPlanCommitRiskSummary Summary = BuildCommitRiskSummary(Plan);
+	if (!Summary.bRequiresConfirmDialog)
+	{
+		return FString::Printf(
+			TEXT("当前计划共 %d 步，未检测到写操作。\n将执行只读步骤以更新证据链，是否继续？"),
+			Summary.TotalSteps);
+	}
+
+	return FString::Printf(
+		TEXT("当前计划共 %d 步，其中写操作 %d 步（含高风险破坏性 %d 步）。\nAI 即将真实修改项目资产，操作不可逆，是否继续？"),
+		Summary.TotalSteps,
+		Summary.WriteLikeSteps,
+		Summary.DestructiveSteps);
+}
+
 void FHCIAbilityKitAgentPlanPreviewWindow::OpenWindow(const FHCIAbilityKitAgentPlan& Plan, const FHCIAbilityKitAgentPlanPreviewContext& Context)
 {
 	const TArray<TSharedPtr<FHCIAbilityKitAgentPlanPreviewRow>> Rows = BuildRows(Plan);
 
 	TSharedRef<SWindow> Window = SNew(SWindow)
-		.Title(FText::FromString(TEXT("HCIAbilityKit Plan Preview (Stage I2 Draft)")))
+		.Title(FText::FromString(TEXT("HCIAbilityKit Plan Preview (Stage I3 Draft)")))
 		.ClientSize(FVector2D(1080.0f, 680.0f))
 		.SupportsMaximize(true)
 		.SupportsMinimize(true);

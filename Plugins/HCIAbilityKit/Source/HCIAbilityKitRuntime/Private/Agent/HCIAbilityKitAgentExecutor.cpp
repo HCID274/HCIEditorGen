@@ -714,7 +714,7 @@ bool FHCIAbilityKitAgentExecutor::ExecutePlan(
 	FHCIAbilityKitAgentExecutorRunResult& OutResult)
 {
 	HCI_InitRunResultBase(Plan, OutResult);
-	OutResult.ExecutionMode = Options.bDryRun ? TEXT("simulate_dry_run") : TEXT("simulate_apply");
+	OutResult.ExecutionMode = Options.bDryRun ? TEXT("simulate_dry_run") : TEXT("execute_apply");
 	OutResult.TerminationPolicy = HCI_TerminationPolicyToString(Options.TerminationPolicy);
 	OutResult.bPreflightEnabled = Options.bEnablePreflightGates;
 	OutResult.StartedAtUtc = FHCIAbilityKitTimeFormat::FormatNowBeijingIso8601();
@@ -744,6 +744,8 @@ bool FHCIAbilityKitAgentExecutor::ExecutePlan(
 	OutResult.bAccepted = true;
 	OutResult.StepResults.Reserve(Plan.Steps.Num());
 	bool bSawFailure = false;
+	bool bAnySimulatedStep = false;
+	bool bAnyToolActionExecuted = false;
 	TMap<FString, TMap<FString, FString>> StepEvidenceContext;
 	TArray<FHCIAbilityKitAgentPlanStep> ResolvedValidatedPrefixSteps;
 	ResolvedValidatedPrefixSteps.Reserve(Plan.Steps.Num());
@@ -839,10 +841,14 @@ bool FHCIAbilityKitAgentExecutor::ExecutePlan(
 			}
 			else
 			{
-				const bool bHandledByAction = HCI_TryRunToolAction(Plan, ResolvedStep, Options, StepResult);
-				if (bHandledByAction && !StepResult.bSucceeded)
-				{
-					// Action returned a failed dry-run/execute result.
+					const bool bHandledByAction = HCI_TryRunToolAction(Plan, ResolvedStep, Options, StepResult);
+					if (bHandledByAction && !Options.bDryRun)
+					{
+						bAnyToolActionExecuted = true;
+					}
+					if (bHandledByAction && !StepResult.bSucceeded)
+					{
+						// Action returned a failed dry-run/execute result.
 				}
 				else if (bHandledByAction)
 				{
@@ -859,13 +865,14 @@ bool FHCIAbilityKitAgentExecutor::ExecutePlan(
 						StepResult.Evidence.Add(EvidenceKey, HCI_BuildEvidenceValue(EvidenceKey, ResolvedStep));
 					}
 
-					StepResult.bSucceeded = true;
-					StepResult.Status = TEXT("succeeded");
-					StepResult.Reason = Options.bDryRun ? TEXT("simulated_dry_run_success") : TEXT("simulated_apply_success");
-					StepResult.PreflightGate = Options.bEnablePreflightGates ? TEXT("passed") : TEXT("-");
+						StepResult.bSucceeded = true;
+						StepResult.Status = TEXT("succeeded");
+						StepResult.Reason = Options.bDryRun ? TEXT("simulated_dry_run_success") : TEXT("simulated_apply_success");
+						StepResult.PreflightGate = Options.bEnablePreflightGates ? TEXT("passed") : TEXT("-");
+						bAnySimulatedStep = true;
+					}
+					}
 				}
-				}
-			}
 
 			if (bHasPipelineBypassWarning)
 			{
@@ -947,7 +954,18 @@ bool FHCIAbilityKitAgentExecutor::ExecutePlan(
 
 	OutResult.bCompleted = true;
 	OutResult.TerminalStatus = TEXT("completed");
-	OutResult.TerminalReason = Options.bDryRun ? TEXT("executor_skeleton_simulated_dry_run_completed") : TEXT("executor_skeleton_simulated_apply_completed");
+	if (Options.bDryRun)
+	{
+		OutResult.TerminalReason = TEXT("executor_simulated_dry_run_completed");
+	}
+	else if (bAnySimulatedStep || !bAnyToolActionExecuted)
+	{
+		OutResult.TerminalReason = TEXT("executor_execute_completed_with_simulated_steps");
+	}
+	else
+	{
+		OutResult.TerminalReason = TEXT("executor_execute_completed");
+	}
 	OutResult.FinishedAtUtc = FHCIAbilityKitTimeFormat::FormatNowBeijingIso8601();
 	return true;
 }

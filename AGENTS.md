@@ -84,6 +84,8 @@ Scope: whole repo.
   - `Stage H-SliceH3-Prompt`：已完成 Skills Bundle 化（`H3_AgentPlanner`）并切换 Runtime 读取（`prompt.md + tools_schema.json` 注入）。
   - `Stage I-SliceI1`：已通过 UE 手测（PlanPreviewUI 真实 LLM 链路 + SearchPath 管道修复）。
   - `Stage I-SliceI2`：已通过 UE 手测（UI 展示优化 + 变量管道顺序归一化）。
+  - `Stage I-SliceI3`：已通过 UE 手测（确认并执行真实写操作闭环）。
+  - `Stage I-SliceI4`：已通过 UE 手测（SearchPath 语义关键词归一 + 语义目录回退，`Temp -> /Game/Temp`）。
 - UE 手测命令（G10，历史通过记录）：
   - `HCIAbilityKit.AgentExecutePlanReviewPrepareStageGExecutionReadiness 1 none`
   - `HCIAbilityKit.AgentExecutePlanReviewPrepareStageGExecutionReadiness 0 none`
@@ -92,7 +94,7 @@ Scope: whole repo.
   - `HCIAbilityKit.AgentExecutePlanReviewPrepareStageGExecutionReadiness 1 mode`
   - `HCIAbilityKit.AgentExecutePlanReviewPrepareStageGExecutionReadinessJson 1 none`
 - 下一切片：
-  - `I3`：执行前确认一致性与结果态 UI 收敛（推荐）；
+  - `I5`：UI 展示优化收尾（待用户确认是否启动）；
   - `Phase2`：结构解耦与技术债清理（按需切入）。
 
 ## 9. 用户协作习惯（固定）

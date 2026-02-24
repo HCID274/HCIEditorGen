@@ -89,4 +89,50 @@ bool FHCIAbilityKitAgentPlanPreviewRowsMissingAssetStateTest::RunTest(const FStr
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FHCIAbilityKitAgentPlanPreviewCommitRiskSummaryTest,
+	"HCIAbilityKit.Editor.AgentPreviewUI.CommitRiskSummary.CountsWriteAndDestructiveSteps",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FHCIAbilityKitAgentPlanPreviewCommitRiskSummaryTest::RunTest(const FString& Parameters)
+{
+	FHCIAbilityKitAgentPlan Plan = MakeBasePlan(TEXT("req_test_preview_commit_summary"));
+
+	{
+		FHCIAbilityKitAgentPlanStep& ReadStep = Plan.Steps.AddDefaulted_GetRef();
+		ReadStep.StepId = TEXT("step_1_scan");
+		ReadStep.ToolName = TEXT("ScanAssets");
+		ReadStep.RiskLevel = EHCIAbilityKitAgentPlanRiskLevel::ReadOnly;
+	}
+
+	{
+		FHCIAbilityKitAgentPlanStep& WriteStep = Plan.Steps.AddDefaulted_GetRef();
+		WriteStep.StepId = TEXT("step_2_rename");
+		WriteStep.ToolName = TEXT("RenameAsset");
+		WriteStep.RiskLevel = EHCIAbilityKitAgentPlanRiskLevel::Write;
+		WriteStep.bRequiresConfirm = true;
+	}
+
+	{
+		FHCIAbilityKitAgentPlanStep& DestructiveStep = Plan.Steps.AddDefaulted_GetRef();
+		DestructiveStep.StepId = TEXT("step_3_move");
+		DestructiveStep.ToolName = TEXT("MoveAsset");
+		DestructiveStep.RiskLevel = EHCIAbilityKitAgentPlanRiskLevel::Destructive;
+		DestructiveStep.bRequiresConfirm = true;
+	}
+
+	const FHCIAbilityKitAgentPlanCommitRiskSummary Summary = FHCIAbilityKitAgentPlanPreviewWindow::BuildCommitRiskSummary(Plan);
+	TestEqual(TEXT("total steps"), Summary.TotalSteps, 3);
+	TestEqual(TEXT("write-like steps"), Summary.WriteLikeSteps, 2);
+	TestEqual(TEXT("destructive steps"), Summary.DestructiveSteps, 1);
+	TestTrue(TEXT("should require confirm"), Summary.bRequiresConfirmDialog);
+
+	const FString ConfirmText = FHCIAbilityKitAgentPlanPreviewWindow::BuildCommitConfirmMessage(Plan);
+	TestTrue(TEXT("confirm text should include total"), ConfirmText.Contains(TEXT("3")));
+	TestTrue(TEXT("confirm text should include write count"), ConfirmText.Contains(TEXT("2")));
+	TestTrue(TEXT("confirm text should include destructive count"), ConfirmText.Contains(TEXT("1")));
+	TestTrue(TEXT("confirm text should include irreversible warning"), ConfirmText.Contains(TEXT("不可逆")));
+	return true;
+}
+
 #endif

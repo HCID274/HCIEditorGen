@@ -3,12 +3,51 @@
 #include "Agent/HCIAbilityKitAgentExecutor.h"
 #include "Agent/HCIAbilityKitAgentPlan.h"
 #include "Agent/HCIAbilityKitAgentPlanner.h"
+#include "Agent/HCIAbilityKitAgentToolAction.h"
 #include "Agent/HCIAbilityKitToolRegistry.h"
 #include "Dom/JsonObject.h"
 #include "Misc/AutomationTest.h"
 
 namespace
 {
+class FHCIAbilityKitTestRecordRenameAction final : public IHCIAbilityKitAgentToolAction
+{
+public:
+	virtual FName GetToolName() const override
+	{
+		return TEXT("RenameAsset");
+	}
+
+	virtual bool DryRun(
+		const FHCIAbilityKitAgentToolActionRequest& Request,
+		FHCIAbilityKitAgentToolActionResult& OutResult) const override
+	{
+		++DryRunCalls;
+		OutResult = FHCIAbilityKitAgentToolActionResult();
+		OutResult.bSucceeded = true;
+		OutResult.Reason = TEXT("test_dry_run_ok");
+		OutResult.Evidence.Add(TEXT("asset_path"), Request.Args.IsValid() ? Request.Args->GetStringField(TEXT("asset_path")) : TEXT("-"));
+		return true;
+	}
+
+	virtual bool Execute(
+		const FHCIAbilityKitAgentToolActionRequest& Request,
+		FHCIAbilityKitAgentToolActionResult& OutResult) const override
+	{
+		++ExecuteCalls;
+		OutResult = FHCIAbilityKitAgentToolActionResult();
+		OutResult.bSucceeded = true;
+		OutResult.Reason = TEXT("test_execute_ok");
+		OutResult.Evidence.Add(TEXT("before"), Request.Args.IsValid() ? Request.Args->GetStringField(TEXT("asset_path")) : TEXT("-"));
+		OutResult.Evidence.Add(TEXT("after"), TEXT("/Game/Art/SM_TestCommit_Renamed.SM_TestCommit_Renamed"));
+		OutResult.Evidence.Add(TEXT("result"), TEXT("test_execute_ok"));
+		return true;
+	}
+
+	mutable int32 DryRunCalls = 0;
+	mutable int32 ExecuteCalls = 0;
+};
+
 static FHCIAbilityKitAgentPlan MakeExecutorTexturePlan()
 {
 	FHCIAbilityKitAgentPlan Plan;
@@ -86,6 +125,26 @@ static FHCIAbilityKitAgentPlan MakeExecutorTexturePlanWithAssetCount(const int32
 	}
 	Plan.Steps[0].Args->SetArrayField(TEXT("asset_paths"), AssetPaths);
 	Plan.Steps[0].Args->SetNumberField(TEXT("max_size"), 1024);
+	return Plan;
+}
+
+static FHCIAbilityKitAgentPlan MakeExecutorRenamePlan()
+{
+	FHCIAbilityKitAgentPlan Plan;
+	Plan.PlanVersion = 1;
+	Plan.RequestId = TEXT("req_i3_execute_mode");
+	Plan.Intent = TEXT("normalize_temp_assets_by_metadata");
+
+	FHCIAbilityKitAgentPlanStep& Step = Plan.Steps.AddDefaulted_GetRef();
+	Step.StepId = TEXT("step_rename");
+	Step.ToolName = TEXT("RenameAsset");
+	Step.RiskLevel = EHCIAbilityKitAgentPlanRiskLevel::Write;
+	Step.bRequiresConfirm = true;
+	Step.RollbackStrategy = TEXT("all_or_nothing");
+	Step.ExpectedEvidence = {TEXT("before"), TEXT("after"), TEXT("result")};
+	Step.Args = MakeShared<FJsonObject>();
+	Step.Args->SetStringField(TEXT("asset_path"), TEXT("/Game/Art/SM_TestCommit.SM_TestCommit"));
+	Step.Args->SetStringField(TEXT("new_name"), TEXT("SM_TestCommit_Renamed"));
 	return Plan;
 }
 }
@@ -476,6 +535,45 @@ bool FHCIAbilityKitAgentExecutorPreflightPassesAuthorizedWriteTest::RunTest(cons
 		TestEqual(TEXT("Row preflight gate"), RunResult.StepResults[0].PreflightGate, FString(TEXT("passed")));
 		TestEqual(TEXT("Row failure phase"), RunResult.StepResults[0].FailurePhase, FString(TEXT("-")));
 	}
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FHCIAbilityKitAgentExecutorCommitModeSemanticTest,
+	"HCIAbilityKit.Editor.AgentExecutor.CommitModeUsesExecuteSemantics",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FHCIAbilityKitAgentExecutorCommitModeSemanticTest::RunTest(const FString& Parameters)
+{
+	FHCIAbilityKitToolRegistry& Registry = FHCIAbilityKitToolRegistry::Get();
+	Registry.ResetToDefaults();
+
+	FHCIAbilityKitAgentExecutorOptions Options;
+	Options.bDryRun = false;
+	Options.bValidatePlanBeforeExecute = true;
+
+	const TSharedPtr<FHCIAbilityKitTestRecordRenameAction> Action = MakeShared<FHCIAbilityKitTestRecordRenameAction>();
+	Options.ToolActions.Add(TEXT("RenameAsset"), Action);
+
+	FHCIAbilityKitAgentExecutorRunResult RunResult;
+	TestTrue(TEXT("Commit run should succeed with tool action"), FHCIAbilityKitAgentExecutor::ExecutePlan(
+		MakeExecutorRenamePlan(),
+		Registry,
+		FHCIAbilityKitAgentPlanValidationContext(),
+		Options,
+		RunResult));
+
+	TestEqual(TEXT("Execution mode should be execute_apply"), RunResult.ExecutionMode, FString(TEXT("execute_apply")));
+	TestEqual(TEXT("Terminal status should be completed"), RunResult.TerminalStatus, FString(TEXT("completed")));
+	TestEqual(TEXT("Terminal reason should reflect execute completion"), RunResult.TerminalReason, FString(TEXT("executor_execute_completed")));
+	TestEqual(TEXT("DryRun call count"), Action->DryRunCalls, 0);
+	TestEqual(TEXT("Execute call count"), Action->ExecuteCalls, 1);
+
+	if (RunResult.StepResults.Num() > 0)
+	{
+		TestEqual(TEXT("Row reason should come from action execute"), RunResult.StepResults[0].Reason, FString(TEXT("test_execute_ok")));
+	}
+
 	return true;
 }
 

@@ -28,14 +28,13 @@ public:
 
 	virtual FName GetToolName() const = 0;
 
-	// Stage I draft: produce evidence only, no real write.
+	// Dry-run mode: produce preview evidence, no real write.
 	virtual bool DryRun(
 		const FHCIAbilityKitAgentToolActionRequest& Request,
 		FHCIAbilityKitAgentToolActionResult& OutResult) const = 0;
 
-	// Stage I draft: reserved for real execution stage.
+	// Execute mode: perform real tool action.
 	virtual bool Execute(
 		const FHCIAbilityKitAgentToolActionRequest& Request,
 		FHCIAbilityKitAgentToolActionResult& OutResult) const = 0;
 };
-

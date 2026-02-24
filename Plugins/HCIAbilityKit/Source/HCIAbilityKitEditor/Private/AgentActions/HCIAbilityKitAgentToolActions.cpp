@@ -116,6 +116,98 @@ static FString HCI_NormalizeFuzzyToken(const FString& Text)
 	return Normalized;
 }
 
+static void HCI_AddUniqueSearchKeyword(TArray<FString>& OutKeywords, const FString& Keyword)
+{
+	FString Trimmed = Keyword;
+	Trimmed.TrimStartAndEndInline();
+	if (Trimmed.IsEmpty())
+	{
+		return;
+	}
+
+	for (const FString& Existing : OutKeywords)
+	{
+		if (Existing.Equals(Trimmed, ESearchCase::IgnoreCase))
+		{
+			return;
+		}
+	}
+	OutKeywords.Add(Trimmed);
+}
+
+static FString HCI_RemoveDirectorySemanticSuffix(const FString& InKeyword)
+{
+	FString Out = InKeyword;
+	Out.ReplaceInline(TEXT("目录"), TEXT(""), ESearchCase::CaseSensitive);
+	Out.ReplaceInline(TEXT("文件夹"), TEXT(""), ESearchCase::CaseSensitive);
+	Out.ReplaceInline(TEXT("folder"), TEXT(""), ESearchCase::IgnoreCase);
+	Out.ReplaceInline(TEXT("directory"), TEXT(""), ESearchCase::IgnoreCase);
+	Out.TrimStartAndEndInline();
+	return Out;
+}
+
+static TArray<FString> HCI_ExpandSearchKeywords(const FString& RawKeyword)
+{
+	TArray<FString> Expanded;
+	HCI_AddUniqueSearchKeyword(Expanded, RawKeyword);
+
+	const FString Stripped = HCI_RemoveDirectorySemanticSuffix(RawKeyword);
+	HCI_AddUniqueSearchKeyword(Expanded, Stripped);
+
+	const FString Normalized = HCI_NormalizeFuzzyToken(RawKeyword);
+	if (Normalized.Contains(TEXT("临时")) || Normalized.Contains(TEXT("temp")) || Normalized.Contains(TEXT("tmp")))
+	{
+		HCI_AddUniqueSearchKeyword(Expanded, TEXT("Temp"));
+	}
+	if (Normalized.Contains(TEXT("艺术")) || Normalized.Contains(TEXT("美术")) || Normalized.Contains(TEXT("art")))
+	{
+		HCI_AddUniqueSearchKeyword(Expanded, TEXT("Art"));
+	}
+	if (Normalized.Contains(TEXT("关卡")) || Normalized.Contains(TEXT("场景")) || Normalized.Contains(TEXT("level")) || Normalized.Contains(TEXT("map")))
+	{
+		HCI_AddUniqueSearchKeyword(Expanded, TEXT("Maps"));
+	}
+	if (Normalized.Contains(TEXT("角色")) || Normalized.Contains(TEXT("character")))
+	{
+		HCI_AddUniqueSearchKeyword(Expanded, TEXT("Character"));
+	}
+
+	if (Expanded.Num() == 0)
+	{
+		HCI_AddUniqueSearchKeyword(Expanded, TEXT("Temp"));
+	}
+	return Expanded;
+}
+
+static bool HCI_TryResolveSemanticFallbackDirectory(const TArray<FString>& SearchKeywords, FString& OutDirectory)
+{
+	OutDirectory.Reset();
+	for (const FString& Keyword : SearchKeywords)
+	{
+		const FString Normalized = HCI_NormalizeFuzzyToken(Keyword);
+		if (Normalized.IsEmpty())
+		{
+			continue;
+		}
+		if (Normalized.Contains(TEXT("temp")) || Normalized.Contains(TEXT("tmp")) || Normalized.Contains(TEXT("临时")))
+		{
+			OutDirectory = TEXT("/Game/Temp");
+			return true;
+		}
+		if (Normalized.Contains(TEXT("art")) || Normalized.Contains(TEXT("艺术")) || Normalized.Contains(TEXT("美术")))
+		{
+			OutDirectory = TEXT("/Game/Art");
+			return true;
+		}
+		if (Normalized.Contains(TEXT("map")) || Normalized.Contains(TEXT("level")) || Normalized.Contains(TEXT("关卡")) || Normalized.Contains(TEXT("场景")))
+		{
+			OutDirectory = TEXT("/Game/Maps");
+			return true;
+		}
+	}
+	return false;
+}
+
 static int32 HCI_ComputePathKeywordScore(const FString& Path, const FString& Keyword)
 {
 	const FString KeywordNormalized = HCI_NormalizeFuzzyToken(Keyword);
@@ -130,7 +222,7 @@ static int32 HCI_ComputePathKeywordScore(const FString& Path, const FString& Key
 
 	const bool bLeafExact = (LeafNormalized == KeywordNormalized);
 	const bool bLeafContainsKeyword = LeafNormalized.Contains(KeywordNormalized);
-	const bool bKeywordContainsLeaf = KeywordNormalized.Contains(LeafNormalized);
+	const bool bKeywordContainsLeaf = (LeafNormalized.Len() >= 3) && KeywordNormalized.Contains(LeafNormalized);
 	const bool bPathContainsKeyword = PathNormalized.Contains(KeywordNormalized);
 	if (!bLeafExact && !bLeafContainsKeyword && !bKeywordContainsLeaf && !bPathContainsKeyword)
 	{
@@ -292,6 +384,7 @@ private:
 	{
 		FString Path;
 		int32 Score = 0;
+		FString MatchedKeyword;
 	};
 
 	static bool RunInternal(
@@ -329,6 +422,8 @@ private:
 		TArray<FHCIPathCandidate> Candidates;
 		int32 ScannedGamePathCount = 0;
 		const FString KeywordNormalized = HCI_NormalizeFuzzyToken(Keyword);
+		const TArray<FString> SearchKeywords = HCI_ExpandSearchKeywords(Keyword);
+		const FString ExpandedKeywordsLog = FString::Join(SearchKeywords, TEXT("|"));
 		Registry.EnumerateAllCachedPaths([&](FName PathName)
 		{
 			const FString Path = PathName.ToString();
@@ -340,25 +435,37 @@ private:
 
 			const FString LeafName = HCI_GetDirectoryLeafName(Path);
 			const FString LeafNormalized = HCI_NormalizeFuzzyToken(LeafName);
-			const int32 Score = HCI_ComputePathKeywordScore(Path, Keyword);
-			if (Score <= 0)
+			int32 BestScore = 0;
+			FString BestKeyword;
+			for (const FString& SearchKeyword : SearchKeywords)
+			{
+				const int32 Score = HCI_ComputePathKeywordScore(Path, SearchKeyword);
+				if (Score > BestScore)
+				{
+					BestScore = Score;
+					BestKeyword = SearchKeyword;
+				}
+			}
+			if (BestScore <= 0)
 			{
 				return true;
 			}
 
 			FHCIPathCandidate& Candidate = Candidates.AddDefaulted_GetRef();
 			Candidate.Path = Path;
-			Candidate.Score = Score;
+			Candidate.Score = BestScore;
+			Candidate.MatchedKeyword = BestKeyword;
 			UE_LOG(
 				LogHCIAbilityKitAgentToolActions,
 				Display,
-				TEXT("[HCIAbilityKit][SearchPath] keyword=\"%s\" normalized=\"%s\" matched_path=\"%s\" leaf=\"%s\" leaf_normalized=\"%s\" score=%d"),
+				TEXT("[HCIAbilityKit][SearchPath] keyword=\"%s\" normalized=\"%s\" matched_keyword=\"%s\" matched_path=\"%s\" leaf=\"%s\" leaf_normalized=\"%s\" score=%d"),
 				*Keyword,
 				*KeywordNormalized,
+				*BestKeyword,
 				*Path,
 				*LeafName,
 				*LeafNormalized,
-				Score);
+				BestScore);
 			return true;
 		});
 
@@ -386,14 +493,33 @@ private:
 			MatchedDirectories.Add(Candidate.Path);
 		}
 
+		FString SemanticFallbackDirectory;
+		const bool bUsedSemanticFallback = (MatchedDirectories.Num() == 0) &&
+			HCI_TryResolveSemanticFallbackDirectory(SearchKeywords, SemanticFallbackDirectory) &&
+			!SemanticFallbackDirectory.IsEmpty();
+		if (bUsedSemanticFallback)
+		{
+			MatchedDirectories.Add(SemanticFallbackDirectory);
+			UE_LOG(
+				LogHCIAbilityKitAgentToolActions,
+				Display,
+				TEXT("[HCIAbilityKit][SearchPath] semantic_fallback keyword=\"%s\" fallback_directory=\"%s\""),
+				*Keyword,
+				*SemanticFallbackDirectory);
+		}
+
 		OutResult = FHCIAbilityKitAgentToolActionResult();
 		OutResult.bSucceeded = true;
 		OutResult.Reason = TEXT("search_path_ok");
 		OutResult.EstimatedAffectedCount = MatchedDirectories.Num();
 		OutResult.Evidence.Add(TEXT("keyword"), Keyword);
+		OutResult.Evidence.Add(TEXT("keyword_expanded"), ExpandedKeywordsLog);
+		OutResult.Evidence.Add(TEXT("keyword_expanded_count"), FString::FromInt(SearchKeywords.Num()));
 		OutResult.Evidence.Add(TEXT("matched_count"), FString::FromInt(MatchedDirectories.Num()));
 		OutResult.Evidence.Add(TEXT("matched_directories"), FString::Join(MatchedDirectories, TEXT("|")));
 		OutResult.Evidence.Add(TEXT("best_directory"), MatchedDirectories.Num() > 0 ? MatchedDirectories[0] : TEXT("-"));
+		OutResult.Evidence.Add(TEXT("semantic_fallback_used"), bUsedSemanticFallback ? TEXT("true") : TEXT("false"));
+		OutResult.Evidence.Add(TEXT("semantic_fallback_directory"), bUsedSemanticFallback ? SemanticFallbackDirectory : TEXT("-"));
 		OutResult.Evidence.Add(TEXT("keyword_normalized"), KeywordNormalized);
 		OutResult.Evidence.Add(TEXT("scanned_game_paths"), FString::FromInt(ScannedGamePathCount));
 		for (int32 Index = 0; Index < MatchedDirectories.Num(); ++Index)
@@ -406,9 +532,10 @@ private:
 		UE_LOG(
 			LogHCIAbilityKitAgentToolActions,
 			Display,
-			TEXT("[HCIAbilityKit][SearchPath] done keyword=\"%s\" normalized=\"%s\" scanned_game_paths=%d matched_count=%d best_directory=\"%s\""),
+			TEXT("[HCIAbilityKit][SearchPath] done keyword=\"%s\" normalized=\"%s\" expanded=\"%s\" scanned_game_paths=%d matched_count=%d best_directory=\"%s\""),
 			*Keyword,
 			*KeywordNormalized,
+			*ExpandedKeywordsLog,
 			ScannedGamePathCount,
 			MatchedDirectories.Num(),
 			MatchedDirectories.Num() > 0 ? *MatchedDirectories[0] : TEXT("-"));

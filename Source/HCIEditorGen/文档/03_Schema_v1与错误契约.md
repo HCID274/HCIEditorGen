@@ -77,7 +77,7 @@
 ```
 
 - `planner_provider` 枚举：`llm|keyword_fallback`
-- `fallback_reason` 枚举：`llm_timeout|llm_invalid_json|llm_contract_invalid|llm_empty_response|llm_circuit_open|none`
+- `fallback_reason` 枚举：`llm_timeout|llm_invalid_json|llm_contract_invalid|llm_empty_response|llm_circuit_open|llm_http_error|llm_config_missing|none`
 - H2 观测字段：
   - `llm_attempts`：本次请求 LLM 尝试次数（含重试）。
   - `retry_used`：是否发生重试。
@@ -97,6 +97,9 @@
   - `E4304`：`llm_empty_response`
 - H2 新增：
   - `E4305`：`llm_circuit_open`
+- H3 新增：
+  - `E4306`：`llm_http_error`
+  - `E4307`：`llm_config_missing`
 
 ## 5. 不可违反约束
 

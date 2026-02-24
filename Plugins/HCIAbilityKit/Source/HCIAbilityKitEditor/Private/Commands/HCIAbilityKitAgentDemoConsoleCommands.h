@@ -20,6 +20,8 @@ private:
 	TUniquePtr<FAutoConsoleCommand> AgentPlanDemoCommand;
 	TUniquePtr<FAutoConsoleCommand> AgentPlanDemoJsonCommand;
 	TUniquePtr<FAutoConsoleCommand> AgentPlanWithLLMDemoCommand;
+	TUniquePtr<FAutoConsoleCommand> AgentPlanWithRealLLMDemoCommand;
+	TUniquePtr<FAutoConsoleCommand> AgentPlanWithRealLLMProbeCommand;
 	TUniquePtr<FAutoConsoleCommand> AgentPlanWithLLMFallbackDemoCommand;
 	TUniquePtr<FAutoConsoleCommand> AgentPlanWithLLMStabilityDemoCommand;
 	TUniquePtr<FAutoConsoleCommand> AgentPlanWithLLMMetricsDumpCommand;

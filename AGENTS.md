@@ -56,6 +56,9 @@ Scope: whole repo.
 - 代码结构发生变化（新增/删除/移动关键代码文件）时，必须同步更新：`Source/HCIEditorGen/文档/04_代码框架总览_树状图.md`（树内中文注释需与实际一致）。
 - 任何范围/里程碑变化，先改文档再改代码。
 - 保持文档轻量，不扩散到无关主题。
+- Prompt 文档唯一入口：`Source/HCIEditorGen/文档/提示词/README.md`；采用 Skills Bundle 结构（`SKILL.md + prompt.md + tools_schema.json`）。
+- Prompt 运行时注入占位符冻结：`{{TOOLS_SCHEMA}}`、`{{USER_INPUT}}`。
+- 新增字段/新增工具/约束变更时，必须先更新对应 Skill 的 `tools_schema.json`，再改代码；禁止“代码先行、文档补录”。
 
 ## 7. 质量红线
 
@@ -74,8 +77,10 @@ Scope: whole repo.
   - `Stage F` 指令解析与执行编排（`F1~F15`）：完成并通过门禁。
   - `Stage G`（`G1~G10`）：完成并通过 UE 手测门禁。
 - 当前切片：
-  - `Stage H-SliceH1`：`文档冻结已完成，待代码实现`。
-  - `H1` 范围：仅接入 LLM Planner，保持 `simulate_dry_run`，不改执行门禁语义。
+  - `Stage H-SliceH1`：已通过 UE 手测。
+  - `Stage H-SliceH2`：已通过 UE 手测（稳定性：retry/circuit/metrics）。
+  - `Stage H-SliceH3`：进行中（真实 LLM Provider：`C++ + FHttpModule + 本地配置文件`）。
+  - `Stage H-SliceH3-Prompt`：已完成 Skills Bundle 化（`H3_AgentPlanner`）并切换 Runtime 读取（`prompt.md + tools_schema.json` 注入）。
 - UE 手测命令（G10，历史通过记录）：
   - `HCIAbilityKit.AgentExecutePlanReviewPrepareStageGExecutionReadiness 1 none`
   - `HCIAbilityKit.AgentExecutePlanReviewPrepareStageGExecutionReadiness 0 none`
@@ -102,4 +107,11 @@ Scope: whole repo.
 
 - UE 构建脚本（已验证可执行）：
   - `D:\Unreal Engine\UE_5.4\Engine\Build\BatchFiles\Build.bat`
+
+## 11. Skills 标准（冻结，2026-02-24）
+
+- Skills 必须按 Bundle 管理：`文档/提示词/Skills/<SkillName>/SKILL.md|prompt.md|tools_schema.json`。
+- `tools_schema.json` 为参数边界唯一文档源，默认 `additionalProperties=false`。
+- Prompt 以 SOP 结构组织，强调“Intent -> Tool -> Args -> JSON”顺序，不得只写松散规则列表。
+- 任何后续新增字段，必须遵循同一标准：先 Schema，后 Prompt，再代码实现与测试门禁。
 

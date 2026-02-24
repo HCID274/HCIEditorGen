@@ -258,4 +258,42 @@ bool FHCIAbilityKitAgentPlannerLlmMetricsSnapshotTest::RunTest(const FString& Pa
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FHCIAbilityKitAgentPlannerRealHttpMissingConfigFallbackTest,
+	"HCIAbilityKit.Editor.AgentPlanLLM.RealHttpMissingConfigFallsBackToKeyword",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FHCIAbilityKitAgentPlannerRealHttpMissingConfigFallbackTest::RunTest(const FString& Parameters)
+{
+	FHCIAbilityKitAgentPlanner::ResetMetricsForTesting();
+	FHCIAbilityKitToolRegistry& Registry = FHCIAbilityKitToolRegistry::Get();
+	Registry.ResetToDefaults();
+
+	FHCIAbilityKitAgentPlannerBuildOptions Options;
+	Options.bPreferLlm = true;
+	Options.bUseRealHttpProvider = true;
+	Options.LlmApiKeyConfigPath = TEXT("Saved/HCIAbilityKit/Config/h3_missing_config.json");
+	Options.LlmRetryCount = 0;
+
+	FHCIAbilityKitAgentPlan Plan;
+	FString RouteReason;
+	FHCIAbilityKitAgentPlannerResultMetadata Metadata;
+	FString Error;
+	const bool bBuilt = FHCIAbilityKitAgentPlanner::BuildPlanFromNaturalLanguageWithProvider(
+		TEXT("整理临时目录资产并归档"),
+		TEXT("req_h3_llm_01"),
+		Registry,
+		Options,
+		Plan,
+		RouteReason,
+		Metadata,
+		Error);
+	TestTrue(TEXT("Missing config should still fallback and build"), bBuilt);
+	TestEqual(TEXT("Provider should be keyword_fallback"), Metadata.PlannerProvider, FString(TEXT("keyword_fallback")));
+	TestEqual(TEXT("Provider mode should be real_http"), Metadata.ProviderMode, FString(TEXT("real_http")));
+	TestEqual(TEXT("Fallback reason should be llm_config_missing"), Metadata.FallbackReason, FString(TEXT("llm_config_missing")));
+	TestEqual(TEXT("Error code should be E4307"), Metadata.ErrorCode, FString(TEXT("E4307")));
+	return true;
+}
+
 #endif

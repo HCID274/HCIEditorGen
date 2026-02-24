@@ -24,6 +24,8 @@ public class HCIAbilityKitRuntime : ModuleRules
 			new string[]
 			{
 				"Json",
+				"JsonUtilities",
+				"HTTP",
 				"AssetRegistry"
 			});
 	}

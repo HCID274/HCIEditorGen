@@ -66,6 +66,9 @@
 #include "Common/HCIAbilityKitTimeFormat.h"
 #include "Dom/JsonObject.h"
 #include "HAL/FileManager.h"
+#include "HttpModule.h"
+#include "Interfaces/IHttpRequest.h"
+#include "Interfaces/IHttpResponse.h"
 #include "HAL/PlatformProcess.h"
 #include "Misc/FileHelper.h"
 #include "Misc/Guid.h"
@@ -74,6 +77,7 @@
 #include "Serialization/JsonReader.h"
 #include "Serialization/JsonSerializer.h"
 #include "Serialization/JsonWriter.h"
+#include "Templates/Atomic.h"
 
 DEFINE_LOG_CATEGORY_STATIC(LogHCIAbilityKitAgentDemo, Log, All);
 
@@ -96,6 +100,8 @@ static FHCIAbilityKitAgentStageGExecuteCommitReceipt GHCIAbilityKitAgentStageGEx
 static FHCIAbilityKitAgentStageGExecuteFinalReport GHCIAbilityKitAgentStageGExecuteFinalReportPreviewState;
 static FHCIAbilityKitAgentStageGExecuteArchiveBundle GHCIAbilityKitAgentStageGExecuteArchiveBundlePreviewState;
 static FHCIAbilityKitAgentStageGExecutionReadinessReport GHCIAbilityKitAgentStageGExecutionReadinessReportPreviewState;
+static TAtomic<bool> GHCIAbilityKitRealLlmPlanCommandInFlight(false);
+static TArray<TSharedPtr<IHttpRequest, ESPMode::ThreadSafe>> GHCIAbilityKitRealLlmProbeRequests;
 
 static FString HCI_JoinConsoleArgsAsText(const TArray<FString>& Args)
 {
@@ -1441,12 +1447,13 @@ static void HCI_LogAgentPlanWithProviderSummary(
 	UE_LOG(
 		LogHCIAbilityKitAgentDemo,
 		Display,
-		TEXT("[HCIAbilityKit][AgentPlanLLM] case=%s summary request_id=%s intent=%s input=%s provider=%s fallback_used=%s fallback_reason=%s error_code=%s llm_attempts=%d retry_used=%s circuit_open=%s consecutive_llm_failures=%d plan_validation=%s validation_code=%s validation_reason=%s route_reason=%s steps=%d"),
+		TEXT("[HCIAbilityKit][AgentPlanLLM] case=%s summary request_id=%s intent=%s input=%s provider=%s provider_mode=%s fallback_used=%s fallback_reason=%s error_code=%s llm_attempts=%d retry_used=%s circuit_open=%s consecutive_llm_failures=%d plan_validation=%s validation_code=%s validation_reason=%s route_reason=%s steps=%d"),
 		CaseName,
 		*Plan.RequestId,
 		*Plan.Intent,
 		*UserText,
 		*PlannerMetadata.PlannerProvider,
+		*PlannerMetadata.ProviderMode,
 		PlannerMetadata.bFallbackUsed ? TEXT("true") : TEXT("false"),
 		*PlannerMetadata.FallbackReason,
 		*PlannerMetadata.ErrorCode,
@@ -1486,6 +1493,141 @@ static void HCI_LogAgentPlanRows(const TCHAR* CaseName, const FString& UserText,
 	}
 }
 
+static void HCI_RemoveRealLlmProbeRequest(const TSharedPtr<IHttpRequest, ESPMode::ThreadSafe>& Request)
+{
+	for (int32 Index = GHCIAbilityKitRealLlmProbeRequests.Num() - 1; Index >= 0; --Index)
+	{
+		if (GHCIAbilityKitRealLlmProbeRequests[Index] == Request)
+		{
+			GHCIAbilityKitRealLlmProbeRequests.RemoveAtSwap(Index);
+			return;
+		}
+	}
+}
+
+static bool HCI_TryLoadRealLlmProbeConfig(FString& OutApiKey, FString& OutApiUrl, FString& OutModel, FString& OutError)
+{
+	OutApiKey.Reset();
+	OutApiUrl = TEXT("https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions");
+	OutModel = TEXT("qwen3.5-plus");
+	OutError.Reset();
+
+	const FString ConfigPath = FPaths::Combine(FPaths::ProjectSavedDir(), TEXT("HCIAbilityKit/Config/llm_provider.local.json"));
+	if (!FPaths::FileExists(ConfigPath))
+	{
+		OutError = FString::Printf(TEXT("llm_config_file_not_found path=%s"), *ConfigPath);
+		return false;
+	}
+
+	FString JsonText;
+	if (!FFileHelper::LoadFileToString(JsonText, *ConfigPath))
+	{
+		OutError = FString::Printf(TEXT("llm_config_file_read_failed path=%s"), *ConfigPath);
+		return false;
+	}
+
+	TSharedPtr<FJsonObject> Root;
+	{
+		const TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(JsonText);
+		if (!FJsonSerializer::Deserialize(Reader, Root) || !Root.IsValid())
+		{
+			OutError = TEXT("llm_config_invalid_json");
+			return false;
+		}
+	}
+
+	if (!Root->TryGetStringField(TEXT("api_key"), OutApiKey) || OutApiKey.TrimStartAndEnd().IsEmpty())
+	{
+		OutError = TEXT("llm_config_missing_api_key");
+		return false;
+	}
+
+	FString OverrideApiUrl;
+	if (Root->TryGetStringField(TEXT("api_url"), OverrideApiUrl) && !OverrideApiUrl.TrimStartAndEnd().IsEmpty())
+	{
+		OutApiUrl = OverrideApiUrl;
+	}
+	FString OverrideModel;
+	if (Root->TryGetStringField(TEXT("model"), OverrideModel) && !OverrideModel.TrimStartAndEnd().IsEmpty())
+	{
+		OutModel = OverrideModel;
+	}
+
+	return true;
+}
+
+static void HCI_RunAbilityKitAgentPlanWithRealLLMProbeCommand(const TArray<FString>& Args)
+{
+	const FString UserText = Args.Num() > 0 ? HCI_JoinConsoleArgsAsText(Args) : FString(TEXT("你是谁"));
+
+	FString ApiKey;
+	FString ApiUrl;
+	FString Model;
+	FString ConfigError;
+	if (!HCI_TryLoadRealLlmProbeConfig(ApiKey, ApiUrl, Model, ConfigError))
+	{
+		UE_LOG(LogHCIAbilityKitAgentDemo, Error, TEXT("[HCIAbilityKit][AgentPlanLLM][Probe] config_error=%s"), *ConfigError);
+		return;
+	}
+
+	TSharedPtr<FJsonObject> RequestObject = MakeShared<FJsonObject>();
+	RequestObject->SetStringField(TEXT("model"), Model);
+	RequestObject->SetBoolField(TEXT("stream"), false);
+	RequestObject->SetBoolField(TEXT("enable_thinking"), false);
+	TArray<TSharedPtr<FJsonValue>> Messages;
+	{
+		TSharedPtr<FJsonObject> UserMessage = MakeShared<FJsonObject>();
+		UserMessage->SetStringField(TEXT("role"), TEXT("user"));
+		UserMessage->SetStringField(TEXT("content"), UserText);
+		Messages.Add(MakeShared<FJsonValueObject>(UserMessage));
+	}
+	RequestObject->SetArrayField(TEXT("messages"), Messages);
+
+	FString RequestBody;
+	{
+		TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&RequestBody);
+		FJsonSerializer::Serialize(RequestObject.ToSharedRef(), Writer);
+	}
+
+	TSharedPtr<IHttpRequest, ESPMode::ThreadSafe> Request = FHttpModule::Get().CreateRequest();
+	Request->SetURL(ApiUrl);
+	Request->SetVerb(TEXT("POST"));
+	Request->SetHeader(TEXT("Authorization"), FString::Printf(TEXT("Bearer %s"), *ApiKey));
+	Request->SetHeader(TEXT("Content-Type"), TEXT("application/json"));
+	Request->SetContentAsString(RequestBody);
+	Request->OnProcessRequestComplete().BindLambda(
+		[UserText](FHttpRequestPtr HttpRequest, FHttpResponsePtr HttpResponse, bool bSucceeded)
+		{
+			HCI_RemoveRealLlmProbeRequest(HttpRequest);
+			const int32 StatusCode = HttpResponse.IsValid() ? HttpResponse->GetResponseCode() : 0;
+			const FString Raw = HttpResponse.IsValid() ? HttpResponse->GetContentAsString() : FString(TEXT("<no_response_body>"));
+
+			UE_LOG(
+				LogHCIAbilityKitAgentDemo,
+				Display,
+				TEXT("[HCIAbilityKit][AgentPlanLLM][Probe] done input=%s success=%s status=%d"),
+				*UserText,
+				bSucceeded ? TEXT("true") : TEXT("false"),
+				StatusCode);
+			UE_LOG(LogHCIAbilityKitAgentDemo, Display, TEXT("[HCIAbilityKit][AgentPlanLLM][Probe] raw_response=%s"), *Raw);
+		});
+
+	if (!Request->ProcessRequest())
+	{
+		UE_LOG(LogHCIAbilityKitAgentDemo, Error, TEXT("[HCIAbilityKit][AgentPlanLLM][Probe] process_request_failed"));
+		return;
+	}
+
+	GHCIAbilityKitRealLlmProbeRequests.Add(Request);
+	UE_LOG(
+		LogHCIAbilityKitAgentDemo,
+		Display,
+		TEXT("[HCIAbilityKit][AgentPlanLLM][Probe] dispatched input=%s endpoint=%s model=%s enable_thinking=false stream=false"),
+		*UserText,
+		*ApiUrl,
+		*Model);
+}
+
 static void HCI_RunAbilityKitAgentPlanWithLLMDemoCommand(const TArray<FString>& Args)
 {
 	const FString UserText =
@@ -1517,9 +1659,10 @@ static void HCI_RunAbilityKitAgentPlanWithLLMDemoCommand(const TArray<FString>& 
 		UE_LOG(
 			LogHCIAbilityKitAgentDemo,
 			Error,
-			TEXT("[HCIAbilityKit][AgentPlanLLM] build_failed input=%s provider=%s fallback_used=%s fallback_reason=%s error_code=%s reason=%s"),
+			TEXT("[HCIAbilityKit][AgentPlanLLM] build_failed input=%s provider=%s provider_mode=%s fallback_used=%s fallback_reason=%s error_code=%s reason=%s"),
 			*UserText,
 			*PlannerMetadata.PlannerProvider,
+			*PlannerMetadata.ProviderMode,
 			PlannerMetadata.bFallbackUsed ? TEXT("true") : TEXT("false"),
 			*PlannerMetadata.FallbackReason,
 			PlannerMetadata.ErrorCode.IsEmpty() ? TEXT("-") : *PlannerMetadata.ErrorCode,
@@ -1530,6 +1673,118 @@ static void HCI_RunAbilityKitAgentPlanWithLLMDemoCommand(const TArray<FString>& 
 	GHCIAbilityKitAgentPlanPreviewState = Plan;
 	HCI_LogAgentPlanWithProviderSummary(TEXT("custom"), UserText, RouteReason, Plan, PlannerMetadata, Validation);
 	HCI_LogAgentPlanRows(TEXT("custom"), UserText, RouteReason, Plan);
+}
+
+static void HCI_RunAbilityKitAgentPlanWithRealLLMDemoCommand(const TArray<FString>& Args)
+{
+	FString Mode = TEXT("normal");
+	TArray<FString> PromptArgs = Args;
+	if (Args.Num() > 0)
+	{
+		const FString FirstArg = Args[0].TrimStartAndEnd().ToLower();
+		if (FirstArg == TEXT("http_fail") || FirstArg == TEXT("config_missing"))
+		{
+			Mode = FirstArg;
+			PromptArgs.RemoveAt(0);
+		}
+	}
+
+	const FString UserText =
+		PromptArgs.Num() > 0 ? HCI_JoinConsoleArgsAsText(PromptArgs) : FString(TEXT("整理临时目录资产并归档"));
+	if (UserText.IsEmpty())
+	{
+		UE_LOG(LogHCIAbilityKitAgentDemo, Error, TEXT("[HCIAbilityKit][AgentPlanLLM][H3] invalid_args reason=empty input text"));
+		return;
+	}
+
+	if (GHCIAbilityKitRealLlmPlanCommandInFlight.Exchange(true))
+	{
+		UE_LOG(
+			LogHCIAbilityKitAgentDemo,
+			Warning,
+			TEXT("[HCIAbilityKit][AgentPlanLLM][H3] busy reason=previous_request_in_flight mode=%s input=%s"),
+			*Mode,
+			*UserText);
+		return;
+	}
+
+	UE_LOG(
+		LogHCIAbilityKitAgentDemo,
+		Display,
+		TEXT("[HCIAbilityKit][AgentPlanLLM][H3] dispatched mode=%s input=%s hint=异步执行中，结果将随后输出"),
+		*Mode,
+		*UserText);
+
+	FHCIAbilityKitToolRegistry& ToolRegistry = FHCIAbilityKitToolRegistry::Get();
+	ToolRegistry.ResetToDefaults();
+
+	FHCIAbilityKitAgentPlannerBuildOptions PlannerOptions;
+	PlannerOptions.bPreferLlm = true;
+	PlannerOptions.bUseRealHttpProvider = true;
+	PlannerOptions.LlmMockMode = EHCIAbilityKitAgentPlannerLlmMockMode::None;
+	PlannerOptions.LlmRetryCount = 1;
+	PlannerOptions.bLlmEnableThinking = false;
+	PlannerOptions.bLlmStream = false;
+	PlannerOptions.LlmHttpTimeoutMs = 30000;
+	if (Mode == TEXT("http_fail"))
+	{
+		PlannerOptions.LlmApiUrl = TEXT("http://127.0.0.1:1/invalid");
+	}
+	else if (Mode == TEXT("config_missing"))
+	{
+		PlannerOptions.LlmApiKeyConfigPath = TEXT("Saved/HCIAbilityKit/Config/h3_missing_config.json");
+	}
+
+	FHCIAbilityKitAgentPlanner::BuildPlanFromNaturalLanguageWithProviderAsync(
+		UserText,
+		FString::Printf(TEXT("req_cli_h3_real_llm_%s"), *Mode),
+		ToolRegistry,
+		PlannerOptions,
+		[Mode, UserText, ToolRegistryPtr = &ToolRegistry](bool bBuilt, FHCIAbilityKitAgentPlan Plan, FString RouteReason, FHCIAbilityKitAgentPlannerResultMetadata PlannerMetadata, FString Error)
+		{
+			GHCIAbilityKitRealLlmPlanCommandInFlight.Store(false);
+
+			if (!bBuilt)
+			{
+				UE_LOG(
+					LogHCIAbilityKitAgentDemo,
+					Error,
+					TEXT("[HCIAbilityKit][AgentPlanLLM][H3] build_failed mode=%s input=%s provider=%s provider_mode=%s fallback_used=%s fallback_reason=%s error_code=%s reason=%s hint=检查配置文件 Saved/HCIAbilityKit/Config/llm_provider.local.json"),
+					*Mode,
+					*UserText,
+					*PlannerMetadata.PlannerProvider,
+					*PlannerMetadata.ProviderMode,
+					PlannerMetadata.bFallbackUsed ? TEXT("true") : TEXT("false"),
+					*PlannerMetadata.FallbackReason,
+					PlannerMetadata.ErrorCode.IsEmpty() ? TEXT("-") : *PlannerMetadata.ErrorCode,
+					*Error);
+				return;
+			}
+
+			FHCIAbilityKitAgentPlanValidationResult Validation;
+			if (!FHCIAbilityKitAgentPlanValidator::ValidatePlan(Plan, *ToolRegistryPtr, Validation))
+			{
+				UE_LOG(
+					LogHCIAbilityKitAgentDemo,
+					Error,
+					TEXT("[HCIAbilityKit][AgentPlanLLM][H3] build_failed mode=%s input=%s provider=%s provider_mode=%s fallback_used=%s fallback_reason=%s error_code=%s reason=plan_validation_failed code=%s field=%s"),
+					*Mode,
+					*UserText,
+					*PlannerMetadata.PlannerProvider,
+					*PlannerMetadata.ProviderMode,
+					PlannerMetadata.bFallbackUsed ? TEXT("true") : TEXT("false"),
+					*PlannerMetadata.FallbackReason,
+					PlannerMetadata.ErrorCode.IsEmpty() ? TEXT("-") : *PlannerMetadata.ErrorCode,
+					Validation.ErrorCode.IsEmpty() ? TEXT("-") : *Validation.ErrorCode,
+					Validation.Field.IsEmpty() ? TEXT("-") : *Validation.Field);
+				return;
+			}
+
+			GHCIAbilityKitAgentPlanPreviewState = Plan;
+			const FString CaseLabel = FString::Printf(TEXT("real_http_%s"), *Mode);
+			HCI_LogAgentPlanWithProviderSummary(*CaseLabel, UserText, RouteReason, Plan, PlannerMetadata, Validation);
+			HCI_LogAgentPlanRows(*CaseLabel, UserText, RouteReason, Plan);
+		});
 }
 
 static void HCI_RunAbilityKitAgentPlanWithLLMFallbackDemoCommand(const TArray<FString>& Args)
@@ -1585,9 +1840,10 @@ static void HCI_RunAbilityKitAgentPlanWithLLMFallbackDemoCommand(const TArray<FS
 		UE_LOG(
 			LogHCIAbilityKitAgentDemo,
 			Error,
-			TEXT("[HCIAbilityKit][AgentPlanLLM] fallback_build_failed input=%s provider=%s fallback_used=%s fallback_reason=%s error_code=%s reason=%s"),
+			TEXT("[HCIAbilityKit][AgentPlanLLM] fallback_build_failed input=%s provider=%s provider_mode=%s fallback_used=%s fallback_reason=%s error_code=%s reason=%s"),
 			*UserText,
 			*PlannerMetadata.PlannerProvider,
+			*PlannerMetadata.ProviderMode,
 			PlannerMetadata.bFallbackUsed ? TEXT("true") : TEXT("false"),
 			*PlannerMetadata.FallbackReason,
 			PlannerMetadata.ErrorCode.IsEmpty() ? TEXT("-") : *PlannerMetadata.ErrorCode,
@@ -7685,6 +7941,22 @@ void FHCIAbilityKitAgentDemoConsoleCommands::Startup()
 			FConsoleCommandWithArgsDelegate::CreateStatic(&HCI_RunAbilityKitAgentPlanWithLLMDemoCommand));
 	}
 
+	if (!AgentPlanWithRealLLMDemoCommand.IsValid())
+	{
+		AgentPlanWithRealLLMDemoCommand = MakeUnique<FAutoConsoleCommand>(
+			TEXT("HCIAbilityKit.AgentPlanWithRealLLMDemo"),
+			TEXT("H3 NL->Plan JSON demo (real HTTP LLM provider). Usage: HCIAbilityKit.AgentPlanWithRealLLMDemo [normal|config_missing|http_fail] [natural language text...]"),
+			FConsoleCommandWithArgsDelegate::CreateStatic(&HCI_RunAbilityKitAgentPlanWithRealLLMDemoCommand));
+	}
+
+	if (!AgentPlanWithRealLLMProbeCommand.IsValid())
+	{
+		AgentPlanWithRealLLMProbeCommand = MakeUnique<FAutoConsoleCommand>(
+			TEXT("HCIAbilityKit.AgentPlanWithRealLLMProbe"),
+			TEXT("H3 HTTP probe (raw response). Usage: HCIAbilityKit.AgentPlanWithRealLLMProbe [prompt_text]"),
+			FConsoleCommandWithArgsDelegate::CreateStatic(&HCI_RunAbilityKitAgentPlanWithRealLLMProbeCommand));
+	}
+
 	if (!AgentPlanWithLLMFallbackDemoCommand.IsValid())
 	{
 		AgentPlanWithLLMFallbackDemoCommand = MakeUnique<FAutoConsoleCommand>(
@@ -8065,6 +8337,8 @@ void FHCIAbilityKitAgentDemoConsoleCommands::Shutdown()
 	AgentPlanDemoCommand.Reset();
 	AgentPlanDemoJsonCommand.Reset();
 	AgentPlanWithLLMDemoCommand.Reset();
+	AgentPlanWithRealLLMDemoCommand.Reset();
+	AgentPlanWithRealLLMProbeCommand.Reset();
 	AgentPlanWithLLMFallbackDemoCommand.Reset();
 	AgentPlanWithLLMStabilityDemoCommand.Reset();
 	AgentPlanWithLLMMetricsDumpCommand.Reset();

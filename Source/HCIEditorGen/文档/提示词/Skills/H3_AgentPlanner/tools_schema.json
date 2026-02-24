@@ -1,0 +1,396 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "HCIAbilityKit H3 Agent Planner Tools Schema",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "allowed_tools",
+    "tool_args_json_schema",
+    "plan_output_json_schema"
+  ],
+  "properties": {
+    "allowed_tools": {
+      "type": "array",
+      "minItems": 7,
+      "maxItems": 7,
+      "items": {
+        "type": "string",
+        "enum": [
+          "ScanAssets",
+          "SetTextureMaxSize",
+          "SetMeshLODGroup",
+          "ScanLevelMeshRisks",
+          "NormalizeAssetNamingByMetadata",
+          "RenameAsset",
+          "MoveAsset"
+        ]
+      },
+      "uniqueItems": true
+    },
+    "tool_args_json_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "ScanAssets",
+        "SetTextureMaxSize",
+        "SetMeshLODGroup",
+        "ScanLevelMeshRisks",
+        "NormalizeAssetNamingByMetadata",
+        "RenameAsset",
+        "MoveAsset"
+      ],
+      "properties": {
+        "ScanAssets": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {}
+        },
+        "SetTextureMaxSize": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "asset_paths",
+            "max_size"
+          ],
+          "properties": {
+            "asset_paths": {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 50,
+              "items": {
+                "type": "string"
+              }
+            },
+            "max_size": {
+              "type": "integer",
+              "enum": [
+                256,
+                512,
+                1024,
+                2048,
+                4096,
+                8192
+              ]
+            }
+          }
+        },
+        "SetMeshLODGroup": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "asset_paths",
+            "lod_group"
+          ],
+          "properties": {
+            "asset_paths": {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 50,
+              "items": {
+                "type": "string"
+              }
+            },
+            "lod_group": {
+              "type": "string",
+              "enum": [
+                "LevelArchitecture",
+                "SmallProp",
+                "LargeProp",
+                "Foliage",
+                "Character"
+              ]
+            }
+          }
+        },
+        "ScanLevelMeshRisks": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "scope",
+            "checks",
+            "max_actor_count"
+          ],
+          "properties": {
+            "scope": {
+              "type": "string",
+              "enum": [
+                "selected",
+                "all"
+              ]
+            },
+            "checks": {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 2,
+              "uniqueItems": true,
+              "items": {
+                "type": "string",
+                "enum": [
+                  "missing_collision",
+                  "default_material"
+                ]
+              }
+            },
+            "max_actor_count": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 5000
+            }
+          }
+        },
+        "NormalizeAssetNamingByMetadata": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "asset_paths",
+            "metadata_source",
+            "prefix_mode",
+            "target_root"
+          ],
+          "properties": {
+            "asset_paths": {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 50,
+              "items": {
+                "type": "string"
+              }
+            },
+            "metadata_source": {
+              "type": "string",
+              "enum": [
+                "auto",
+                "UAssetImportData",
+                "AssetUserData"
+              ]
+            },
+            "prefix_mode": {
+              "type": "string",
+              "enum": [
+                "auto_by_asset_class"
+              ]
+            },
+            "target_root": {
+              "type": "string",
+              "pattern": "^/Game/.*"
+            }
+          }
+        },
+        "RenameAsset": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "asset_path",
+            "new_name"
+          ],
+          "properties": {
+            "asset_path": {
+              "type": "string",
+              "pattern": "^/Game/.*"
+            },
+            "new_name": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64,
+              "pattern": "^[A-Za-z0-9_]+$"
+            }
+          }
+        },
+        "MoveAsset": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "asset_path",
+            "target_path"
+          ],
+          "properties": {
+            "asset_path": {
+              "type": "string",
+              "pattern": "^/Game/.*"
+            },
+            "target_path": {
+              "type": "string",
+              "pattern": "^/Game/.*"
+            }
+          }
+        }
+      }
+    },
+    "plan_output_json_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "intent",
+        "route_reason",
+        "steps"
+      ],
+      "properties": {
+        "intent": {
+          "type": "string",
+          "minLength": 1
+        },
+        "route_reason": {
+          "type": "string",
+          "minLength": 1
+        },
+        "steps": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "step_id",
+              "tool_name",
+              "args",
+              "expected_evidence"
+            ],
+            "properties": {
+              "step_id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "tool_name": {
+                "type": "string",
+                "enum": [
+                  "ScanAssets",
+                  "SetTextureMaxSize",
+                  "SetMeshLODGroup",
+                  "ScanLevelMeshRisks",
+                  "NormalizeAssetNamingByMetadata",
+                  "RenameAsset",
+                  "MoveAsset"
+                ]
+              },
+              "args": {
+                "type": "object"
+              },
+              "expected_evidence": {
+                "type": "array",
+                "minItems": 1,
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              }
+            },
+            "allOf": [
+              {
+                "if": {
+                  "properties": {
+                    "tool_name": {
+                      "const": "ScanAssets"
+                    }
+                  }
+                },
+                "then": {
+                  "properties": {
+                    "args": {
+                      "$ref": "#/properties/tool_args_json_schema/properties/ScanAssets"
+                    }
+                  }
+                }
+              },
+              {
+                "if": {
+                  "properties": {
+                    "tool_name": {
+                      "const": "SetTextureMaxSize"
+                    }
+                  }
+                },
+                "then": {
+                  "properties": {
+                    "args": {
+                      "$ref": "#/properties/tool_args_json_schema/properties/SetTextureMaxSize"
+                    }
+                  }
+                }
+              },
+              {
+                "if": {
+                  "properties": {
+                    "tool_name": {
+                      "const": "SetMeshLODGroup"
+                    }
+                  }
+                },
+                "then": {
+                  "properties": {
+                    "args": {
+                      "$ref": "#/properties/tool_args_json_schema/properties/SetMeshLODGroup"
+                    }
+                  }
+                }
+              },
+              {
+                "if": {
+                  "properties": {
+                    "tool_name": {
+                      "const": "ScanLevelMeshRisks"
+                    }
+                  }
+                },
+                "then": {
+                  "properties": {
+                    "args": {
+                      "$ref": "#/properties/tool_args_json_schema/properties/ScanLevelMeshRisks"
+                    }
+                  }
+                }
+              },
+              {
+                "if": {
+                  "properties": {
+                    "tool_name": {
+                      "const": "NormalizeAssetNamingByMetadata"
+                    }
+                  }
+                },
+                "then": {
+                  "properties": {
+                    "args": {
+                      "$ref": "#/properties/tool_args_json_schema/properties/NormalizeAssetNamingByMetadata"
+                    }
+                  }
+                }
+              },
+              {
+                "if": {
+                  "properties": {
+                    "tool_name": {
+                      "const": "RenameAsset"
+                    }
+                  }
+                },
+                "then": {
+                  "properties": {
+                    "args": {
+                      "$ref": "#/properties/tool_args_json_schema/properties/RenameAsset"
+                    }
+                  }
+                }
+              },
+              {
+                "if": {
+                  "properties": {
+                    "tool_name": {
+                      "const": "MoveAsset"
+                    }
+                  }
+                },
+                "then": {
+                  "properties": {
+                    "args": {
+                      "$ref": "#/properties/tool_args_json_schema/properties/MoveAsset"
+                    }
+                  }
+                }
+              }
+            ]
+          }
+        }
+      }
+    }
+  }
+}

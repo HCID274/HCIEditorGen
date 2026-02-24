@@ -30,14 +30,20 @@ Step 5 - JSON Generation:
 - `args` MUST satisfy the chosen tool schema.
 - `args` MUST NOT include undeclared fields (`additionalProperties=false`).
 - `expected_evidence` MUST be a non-empty string array.
-- If intent is unclear, fallback to:
-  - `intent = "scan_assets"`
-  - `route_reason = "fallback_scan_assets"`
-  - tool: `ScanAssets`
+- `fallback_scan_assets` is allowed ONLY for non-directory, non-operational, pure-chat unclear input (user gives no actionable folder/asset target).
 - If `ENV_CONTEXT` contains a file list, treat that file list as the ONLY source of truth for concrete asset paths in `RenameAsset`/`MoveAsset`/`NormalizeAssetNamingByMetadata`.
 - Never fabricate asset paths that are not present in `ENV_CONTEXT` when file list is available.
 - If `ENV_CONTEXT` is empty, you MUST avoid direct `RenameAsset`/`MoveAsset` on guessed file paths.
 - If `ENV_CONTEXT` is empty and user intent is directory-oriented, first resolve a folder via semantic mapping or `SearchPath`, then `ScanAssets`, then output follow-up write steps.
+
+## IRON RULE: DIRECTORY SEARCH FIRST (absolute, non-negotiable)
+- If user asks to inspect/organize/modify a "folder/directory/文件夹/目录" and the referenced directory is NOT an explicit `/Game/...` absolute path, Step 1 MUST be `SearchPath`.
+- This rule applies to ANY folder keyword, including uncommon names such as `MNew`, `ABC`, mixed case, or aliases.
+- For this case, `fallback_scan_assets` single-step output is PROHIBITED.
+- Required chain:
+  - `step_1_search` -> `SearchPath` with extracted directory keyword.
+  - `step_2_scan` -> `ScanAssets` with `{"directory":"{{step_1_search.matched_directories[0]}}"}`.
+- If user provides an explicit `/Game/...` absolute path, start with `ScanAssets` on that exact path.
 
 ## IRON RULE: PIPELINE CONTRACT (non-negotiable)
 - If Step N is `SearchPath`, Step N+1 MUST use `{{step_N.matched_directories[0]}}` for any directory-like args (`directory`, `target_root`, `target_path`).
@@ -46,12 +52,11 @@ Step 5 - JSON Generation:
 - Use deterministic step ids for pipeline chains (example: `step_1_search`, `step_2_scan`) so references are unambiguous.
 
 ## DIRECTORY-FIRST POLICY (critical)
-- If user intent references a directory/folder bucket (e.g. "临时目录", "temp folder", "整理某目录资产"), the first discovery step MUST include `ScanAssets`.
-- If path is unknown and `SearchPath` is available, `SearchPath` MAY appear before `ScanAssets` to resolve directory candidates.
+- If user intent references a directory/folder bucket (e.g. "临时目录", "temp folder", "整理某目录资产") and the path is not explicit `/Game/...`, step 1 MUST be `SearchPath`.
+- `SearchPath` is REQUIRED (not optional) for non-absolute directory references.
 - For directory-first cases, do not start with `NormalizeAssetNamingByMetadata` / `RenameAsset` / `MoveAsset` directly.
 - Emit an intermediate scan-first plan first, then let downstream execution evidence drive rename/move planning.
-- If a semantic directory can be inferred, fill `ScanAssets.args.directory` with that `/Game/...` directory.
-- If semantic directory cannot be inferred reliably and `SearchPath` is available in `TOOLS_SCHEMA.allowed_tools`, step 1 should be `SearchPath` and step 2 should be `ScanAssets` using the discovered directory.
+- Always bind `ScanAssets.args.directory` to `{{step_1_search.matched_directories[0]}}` after `SearchPath`.
 
 ## COMMON_UE_PATHS (semantic mapping)
 - "临时目录", "临时文件夹", "temp folder", "那个文件夹" -> `/Game/Temp`
@@ -59,14 +64,13 @@ Step 5 - JSON Generation:
 - "关卡目录", "场景目录", "level folder" -> `/Game/Maps`
 
 ## DISCOVERY-FIRST POLICY (when ENV_CONTEXT is empty)
-- Case A: semantic mapping succeeds:
-  - Start with `ScanAssets` on mapped directory.
+- Case A: non-absolute directory reference:
+  - MUST start with `SearchPath` using the user-mentioned folder keyword (or mapped keyword from `COMMON_UE_PATHS`).
+  - Then use `ScanAssets` on `{{step_1_search.matched_directories[0]}}`.
   - Then output write steps (`NormalizeAssetNamingByMetadata` / `RenameAsset` / `MoveAsset`) using scanned evidence only.
-- Case B: semantic mapping fails:
-  - If `SearchPath` is available, use `SearchPath` first with a concise keyword.
-  - Then use `ScanAssets` on discovered directory.
-  - Then output write steps based on scan evidence.
-- Case C: neither mapping nor search is available:
+- Case B: explicit absolute path in user input:
+  - Use `ScanAssets` directly on that explicit path.
+- Case C: user provides no actionable target and no directory/asset intent:
   - Fallback to read-only `ScanAssets` with `route_reason = "fallback_scan_assets"`.
 
 ## FEW-SHOT (placeholder only, no hardcoded path examples)
@@ -93,9 +97,10 @@ Step 5 - JSON Generation:
   - `route_reason = "asset_compliance_texture_lod"`
   - preferred tools: `SetTextureMaxSize` and/or `SetMeshLODGroup`
 - Generic fallback:
-  - `intent = "scan_assets"`
-  - `route_reason = "fallback_scan_assets"`
-  - tool: `ScanAssets`
+  - only when input is pure unclear chat with no actionable folder/asset target:
+    - `intent = "scan_assets"`
+    - `route_reason = "fallback_scan_assets"`
+    - tool: `ScanAssets`
 
 ## TOOLS_SCHEMA
 {{TOOLS_SCHEMA}}

@@ -9,6 +9,7 @@
 #include "Dom/JsonValue.h"
 #include "Framework/Application/SlateApplication.h"
 #include "IContentBrowserSingleton.h"
+#include "Misc/MessageDialog.h"
 #include "Modules/ModuleManager.h"
 #include "Styling/AppStyle.h"
 #include "Widgets/Input/SButton.h"
@@ -183,6 +184,59 @@ public:
 		Rows = InArgs._Rows;
 		EnvScannedAssetCount = InArgs._EnvScannedAssetCount;
 
+		const auto RunPlan = [this](const bool bDryRun)
+		{
+			const FHCIAbilityKitToolRegistry& ToolRegistry = FHCIAbilityKitToolRegistry::GetReadOnly();
+			FHCIAbilityKitAgentExecutorOptions Options;
+			Options.bDryRun = bDryRun;
+			Options.bValidatePlanBeforeExecute = true;
+			Options.TerminationPolicy = EHCIAbilityKitAgentExecutorTerminationPolicy::ContinueOnFailure;
+			HCIAbilityKitAgentToolActions::BuildStageIDraftActions(Options.ToolActions);
+
+			FHCIAbilityKitAgentExecutorRunResult RunResult;
+			const bool bRunOk = FHCIAbilityKitAgentExecutor::ExecutePlan(
+				Plan,
+				ToolRegistry,
+				FHCIAbilityKitAgentPlanValidationContext(),
+				Options,
+				RunResult);
+
+			int32 ScannedAssets = 0;
+			for (const FHCIAbilityKitAgentExecutorStepResult& Step : RunResult.StepResults)
+			{
+				if (Step.ToolName == TEXT("ScanAssets"))
+				{
+					ScannedAssets += HCI_TryGetIntEvidence(Step.Evidence, TEXT("asset_count"), Step.TargetCountEstimate);
+				}
+			}
+
+			const FString ModeLabel = bDryRun ? TEXT("DryRun") : TEXT("Commit");
+			const FString Summary = FString::Printf(
+				TEXT("%s: ok=%s terminal=%s succeeded=%d failed=%d scanned_assets=%d"),
+				*ModeLabel,
+				bRunOk ? TEXT("true") : TEXT("false"),
+				*RunResult.TerminalStatus,
+				RunResult.SucceededSteps,
+				RunResult.FailedSteps,
+				ScannedAssets);
+			if (RunSummaryText.IsValid())
+			{
+				RunSummaryText->SetText(FText::FromString(Summary));
+			}
+
+			UE_LOG(
+				LogHCIAbilityKitAgentPlanPreview,
+				Display,
+				TEXT("[HCIAbilityKit][AgentPlanPreview] mode=%s executed request_id=%s steps=%d terminal=%s succeeded=%d failed=%d scanned_assets=%d"),
+				bDryRun ? TEXT("dry_run") : TEXT("execute"),
+				*Plan.RequestId,
+				Plan.Steps.Num(),
+				*RunResult.TerminalStatus,
+				RunResult.SucceededSteps,
+				RunResult.FailedSteps,
+				ScannedAssets);
+		};
+
 		TSharedRef<SVerticalBox> RowsBox = SNew(SVerticalBox);
 		for (const TSharedPtr<FHCIAbilityKitAgentPlanPreviewRow>& Row : Rows)
 		{
@@ -284,54 +338,33 @@ public:
 					[
 						SNew(SButton)
 						.Text(FText::FromString(TEXT("模拟执行（草案）")))
-						.OnClicked_Lambda([this]()
+						.OnClicked_Lambda([this, RunPlan]()
 						{
-							const FHCIAbilityKitToolRegistry& ToolRegistry = FHCIAbilityKitToolRegistry::GetReadOnly();
-							FHCIAbilityKitAgentExecutorOptions Options;
-							Options.bDryRun = true;
-							Options.bValidatePlanBeforeExecute = true;
-							Options.TerminationPolicy = EHCIAbilityKitAgentExecutorTerminationPolicy::ContinueOnFailure;
-							HCIAbilityKitAgentToolActions::BuildStageIDraftActions(Options.ToolActions);
-
-							FHCIAbilityKitAgentExecutorRunResult RunResult;
-							const bool bRunOk = FHCIAbilityKitAgentExecutor::ExecutePlan(
-								Plan,
-								ToolRegistry,
-								FHCIAbilityKitAgentPlanValidationContext(),
-								Options,
-								RunResult);
-
-							int32 ScannedAssets = 0;
-							for (const FHCIAbilityKitAgentExecutorStepResult& Step : RunResult.StepResults)
+							RunPlan(true);
+							return FReply::Handled();
+						})
+					]
+					+ SHorizontalBox::Slot()
+					.AutoWidth()
+					.Padding(8.0f, 0.0f, 0.0f, 0.0f)
+					[
+						SNew(SButton)
+						.Text(FText::FromString(TEXT("确认并执行（Commit Changes）")))
+						.OnClicked_Lambda([this, RunPlan]()
+						{
+							const EAppReturnType::Type UserDecision = FMessageDialog::Open(
+								EAppMsgType::YesNo,
+								FText::FromString(TEXT("AI 即将真实修改项目资产，操作不可逆，是否继续？")));
+							if (UserDecision != EAppReturnType::Yes)
 							{
-								if (Step.ToolName == TEXT("ScanAssets"))
+								if (RunSummaryText.IsValid())
 								{
-									ScannedAssets += HCI_TryGetIntEvidence(Step.Evidence, TEXT("asset_count"), Step.TargetCountEstimate);
+									RunSummaryText->SetText(FText::FromString(TEXT("Commit: 用户取消执行")));
 								}
+								return FReply::Handled();
 							}
 
-							const FString Summary = FString::Printf(
-								TEXT("DryRun: ok=%s terminal=%s succeeded=%d failed=%d scanned_assets=%d"),
-								bRunOk ? TEXT("true") : TEXT("false"),
-								*RunResult.TerminalStatus,
-								RunResult.SucceededSteps,
-								RunResult.FailedSteps,
-								ScannedAssets);
-							if (RunSummaryText.IsValid())
-							{
-								RunSummaryText->SetText(FText::FromString(Summary));
-							}
-
-							UE_LOG(
-								LogHCIAbilityKitAgentPlanPreview,
-								Display,
-								TEXT("[HCIAbilityKit][AgentPlanPreview] dry_run=executed request_id=%s steps=%d terminal=%s succeeded=%d failed=%d scanned_assets=%d"),
-								*Plan.RequestId,
-								Plan.Steps.Num(),
-								*RunResult.TerminalStatus,
-								RunResult.SucceededSteps,
-								RunResult.FailedSteps,
-								ScannedAssets);
+							RunPlan(false);
 							return FReply::Handled();
 						})
 					]
@@ -378,18 +411,18 @@ TArray<TSharedPtr<FHCIAbilityKitAgentPlanPreviewRow>> FHCIAbilityKitAgentPlanPre
 		TSharedPtr<FHCIAbilityKitAgentPlanPreviewRow> Row = MakeShared<FHCIAbilityKitAgentPlanPreviewRow>();
 		Row->StepIndex = StepIndex;
 		Row->StepId = Step.StepId;
-			Row->ToolName = Step.ToolName.ToString();
-			Row->RiskLevel = FHCIAbilityKitAgentPlanContract::RiskLevelToString(Step.RiskLevel);
-			const bool bHasPlaceholder = HCI_StepHasArgumentPlaceholder(Step);
-			Row->AssetObjectPaths = HCI_ExtractAssetObjectPaths(Step);
-			Row->AssetCountLabel = FString::FromInt(Row->AssetObjectPaths.Num());
-			if (bHasPlaceholder)
-			{
-				Row->AssetCountLabel = TEXT("? (Pending)");
-				Row->bLocateEnabled = false;
-				Row->LocateTooltip = TEXT("等待前置步骤结果");
-				Rows.Add(Row);
-				continue;
+		Row->ToolName = Step.ToolName.ToString();
+		Row->RiskLevel = FHCIAbilityKitAgentPlanContract::RiskLevelToString(Step.RiskLevel);
+		const bool bHasPlaceholder = HCI_StepHasArgumentPlaceholder(Step);
+		Row->AssetObjectPaths = HCI_ExtractAssetObjectPaths(Step);
+		Row->AssetCountLabel = FString::FromInt(Row->AssetObjectPaths.Num());
+		if (bHasPlaceholder)
+		{
+			Row->AssetCountLabel = TEXT("? (Pending)");
+			Row->bLocateEnabled = false;
+			Row->LocateTooltip = TEXT("等待前置步骤结果");
+			Rows.Add(Row);
+			continue;
 		}
 		for (const FString& ObjectPath : Row->AssetObjectPaths)
 		{

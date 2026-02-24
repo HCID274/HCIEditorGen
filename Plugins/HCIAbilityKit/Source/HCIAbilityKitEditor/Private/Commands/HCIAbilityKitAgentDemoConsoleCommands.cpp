@@ -1489,6 +1489,21 @@ static bool HCI_BuildAgentPlanWithLlmPreferred(
 	return true;
 }
 
+static FHCIAbilityKitAgentPlannerBuildOptions HCI_MakeRealHttpPlannerOptions()
+{
+	FHCIAbilityKitAgentPlannerBuildOptions PlannerOptions;
+	PlannerOptions.bPreferLlm = true;
+	PlannerOptions.bUseRealHttpProvider = true;
+	PlannerOptions.LlmMockMode = EHCIAbilityKitAgentPlannerLlmMockMode::None;
+	PlannerOptions.LlmRetryCount = 1;
+	PlannerOptions.bEnableAutoEnvContextScan = true;
+	PlannerOptions.ScanAssetsForEnvContext = HCI_ScanAssetsForPlannerEnvContext;
+	PlannerOptions.bLlmEnableThinking = false;
+	PlannerOptions.bLlmStream = false;
+	PlannerOptions.LlmHttpTimeoutMs = 30000;
+	return PlannerOptions;
+}
+
 static void HCI_LogAgentPlanWithProviderSummary(
 	const TCHAR* CaseName,
 	const FString& UserText,
@@ -1717,16 +1732,7 @@ void HCI_RunAbilityKitAgentPlanWithRealLLMDemoCommand(const TArray<FString>& Arg
 
 	const FHCIAbilityKitToolRegistry& ToolRegistry = FHCIAbilityKitToolRegistry::GetReadOnly();
 
-	FHCIAbilityKitAgentPlannerBuildOptions PlannerOptions;
-	PlannerOptions.bPreferLlm = true;
-	PlannerOptions.bUseRealHttpProvider = true;
-		PlannerOptions.LlmMockMode = EHCIAbilityKitAgentPlannerLlmMockMode::None;
-		PlannerOptions.LlmRetryCount = 1;
-		PlannerOptions.bEnableAutoEnvContextScan = true;
-		PlannerOptions.ScanAssetsForEnvContext = HCI_ScanAssetsForPlannerEnvContext;
-		PlannerOptions.bLlmEnableThinking = false;
-		PlannerOptions.bLlmStream = false;
-	PlannerOptions.LlmHttpTimeoutMs = 30000;
+	FHCIAbilityKitAgentPlannerBuildOptions PlannerOptions = HCI_MakeRealHttpPlannerOptions();
 	if (Mode == TEXT("http_fail"))
 	{
 		PlannerOptions.LlmApiUrl = TEXT("http://127.0.0.1:1/invalid");
@@ -2189,32 +2195,91 @@ void HCI_RunAbilityKitAgentPlanPreviewUiCommand(const TArray<FString>& Args)
 {
 	const FString UserText =
 		Args.Num() > 0 ? HCI_JoinConsoleArgsAsText(Args) : FString(TEXT("整理临时目录资产，按规范命名并归档"));
-
-	FHCIAbilityKitAgentPlan Plan;
-	FString RouteReason;
-	FString Error;
-	if (!HCI_BuildAgentPlanDemoPlan(UserText, TEXT("req_cli_i1_preview_ui"), Plan, RouteReason, Error))
+	if (UserText.IsEmpty())
 	{
 		UE_LOG(
 			LogHCIAbilityKitAgentDemo,
 			Error,
-			TEXT("[HCIAbilityKit][AgentPlanPreviewUI] build_failed input=%s reason=%s"),
-			*UserText,
-			*Error);
+			TEXT("[HCIAbilityKit][AgentPlanPreviewUI] invalid_args reason=empty input text"));
 		return;
 	}
 
-	HCI_State().AgentPlanPreviewState = Plan;
-	FHCIAbilityKitAgentPlanPreviewWindow::OpenWindow(Plan);
+	if (HCI_State().bRealLlmPlanCommandInFlight.Exchange(true))
+	{
+		UE_LOG(
+			LogHCIAbilityKitAgentDemo,
+			Warning,
+			TEXT("[HCIAbilityKit][AgentPlanPreviewUI] busy reason=previous_request_in_flight input=%s"),
+			*UserText);
+		return;
+	}
 
 	UE_LOG(
 		LogHCIAbilityKitAgentDemo,
 		Display,
-		TEXT("[HCIAbilityKit][AgentPlanPreviewUI] opened request_id=%s intent=%s route_reason=%s steps=%d"),
-		*Plan.RequestId,
-		*Plan.Intent,
-		*RouteReason,
-		Plan.Steps.Num());
+		TEXT("[HCIAbilityKit][AgentPlanLLM][H3] dispatched mode=normal input=%s source=AgentPlanPreviewUI hint=异步执行中，结果将随后输出"),
+		*UserText);
+
+	const FHCIAbilityKitToolRegistry& ToolRegistry = FHCIAbilityKitToolRegistry::GetReadOnly();
+	const FHCIAbilityKitAgentPlannerBuildOptions PlannerOptions = HCI_MakeRealHttpPlannerOptions();
+	FHCIAbilityKitAgentPlanner::BuildPlanFromNaturalLanguageWithProviderAsync(
+		UserText,
+		TEXT("req_cli_i1_preview_ui"),
+		ToolRegistry,
+		PlannerOptions,
+		[UserText, ToolRegistryPtr = &ToolRegistry](bool bBuilt, FHCIAbilityKitAgentPlan Plan, FString RouteReason, FHCIAbilityKitAgentPlannerResultMetadata PlannerMetadata, FString Error)
+		{
+			HCI_State().bRealLlmPlanCommandInFlight.Store(false);
+			if (!bBuilt)
+			{
+				UE_LOG(
+					LogHCIAbilityKitAgentDemo,
+					Error,
+					TEXT("[HCIAbilityKit][AgentPlanPreviewUI] build_failed input=%s provider=%s provider_mode=%s fallback_used=%s fallback_reason=%s error_code=%s reason=%s"),
+					*UserText,
+					*PlannerMetadata.PlannerProvider,
+					*PlannerMetadata.ProviderMode,
+					PlannerMetadata.bFallbackUsed ? TEXT("true") : TEXT("false"),
+					*PlannerMetadata.FallbackReason,
+					PlannerMetadata.ErrorCode.IsEmpty() ? TEXT("-") : *PlannerMetadata.ErrorCode,
+					*Error);
+				return;
+			}
+
+			FHCIAbilityKitAgentPlanValidationResult Validation;
+			if (!FHCIAbilityKitAgentPlanValidator::ValidatePlan(Plan, *ToolRegistryPtr, Validation))
+			{
+				UE_LOG(
+					LogHCIAbilityKitAgentDemo,
+					Error,
+					TEXT("[HCIAbilityKit][AgentPlanPreviewUI] build_failed input=%s provider=%s provider_mode=%s fallback_used=%s fallback_reason=%s error_code=%s reason=plan_validation_failed code=%s field=%s"),
+					*UserText,
+					*PlannerMetadata.PlannerProvider,
+					*PlannerMetadata.ProviderMode,
+					PlannerMetadata.bFallbackUsed ? TEXT("true") : TEXT("false"),
+					*PlannerMetadata.FallbackReason,
+					PlannerMetadata.ErrorCode.IsEmpty() ? TEXT("-") : *PlannerMetadata.ErrorCode,
+					Validation.ErrorCode.IsEmpty() ? TEXT("-") : *Validation.ErrorCode,
+					Validation.Field.IsEmpty() ? TEXT("-") : *Validation.Field);
+				return;
+			}
+
+			HCI_State().AgentPlanPreviewState = Plan;
+			HCI_LogAgentPlanWithProviderSummary(TEXT("preview_ui_real_http"), UserText, RouteReason, Plan, PlannerMetadata, Validation);
+			HCI_LogAgentPlanRows(TEXT("preview_ui_real_http"), UserText, RouteReason, Plan);
+			FHCIAbilityKitAgentPlanPreviewWindow::OpenWindow(
+				Plan,
+				PlannerMetadata.bEnvContextInjected ? PlannerMetadata.EnvContextAssetCount : INDEX_NONE);
+
+			UE_LOG(
+				LogHCIAbilityKitAgentDemo,
+				Display,
+				TEXT("[HCIAbilityKit][AgentPlanPreviewUI] opened request_id=%s intent=%s route_reason=%s steps=%d"),
+				*Plan.RequestId,
+				*Plan.Intent,
+				*RouteReason,
+				Plan.Steps.Num());
+		});
 }
 
 static FHCIAbilityKitAgentPlan HCI_MakeAgentPlanValidateTexturePlan(const TCHAR* RequestId)

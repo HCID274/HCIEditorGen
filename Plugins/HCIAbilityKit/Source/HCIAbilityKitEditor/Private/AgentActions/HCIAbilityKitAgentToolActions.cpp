@@ -1,9 +1,13 @@
 #include "AgentActions/HCIAbilityKitAgentToolActions.h"
 
+#include "AssetToolsModule.h"
 #include "AssetRegistry/AssetRegistryModule.h"
 #include "Dom/JsonObject.h"
 #include "EditorAssetLibrary.h"
 #include "Modules/ModuleManager.h"
+#include "UObject/ObjectRedirector.h"
+
+DEFINE_LOG_CATEGORY_STATIC(LogHCIAbilityKitAgentToolActions, Log, All);
 
 namespace
 {
@@ -93,34 +97,120 @@ static bool HCI_ValidateSourceAssetExists(
 	return true;
 }
 
-static int32 HCI_ComputePathKeywordScore(const FString& PathLower, const FString& KeywordLower)
+static FString HCI_GetDirectoryLeafName(const FString& Path)
 {
-	if (KeywordLower.IsEmpty())
+	int32 LastSlash = INDEX_NONE;
+	if (!Path.FindLastChar(TEXT('/'), LastSlash) || LastSlash < 0 || LastSlash + 1 >= Path.Len())
+	{
+		return Path;
+	}
+	return Path.Mid(LastSlash + 1);
+}
+
+static FString HCI_NormalizeFuzzyToken(const FString& Text)
+{
+	FString Normalized = Text.ToLower();
+	Normalized.ReplaceInline(TEXT("_"), TEXT(""), ESearchCase::CaseSensitive);
+	Normalized.ReplaceInline(TEXT(" "), TEXT(""), ESearchCase::CaseSensitive);
+	Normalized.ReplaceInline(TEXT("-"), TEXT(""), ESearchCase::CaseSensitive);
+	return Normalized;
+}
+
+static int32 HCI_ComputePathKeywordScore(const FString& Path, const FString& Keyword)
+{
+	const FString KeywordNormalized = HCI_NormalizeFuzzyToken(Keyword);
+	const FString PathNormalized = HCI_NormalizeFuzzyToken(Path);
+	const FString Leaf = HCI_GetDirectoryLeafName(Path);
+	const FString LeafNormalized = HCI_NormalizeFuzzyToken(Leaf);
+
+	if (KeywordNormalized.IsEmpty())
 	{
 		return 0;
 	}
 
-	if (!PathLower.Contains(KeywordLower))
+	const bool bLeafExact = (LeafNormalized == KeywordNormalized);
+	const bool bLeafContainsKeyword = LeafNormalized.Contains(KeywordNormalized);
+	const bool bKeywordContainsLeaf = KeywordNormalized.Contains(LeafNormalized);
+	const bool bPathContainsKeyword = PathNormalized.Contains(KeywordNormalized);
+	if (!bLeafExact && !bLeafContainsKeyword && !bKeywordContainsLeaf && !bPathContainsKeyword)
 	{
 		return 0;
 	}
 
-	int32 Score = 100;
-	const FString SuffixToken = FString::Printf(TEXT("/%s"), *KeywordLower);
-	if (PathLower.EndsWith(SuffixToken))
+	int32 Score = 0;
+	if (bLeafExact)
 	{
-		Score += 300;
+		Score += 1400;
 	}
-	if (PathLower.StartsWith(SuffixToken) || PathLower.StartsWith(FString::Printf(TEXT("/game/%s"), *KeywordLower)))
+	if (LeafNormalized.StartsWith(KeywordNormalized))
+	{
+		Score += 700;
+	}
+	if (bLeafContainsKeyword)
+	{
+		Score += 550;
+	}
+	if (bKeywordContainsLeaf)
+	{
+		Score += 500;
+	}
+	if (bPathContainsKeyword)
+	{
+		Score += 350;
+	}
+	if (Path.EndsWith(Leaf))
 	{
 		Score += 250;
 	}
-	if (PathLower.Contains(SuffixToken))
-	{
-		Score += 100;
-	}
-	Score += FMath::Min(50, KeywordLower.Len());
+	Score += FMath::Min(80, KeywordNormalized.Len() * 4);
 	return Score;
+}
+
+static void HCI_FixupRedirectorReferencers(
+	const FString& SourceAssetPath,
+	FHCIAbilityKitAgentToolActionResult& OutResult)
+{
+	UObjectRedirector* Redirector = Cast<UObjectRedirector>(LoadObject<UObject>(nullptr, *SourceAssetPath));
+	if (Redirector == nullptr)
+	{
+		OutResult.Evidence.Add(TEXT("redirector_fixup"), TEXT("no_redirector_found"));
+		return;
+	}
+
+	TArray<UObjectRedirector*> Redirectors;
+	Redirectors.Add(Redirector);
+
+	FAssetToolsModule& AssetToolsModule = FModuleManager::LoadModuleChecked<FAssetToolsModule>(TEXT("AssetTools"));
+	AssetToolsModule.Get().FixupReferencers(Redirectors, false, ERedirectFixupMode::DeleteFixedUpRedirectors);
+	OutResult.Evidence.Add(TEXT("redirector_fixup"), TEXT("fixup_referencers_called"));
+	OutResult.Evidence.Add(TEXT("redirector_count"), FString::FromInt(Redirectors.Num()));
+}
+
+static bool HCI_MoveAssetWithAssetTools(const FString& SourceAssetPath, const FString& DestinationAssetPath)
+{
+	UObject* SourceAsset = LoadObject<UObject>(nullptr, *SourceAssetPath);
+	if (SourceAsset == nullptr)
+	{
+		return false;
+	}
+
+	FString DestinationPackagePath;
+	FString DestinationAssetName;
+	if (!HCI_TrySplitObjectPath(DestinationAssetPath, DestinationPackagePath, DestinationAssetName))
+	{
+		return false;
+	}
+
+	const FString DestinationDir = HCI_GetDirectoryFromPackagePath(DestinationPackagePath);
+	if (DestinationDir.IsEmpty())
+	{
+		return false;
+	}
+
+	FAssetToolsModule& AssetToolsModule = FModuleManager::LoadModuleChecked<FAssetToolsModule>(TEXT("AssetTools"));
+	TArray<FAssetRenameData> RenameRequests;
+	RenameRequests.Emplace(SourceAsset, DestinationDir, DestinationAssetName);
+	return AssetToolsModule.Get().RenameAssets(RenameRequests);
 }
 
 class FHCIAbilityKitScanAssetsToolAction final : public IHCIAbilityKitAgentToolAction
@@ -218,32 +308,59 @@ private:
 			return false;
 		}
 
-		const FString KeywordLower = Keyword.ToLower();
 		FAssetRegistryModule& AssetRegistryModule = FModuleManager::LoadModuleChecked<FAssetRegistryModule>(TEXT("AssetRegistry"));
 		IAssetRegistry& Registry = AssetRegistryModule.Get();
 
-		TArray<FString> CachedPaths;
-		Registry.GetAllCachedPaths(CachedPaths);
+		if (!Registry.IsSearchAllAssets())
+		{
+			UE_LOG(
+				LogHCIAbilityKitAgentToolActions,
+				Display,
+				TEXT("[HCIAbilityKit][SearchPath] search_all_assets=start keyword=\"%s\""),
+				*Keyword);
+			Registry.SearchAllAssets(true);
+		}
+
+		if (Registry.IsLoadingAssets())
+		{
+			Registry.WaitForCompletion();
+		}
 
 		TArray<FHCIPathCandidate> Candidates;
-		Candidates.Reserve(CachedPaths.Num());
-		for (const FString& Path : CachedPaths)
+		int32 ScannedGamePathCount = 0;
+		const FString KeywordNormalized = HCI_NormalizeFuzzyToken(Keyword);
+		Registry.EnumerateAllCachedPaths([&](FName PathName)
 		{
+			const FString Path = PathName.ToString();
 			if (!Path.StartsWith(TEXT("/Game/")))
 			{
-				continue;
+				return true;
 			}
+			++ScannedGamePathCount;
 
-			const int32 Score = HCI_ComputePathKeywordScore(Path.ToLower(), KeywordLower);
+			const FString LeafName = HCI_GetDirectoryLeafName(Path);
+			const FString LeafNormalized = HCI_NormalizeFuzzyToken(LeafName);
+			const int32 Score = HCI_ComputePathKeywordScore(Path, Keyword);
 			if (Score <= 0)
 			{
-				continue;
+				return true;
 			}
 
 			FHCIPathCandidate& Candidate = Candidates.AddDefaulted_GetRef();
 			Candidate.Path = Path;
 			Candidate.Score = Score;
-		}
+			UE_LOG(
+				LogHCIAbilityKitAgentToolActions,
+				Display,
+				TEXT("[HCIAbilityKit][SearchPath] keyword=\"%s\" normalized=\"%s\" matched_path=\"%s\" leaf=\"%s\" leaf_normalized=\"%s\" score=%d"),
+				*Keyword,
+				*KeywordNormalized,
+				*Path,
+				*LeafName,
+				*LeafNormalized,
+				Score);
+			return true;
+		});
 
 		Candidates.Sort([](const FHCIPathCandidate& A, const FHCIPathCandidate& B)
 		{
@@ -277,6 +394,8 @@ private:
 		OutResult.Evidence.Add(TEXT("matched_count"), FString::FromInt(MatchedDirectories.Num()));
 		OutResult.Evidence.Add(TEXT("matched_directories"), FString::Join(MatchedDirectories, TEXT("|")));
 		OutResult.Evidence.Add(TEXT("best_directory"), MatchedDirectories.Num() > 0 ? MatchedDirectories[0] : TEXT("-"));
+		OutResult.Evidence.Add(TEXT("keyword_normalized"), KeywordNormalized);
+		OutResult.Evidence.Add(TEXT("scanned_game_paths"), FString::FromInt(ScannedGamePathCount));
 		for (int32 Index = 0; Index < MatchedDirectories.Num(); ++Index)
 		{
 			OutResult.Evidence.Add(
@@ -284,6 +403,15 @@ private:
 				MatchedDirectories[Index]);
 		}
 		OutResult.Evidence.Add(TEXT("result"), TEXT("search_path_ok"));
+		UE_LOG(
+			LogHCIAbilityKitAgentToolActions,
+			Display,
+			TEXT("[HCIAbilityKit][SearchPath] done keyword=\"%s\" normalized=\"%s\" scanned_game_paths=%d matched_count=%d best_directory=\"%s\""),
+			*Keyword,
+			*KeywordNormalized,
+			ScannedGamePathCount,
+			MatchedDirectories.Num(),
+			MatchedDirectories.Num() > 0 ? *MatchedDirectories[0] : TEXT("-"));
 		return true;
 	}
 };
@@ -369,8 +497,8 @@ public:
 			return true;
 		}
 
-			const int32 DotIndex = DestinationAssetPath.Find(TEXT("."), ESearchCase::CaseSensitive, ESearchDir::FromStart);
-			const FString DestinationPackagePath = (DotIndex == INDEX_NONE) ? DestinationAssetPath : DestinationAssetPath.Left(DotIndex);
+		const int32 DotIndex = DestinationAssetPath.Find(TEXT("."), ESearchCase::CaseSensitive, ESearchDir::FromStart);
+		const FString DestinationPackagePath = (DotIndex == INDEX_NONE) ? DestinationAssetPath : DestinationAssetPath.Left(DotIndex);
 		const FString DestinationDir = HCI_GetDirectoryFromPackagePath(DestinationPackagePath);
 		if (!DestinationDir.IsEmpty())
 		{
@@ -381,6 +509,10 @@ public:
 		OutResult.bSucceeded = bRenamed;
 		OutResult.ErrorCode = bRenamed ? FString() : TEXT("E4203");
 		OutResult.Reason = bRenamed ? TEXT("rename_execute_ok") : TEXT("rename_execute_failed");
+		if (bRenamed)
+		{
+			HCI_FixupRedirectorReferencers(SourceAssetPath, OutResult);
+		}
 		OutResult.Evidence.Add(TEXT("result"), bRenamed ? TEXT("rename_execute_ok") : TEXT("rename_execute_failed"));
 		return bRenamed;
 	}
@@ -486,10 +618,14 @@ public:
 			UEditorAssetLibrary::MakeDirectory(DestinationDir);
 		}
 
-		const bool bMoved = UEditorAssetLibrary::RenameAsset(SourceAssetPath, DestinationAssetPath);
+		const bool bMoved = HCI_MoveAssetWithAssetTools(SourceAssetPath, DestinationAssetPath);
 		OutResult.bSucceeded = bMoved;
 		OutResult.ErrorCode = bMoved ? FString() : TEXT("E4204");
 		OutResult.Reason = bMoved ? TEXT("move_execute_ok") : TEXT("move_execute_failed");
+		if (bMoved)
+		{
+			HCI_FixupRedirectorReferencers(SourceAssetPath, OutResult);
+		}
 		OutResult.Evidence.Add(TEXT("result"), bMoved ? TEXT("move_execute_ok") : TEXT("move_execute_failed"));
 		return bMoved;
 	}

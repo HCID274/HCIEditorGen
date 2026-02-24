@@ -74,10 +74,18 @@ Scope: whole repo.
   - `Stage F` 指令解析与执行编排（`F1~F15`）：完成并通过门禁。
   - `Stage G`：`G1~G9` 完成并通过门禁。
 - 当前切片：
-  - `Stage G-SliceG10`：`DocFreeze 已冻结；待实现 + UE 手测门禁`。
+  - `Stage H-SliceH1`：`待文档冻结（禁止直接实现）`。
+  - `Stage G-SliceG10`：`已完成并通过 UE 手测门禁`。
   - 冻结结果：`G10` 继续 `simulate_dry_run`，新增 `StageGExecutionReadinessReport` 与错误码 `E4218/E4219`。
+  - UE 手测命令（G10）：
+    - `HCIAbilityKit.AgentExecutePlanReviewPrepareStageGExecutionReadiness 1 none`
+    - `HCIAbilityKit.AgentExecutePlanReviewPrepareStageGExecutionReadiness 0 none`
+    - `HCIAbilityKit.AgentExecutePlanReviewPrepareStageGExecutionReadiness 1 digest`
+    - `HCIAbilityKit.AgentExecutePlanReviewPrepareStageGExecutionReadiness 1 archive`
+    - `HCIAbilityKit.AgentExecutePlanReviewPrepareStageGExecutionReadiness 1 mode`
+    - `HCIAbilityKit.AgentExecutePlanReviewPrepareStageGExecutionReadinessJson 1 none`
 - 下一切片：
-  - `Stage H-SliceH1`（仅在 `G10 Pass` 后启动）：LLM Planner 接入，保持 `simulate_dry_run`。
+  - `Stage H-SliceH1`（当前待冻结）：LLM Planner 接入，保持 `simulate_dry_run`。
 - 兼容性口径：
   - 时间字符串统一北京时间 `+08:00`；
   - 字段名（如 `updated_utc/generated_utc/timestamp_utc`）保持兼容。

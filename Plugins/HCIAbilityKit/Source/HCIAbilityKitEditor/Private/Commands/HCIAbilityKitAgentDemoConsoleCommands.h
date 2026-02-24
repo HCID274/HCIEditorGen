@@ -60,4 +60,6 @@ private:
 	TUniquePtr<FAutoConsoleCommand> AgentExecutePlanReviewPrepareStageGExecuteFinalReportJsonCommand;
 	TUniquePtr<FAutoConsoleCommand> AgentExecutePlanReviewPrepareStageGExecuteArchiveBundleCommand;
 	TUniquePtr<FAutoConsoleCommand> AgentExecutePlanReviewPrepareStageGExecuteArchiveBundleJsonCommand;
+	TUniquePtr<FAutoConsoleCommand> AgentExecutePlanReviewPrepareStageGExecutionReadinessCommand;
+	TUniquePtr<FAutoConsoleCommand> AgentExecutePlanReviewPrepareStageGExecutionReadinessJsonCommand;
 };

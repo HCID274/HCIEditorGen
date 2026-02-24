@@ -19,6 +19,7 @@
 #include "Agent/HCIAbilityKitAgentExecutorStageGExecuteCommitReceiptBridge.h"
 #include "Agent/HCIAbilityKitAgentExecutorStageGExecuteFinalReportBridge.h"
 #include "Agent/HCIAbilityKitAgentExecutorStageGExecuteArchiveBundleBridge.h"
+#include "Agent/HCIAbilityKitAgentExecutorStageGExecutionReadinessReportBridge.h"
 #include "Agent/HCIAbilityKitAgentSimulateExecuteArchiveBundle.h"
 #include "Agent/HCIAbilityKitAgentSimulateExecuteFinalReport.h"
 #include "Agent/HCIAbilityKitAgentSimulateExecuteHandoffEnvelope.h"
@@ -33,6 +34,8 @@
 #include "Agent/HCIAbilityKitAgentStageGExecuteFinalReport.h"
 #include "Agent/HCIAbilityKitAgentStageGExecuteArchiveBundle.h"
 #include "Agent/HCIAbilityKitAgentStageGExecuteArchiveBundleJsonSerializer.h"
+#include "Agent/HCIAbilityKitAgentStageGExecutionReadinessReport.h"
+#include "Agent/HCIAbilityKitAgentStageGExecutionReadinessReportJsonSerializer.h"
 #include "Agent/HCIAbilityKitDryRunDiff.h"
 #include "Misc/AutomationTest.h"
 
@@ -391,6 +394,52 @@ static FHCIAbilityKitAgentStageGExecuteFinalReport MakeG9StageGExecuteFinalRepor
 		StageGFinalReport));
 	return StageGFinalReport;
 }
+
+static FHCIAbilityKitAgentStageGExecuteArchiveBundle MakeReadyG9StageGExecuteArchiveBundle(const FHCIAbilityKitDryRunDiffReport& Review)
+{
+	const FHCIAbilityKitAgentApplyRequest ApplyRequest = MakeG9ApplyRequest(Review);
+	const FHCIAbilityKitAgentApplyConfirmRequest ConfirmRequest = MakeG9ConfirmRequest(ApplyRequest, Review, true);
+	const FHCIAbilityKitAgentExecuteTicket ExecuteTicket = MakeG9ExecuteTicket(ConfirmRequest, ApplyRequest, Review);
+	const FHCIAbilityKitAgentSimulateExecuteReceipt Receipt = MakeG9Receipt(ExecuteTicket, ConfirmRequest, ApplyRequest, Review);
+	const FHCIAbilityKitAgentSimulateExecuteFinalReport FinalReport = MakeG9FinalReport(Receipt, ExecuteTicket, ConfirmRequest, ApplyRequest, Review);
+	const FHCIAbilityKitAgentSimulateExecuteArchiveBundle ArchiveBundle = MakeG9ArchiveBundle(FinalReport, Receipt, ExecuteTicket, ConfirmRequest, ApplyRequest, Review);
+	const FHCIAbilityKitAgentSimulateExecuteHandoffEnvelope HandoffEnvelope = MakeG9HandoffEnvelope(ArchiveBundle, FinalReport, Receipt, ExecuteTicket, ConfirmRequest, ApplyRequest, Review);
+	const FHCIAbilityKitAgentStageGExecuteIntent Intent = MakeG9StageGIntent(HandoffEnvelope, ArchiveBundle, FinalReport, Receipt, ExecuteTicket, ConfirmRequest, ApplyRequest, Review);
+	const FHCIAbilityKitAgentStageGWriteEnableRequest WriteEnableRequest = MakeG9WriteEnableRequest(Intent, HandoffEnvelope, ArchiveBundle, FinalReport, Receipt, ExecuteTicket, ConfirmRequest, ApplyRequest, Review, true);
+	const FHCIAbilityKitAgentStageGExecutePermitTicket PermitTicket = MakeG9PermitTicket(WriteEnableRequest, Intent, HandoffEnvelope, ArchiveBundle, FinalReport, Receipt, ExecuteTicket, ConfirmRequest, ApplyRequest, Review);
+	const FHCIAbilityKitAgentStageGExecuteDispatchRequest DispatchRequest = MakeG9DispatchRequest(PermitTicket, WriteEnableRequest, Intent, HandoffEnvelope, ArchiveBundle, FinalReport, Receipt, ExecuteTicket, ConfirmRequest, ApplyRequest, Review, true);
+	const FHCIAbilityKitAgentStageGExecuteDispatchReceipt DispatchReceipt = MakeG9DispatchReceipt(DispatchRequest, PermitTicket, WriteEnableRequest, Intent, HandoffEnvelope, ArchiveBundle, FinalReport, Receipt, ExecuteTicket, ConfirmRequest, ApplyRequest, Review);
+	const FHCIAbilityKitAgentStageGExecuteCommitRequest CommitRequest = MakeG9CommitRequest(
+		DispatchReceipt, DispatchRequest, PermitTicket, WriteEnableRequest, Intent, HandoffEnvelope, ArchiveBundle, FinalReport, Receipt, ExecuteTicket, ConfirmRequest, ApplyRequest, Review, true);
+	const FHCIAbilityKitAgentStageGExecuteCommitReceipt CommitReceipt = MakeG9CommitReceipt(
+		CommitRequest, DispatchReceipt, DispatchRequest, PermitTicket, WriteEnableRequest, Intent, HandoffEnvelope, ArchiveBundle, FinalReport, Receipt, ExecuteTicket, ConfirmRequest, ApplyRequest, Review);
+	const FHCIAbilityKitAgentStageGExecuteFinalReport StageGFinalReport = MakeG9StageGExecuteFinalReport(
+		CommitReceipt, CommitRequest, DispatchReceipt, DispatchRequest, PermitTicket, WriteEnableRequest, Intent, HandoffEnvelope, ArchiveBundle, FinalReport, Receipt, ExecuteTicket, ConfirmRequest, ApplyRequest, Review);
+
+	FHCIAbilityKitAgentStageGExecuteArchiveBundle Request;
+	check(FHCIAbilityKitAgentExecutorStageGExecuteArchiveBundleBridge::BuildStageGExecuteArchiveBundle(
+		StageGFinalReport,
+		StageGFinalReport.RequestId,
+		CommitReceipt.RequestId,
+		CommitReceipt.StageGExecuteCommitReceiptDigest,
+		CommitReceipt,
+		CommitRequest,
+		DispatchReceipt,
+		DispatchRequest,
+		PermitTicket,
+		WriteEnableRequest,
+		Intent,
+		HandoffEnvelope,
+		ArchiveBundle,
+		FinalReport,
+		Receipt,
+		ExecuteTicket,
+		ConfirmRequest,
+		ApplyRequest,
+		Review,
+		Request));
+	return Request;
+}
 } // namespace
 
 	IMPLEMENT_SIMPLE_AUTOMATION_TEST(
@@ -648,6 +697,137 @@ bool FHCIAbilityKitAgentExecutorStageGExecuteArchiveBundleJsonFieldsTest::RunTes
 	TestTrue(TEXT("JSON includes stage_g_execute_final_report_ready"), JsonText.Contains(TEXT("\"stage_g_execute_final_report_ready\"")));
 	TestTrue(TEXT("JSON includes stage_g_execute_archived"), JsonText.Contains(TEXT("\"stage_g_execute_archived\"")));
 	TestTrue(TEXT("JSON includes stage_g_execute_archive_bundle_ready"), JsonText.Contains(TEXT("\"stage_g_execute_archive_bundle_ready\"")));
+	TestTrue(TEXT("JSON includes locate_strategy"), JsonText.Contains(TEXT("\"locate_strategy\"")));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FHCIAbilityKitAgentExecutorStageGExecutionReadinessReadyTest,
+	"HCIAbilityKit.Editor.AgentExecutorStageGExecutionReadiness.ReadyWhenArchiveBundleReady",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FHCIAbilityKitAgentExecutorStageGExecutionReadinessReadyTest::RunTest(const FString& Parameters)
+{
+	const FHCIAbilityKitDryRunDiffReport Review = MakeG9SelectedReviewReport();
+	const FHCIAbilityKitAgentStageGExecuteArchiveBundle ArchiveBundle = MakeReadyG9StageGExecuteArchiveBundle(Review);
+
+	FHCIAbilityKitAgentStageGExecutionReadinessReport Report;
+	TestTrue(TEXT("Build stage g execution readiness"), FHCIAbilityKitAgentExecutorStageGExecutionReadinessReportBridge::BuildStageGExecutionReadinessReport(
+		ArchiveBundle,
+		ArchiveBundle.RequestId,
+		Review,
+		true,
+		Report));
+	TestTrue(TEXT("ReadyForH1"), Report.bReadyForH1PlannerIntegration);
+	TestEqual(TEXT("ReadinessStatus"), Report.StageGExecutionReadinessStatus, FString(TEXT("ready")));
+	TestEqual(TEXT("ExecutionMode"), Report.ExecutionMode, FString(TEXT("simulate_dry_run")));
+	TestEqual(TEXT("ErrorCode"), Report.ErrorCode, FString(TEXT("-")));
+	TestEqual(TEXT("Reason"), Report.Reason, FString(TEXT("stage_g_execution_readiness_ready")));
+	TestFalse(TEXT("ReadinessDigest present"), Report.StageGExecutionReadinessDigest.IsEmpty());
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FHCIAbilityKitAgentExecutorStageGExecutionReadinessArchiveNotReadyTest,
+	"HCIAbilityKit.Editor.AgentExecutorStageGExecutionReadiness.ArchiveNotReadyReturnsE4218",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FHCIAbilityKitAgentExecutorStageGExecutionReadinessArchiveNotReadyTest::RunTest(const FString& Parameters)
+{
+	const FHCIAbilityKitDryRunDiffReport Review = MakeG9SelectedReviewReport();
+	FHCIAbilityKitAgentStageGExecuteArchiveBundle ArchiveBundle = MakeReadyG9StageGExecuteArchiveBundle(Review);
+	ArchiveBundle.bStageGExecuteArchiveBundleReady = false;
+	ArchiveBundle.bStageGExecuteArchived = false;
+	ArchiveBundle.StageGExecuteArchiveBundleStatus = TEXT("blocked");
+
+	FHCIAbilityKitAgentStageGExecutionReadinessReport Report;
+	TestTrue(TEXT("Build stage g execution readiness"), FHCIAbilityKitAgentExecutorStageGExecutionReadinessReportBridge::BuildStageGExecutionReadinessReport(
+		ArchiveBundle,
+		ArchiveBundle.RequestId,
+		Review,
+		true,
+		Report));
+	TestFalse(TEXT("ReadyForH1"), Report.bReadyForH1PlannerIntegration);
+	TestEqual(TEXT("ReadinessStatus"), Report.StageGExecutionReadinessStatus, FString(TEXT("blocked")));
+	TestEqual(TEXT("ErrorCode"), Report.ErrorCode, FString(TEXT("E4218")));
+	TestEqual(TEXT("Reason"), Report.Reason, FString(TEXT("stage_g_execute_archive_bundle_not_ready")));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FHCIAbilityKitAgentExecutorStageGExecutionReadinessModeBlockedTest,
+	"HCIAbilityKit.Editor.AgentExecutorStageGExecutionReadiness.WriteModeBlockedReturnsE4219",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FHCIAbilityKitAgentExecutorStageGExecutionReadinessModeBlockedTest::RunTest(const FString& Parameters)
+{
+	const FHCIAbilityKitDryRunDiffReport Review = MakeG9SelectedReviewReport();
+	FHCIAbilityKitAgentStageGExecuteArchiveBundle ArchiveBundle = MakeReadyG9StageGExecuteArchiveBundle(Review);
+	ArchiveBundle.ExecutionMode = TEXT("write_execute");
+
+	FHCIAbilityKitAgentStageGExecutionReadinessReport Report;
+	TestTrue(TEXT("Build stage g execution readiness"), FHCIAbilityKitAgentExecutorStageGExecutionReadinessReportBridge::BuildStageGExecutionReadinessReport(
+		ArchiveBundle,
+		ArchiveBundle.RequestId,
+		Review,
+		true,
+		Report));
+	TestFalse(TEXT("ReadyForH1"), Report.bReadyForH1PlannerIntegration);
+	TestEqual(TEXT("ReadinessStatus"), Report.StageGExecutionReadinessStatus, FString(TEXT("blocked")));
+	TestEqual(TEXT("ErrorCode"), Report.ErrorCode, FString(TEXT("E4219")));
+	TestEqual(TEXT("Reason"), Report.Reason, FString(TEXT("stage_g_execution_mode_write_not_allowed_in_g10")));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FHCIAbilityKitAgentExecutorStageGExecutionReadinessUnconfirmedTest,
+	"HCIAbilityKit.Editor.AgentExecutorStageGExecutionReadiness.UnconfirmedReturnsE4005",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FHCIAbilityKitAgentExecutorStageGExecutionReadinessUnconfirmedTest::RunTest(const FString& Parameters)
+{
+	const FHCIAbilityKitDryRunDiffReport Review = MakeG9SelectedReviewReport();
+	const FHCIAbilityKitAgentStageGExecuteArchiveBundle ArchiveBundle = MakeReadyG9StageGExecuteArchiveBundle(Review);
+
+	FHCIAbilityKitAgentStageGExecutionReadinessReport Report;
+	TestTrue(TEXT("Build stage g execution readiness"), FHCIAbilityKitAgentExecutorStageGExecutionReadinessReportBridge::BuildStageGExecutionReadinessReport(
+		ArchiveBundle,
+		ArchiveBundle.RequestId,
+		Review,
+		false,
+		Report));
+	TestFalse(TEXT("ReadyForH1"), Report.bReadyForH1PlannerIntegration);
+	TestEqual(TEXT("ReadinessStatus"), Report.StageGExecutionReadinessStatus, FString(TEXT("blocked")));
+	TestEqual(TEXT("ErrorCode"), Report.ErrorCode, FString(TEXT("E4005")));
+	TestEqual(TEXT("Reason"), Report.Reason, FString(TEXT("user_not_confirmed")));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FHCIAbilityKitAgentExecutorStageGExecutionReadinessJsonFieldsTest,
+	"HCIAbilityKit.Editor.AgentExecutorStageGExecutionReadiness.JsonIncludesReadinessFields",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FHCIAbilityKitAgentExecutorStageGExecutionReadinessJsonFieldsTest::RunTest(const FString& Parameters)
+{
+	const FHCIAbilityKitDryRunDiffReport Review = MakeG9SelectedReviewReport();
+	const FHCIAbilityKitAgentStageGExecuteArchiveBundle ArchiveBundle = MakeReadyG9StageGExecuteArchiveBundle(Review);
+
+	FHCIAbilityKitAgentStageGExecutionReadinessReport Report;
+	TestTrue(TEXT("Build stage g execution readiness"), FHCIAbilityKitAgentExecutorStageGExecutionReadinessReportBridge::BuildStageGExecutionReadinessReport(
+		ArchiveBundle,
+		ArchiveBundle.RequestId,
+		Review,
+		true,
+		Report));
+
+	FString JsonText;
+	TestTrue(TEXT("Serialize stage g execution readiness json"), FHCIAbilityKitAgentStageGExecutionReadinessReportJsonSerializer::SerializeToJsonString(Report, JsonText));
+	TestTrue(TEXT("JSON includes stage_g_execute_archive_bundle_id"), JsonText.Contains(TEXT("\"stage_g_execute_archive_bundle_id\"")));
+	TestTrue(TEXT("JSON includes stage_g_execution_readiness_digest"), JsonText.Contains(TEXT("\"stage_g_execution_readiness_digest\"")));
+	TestTrue(TEXT("JSON includes stage_g_execution_readiness_status"), JsonText.Contains(TEXT("\"stage_g_execution_readiness_status\"")));
+	TestTrue(TEXT("JSON includes ready_for_h1_planner_integration"), JsonText.Contains(TEXT("\"ready_for_h1_planner_integration\"")));
+	TestTrue(TEXT("JSON includes execution_mode"), JsonText.Contains(TEXT("\"execution_mode\"")));
 	TestTrue(TEXT("JSON includes locate_strategy"), JsonText.Contains(TEXT("\"locate_strategy\"")));
 	return true;
 }

@@ -135,4 +135,54 @@ bool FHCIAbilityKitAgentPlanPreviewCommitRiskSummaryTest::RunTest(const FString&
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FHCIAbilityKitAgentPlanPreviewSearchPathEvidenceSummaryTest,
+	"HCIAbilityKit.Editor.AgentPreviewUI.SearchPathEvidence.SummaryIncludesBestDirectoryAndSemanticFallback",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FHCIAbilityKitAgentPlanPreviewSearchPathEvidenceSummaryTest::RunTest(const FString& Parameters)
+{
+	FHCIAbilityKitAgentExecutorStepResult SearchStep;
+	SearchStep.StepIndex = 0;
+	SearchStep.StepId = TEXT("step_1_search");
+	SearchStep.ToolName = TEXT("SearchPath");
+	SearchStep.Evidence.Add(TEXT("keyword"), TEXT("Temp"));
+	SearchStep.Evidence.Add(TEXT("keyword_normalized"), TEXT("temp"));
+	SearchStep.Evidence.Add(TEXT("keyword_expanded"), TEXT("Temp"));
+	SearchStep.Evidence.Add(TEXT("matched_count"), TEXT("1"));
+	SearchStep.Evidence.Add(TEXT("best_directory"), TEXT("/Game/Temp"));
+	SearchStep.Evidence.Add(TEXT("semantic_fallback_used"), TEXT("true"));
+	SearchStep.Evidence.Add(TEXT("semantic_fallback_directory"), TEXT("/Game/Temp"));
+
+	TArray<FHCIAbilityKitAgentExecutorStepResult> StepResults;
+	StepResults.Add(SearchStep);
+
+	const FString Summary = FHCIAbilityKitAgentPlanPreviewWindow::BuildSearchPathEvidenceSummary(StepResults);
+	TestTrue(TEXT("summary should include keyword"), Summary.Contains(TEXT("keyword=Temp")));
+	TestTrue(TEXT("summary should include normalized"), Summary.Contains(TEXT("normalized=temp")));
+	TestTrue(TEXT("summary should include best directory"), Summary.Contains(TEXT("best_directory=/Game/Temp")));
+	TestTrue(TEXT("summary should include semantic fallback"), Summary.Contains(TEXT("semantic_fallback=true(/Game/Temp)")));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FHCIAbilityKitAgentPlanPreviewSearchPathEvidenceNoStepTest,
+	"HCIAbilityKit.Editor.AgentPreviewUI.SearchPathEvidence.SummaryReportsNoSearchStep",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FHCIAbilityKitAgentPlanPreviewSearchPathEvidenceNoStepTest::RunTest(const FString& Parameters)
+{
+	FHCIAbilityKitAgentExecutorStepResult ScanStep;
+	ScanStep.StepIndex = 0;
+	ScanStep.StepId = TEXT("step_1_scan");
+	ScanStep.ToolName = TEXT("ScanAssets");
+
+	TArray<FHCIAbilityKitAgentExecutorStepResult> StepResults;
+	StepResults.Add(ScanStep);
+
+	const FString Summary = FHCIAbilityKitAgentPlanPreviewWindow::BuildSearchPathEvidenceSummary(StepResults);
+	TestTrue(TEXT("summary should report no search path step"), Summary.Contains(TEXT("本计划不含 SearchPath 步骤")));
+	return true;
+}
+
 #endif

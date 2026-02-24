@@ -188,6 +188,15 @@ static int32 HCI_TryGetIntEvidence(const TMap<FString, FString>& Evidence, const
 	return LexTryParseString(Parsed, **Value) ? Parsed : DefaultValue;
 }
 
+static FString HCI_GetEvidenceValue(
+	const TMap<FString, FString>& Evidence,
+	const TCHAR* Key,
+	const TCHAR* DefaultValue = TEXT("-"))
+{
+	const FString* Found = Evidence.Find(Key);
+	return Found != nullptr && !Found->IsEmpty() ? *Found : FString(DefaultValue);
+}
+
 static bool HCI_IsWriteLikeRisk(const EHCIAbilityKitAgentPlanRiskLevel RiskLevel)
 {
 	return RiskLevel == EHCIAbilityKitAgentPlanRiskLevel::Write ||
@@ -256,6 +265,11 @@ public:
 			if (RunSummaryText.IsValid())
 			{
 				RunSummaryText->SetText(FText::FromString(Summary));
+			}
+			if (SearchPathEvidenceText.IsValid())
+			{
+				SearchPathEvidenceText->SetText(FText::FromString(
+					FHCIAbilityKitAgentPlanPreviewWindow::BuildSearchPathEvidenceSummary(RunResult.StepResults)));
 			}
 
 				UE_LOG(
@@ -397,6 +411,13 @@ public:
 				]
 				+ SVerticalBox::Slot()
 				.AutoHeight()
+				.Padding(0.0f, 0.0f, 0.0f, 8.0f)
+				[
+					SAssignNew(SearchPathEvidenceText, STextBlock)
+					.Text(FText::FromString(TEXT("SearchPath证据: 未执行")))
+				]
+				+ SVerticalBox::Slot()
+				.AutoHeight()
 				[
 					SNew(SHorizontalBox)
 					+ SHorizontalBox::Slot()
@@ -468,6 +489,7 @@ private:
 	TArray<TSharedPtr<FHCIAbilityKitAgentPlanPreviewRow>> Rows;
 	FHCIAbilityKitAgentPlanPreviewContext Context;
 	TSharedPtr<STextBlock> RunSummaryText;
+	TSharedPtr<STextBlock> SearchPathEvidenceText;
 };
 }
 
@@ -566,6 +588,41 @@ FString FHCIAbilityKitAgentPlanPreviewWindow::BuildCommitConfirmMessage(const FH
 		Summary.TotalSteps,
 		Summary.WriteLikeSteps,
 		Summary.DestructiveSteps);
+}
+
+FString FHCIAbilityKitAgentPlanPreviewWindow::BuildSearchPathEvidenceSummary(const TArray<FHCIAbilityKitAgentExecutorStepResult>& StepResults)
+{
+	for (const FHCIAbilityKitAgentExecutorStepResult& StepResult : StepResults)
+	{
+		if (!StepResult.ToolName.Equals(TEXT("SearchPath"), ESearchCase::IgnoreCase))
+		{
+			continue;
+		}
+
+		const FString Keyword = HCI_GetEvidenceValue(StepResult.Evidence, TEXT("keyword"));
+		const FString Normalized = HCI_GetEvidenceValue(StepResult.Evidence, TEXT("keyword_normalized"));
+		const FString Expanded = HCI_GetEvidenceValue(StepResult.Evidence, TEXT("keyword_expanded"));
+		const FString MatchedCount = HCI_GetEvidenceValue(StepResult.Evidence, TEXT("matched_count"), TEXT("0"));
+		const FString BestDirectory = HCI_GetEvidenceValue(StepResult.Evidence, TEXT("best_directory"));
+		const FString FallbackUsed = HCI_GetEvidenceValue(StepResult.Evidence, TEXT("semantic_fallback_used"), TEXT("false"));
+		const FString FallbackDirectory = HCI_GetEvidenceValue(StepResult.Evidence, TEXT("semantic_fallback_directory"), TEXT("-"));
+
+		const bool bSemanticFallbackUsed = FallbackUsed.Equals(TEXT("true"), ESearchCase::IgnoreCase);
+		const FString FallbackLabel = bSemanticFallbackUsed
+			? FString::Printf(TEXT("true(%s)"), *FallbackDirectory)
+			: TEXT("false");
+
+		return FString::Printf(
+			TEXT("SearchPath证据: keyword=%s | normalized=%s | expanded=%s | matched_count=%s | best_directory=%s | semantic_fallback=%s"),
+			*Keyword,
+			*Normalized,
+			*Expanded,
+			*MatchedCount,
+			*BestDirectory,
+			*FallbackLabel);
+	}
+
+	return TEXT("SearchPath证据: 本计划不含 SearchPath 步骤");
 }
 
 void FHCIAbilityKitAgentPlanPreviewWindow::OpenWindow(const FHCIAbilityKitAgentPlan& Plan, const FHCIAbilityKitAgentPlanPreviewContext& Context)

@@ -86,6 +86,7 @@ Scope: whole repo.
   - `Stage I-SliceI2`：已通过 UE 手测（UI 展示优化 + 变量管道顺序归一化）。
   - `Stage I-SliceI3`：已通过 UE 手测（确认并执行真实写操作闭环）。
   - `Stage I-SliceI4`：已通过 UE 手测（SearchPath 语义关键词归一 + 语义目录回退，`Temp -> /Game/Temp`）。
+  - `Stage I-SliceI5`：已通过 UE 手测（PlanPreviewUI 直显 `SearchPath` 语义归一与最优目录证据）。
 - UE 手测命令（G10，历史通过记录）：
   - `HCIAbilityKit.AgentExecutePlanReviewPrepareStageGExecutionReadiness 1 none`
   - `HCIAbilityKit.AgentExecutePlanReviewPrepareStageGExecutionReadiness 0 none`
@@ -94,8 +95,8 @@ Scope: whole repo.
   - `HCIAbilityKit.AgentExecutePlanReviewPrepareStageGExecutionReadiness 1 mode`
   - `HCIAbilityKit.AgentExecutePlanReviewPrepareStageGExecutionReadinessJson 1 none`
 - 下一切片：
-  - `I5`：UI 展示优化收尾（待用户确认是否启动）；
-  - `Phase2`：结构解耦与技术债清理（按需切入）。
+  - `Phase2`：结构解耦与技术债清理（按需切入）；
+  - `Stage I-SliceI6`：仅在用户确认继续 UI 深化后再冻结目标与门禁。
 
 ## 9. 用户协作习惯（固定）
 

@@ -2,6 +2,7 @@
 
 #include "CoreMinimal.h"
 
+#include "Agent/HCIAbilityKitAgentExecutor.h"
 #include "Agent/HCIAbilityKitAgentPlan.h"
 
 struct FHCIAbilityKitAgentPlanPreviewRow
@@ -44,4 +45,5 @@ public:
 	static TArray<TSharedPtr<FHCIAbilityKitAgentPlanPreviewRow>> BuildRows(const FHCIAbilityKitAgentPlan& Plan);
 	static FHCIAbilityKitAgentPlanCommitRiskSummary BuildCommitRiskSummary(const FHCIAbilityKitAgentPlan& Plan);
 	static FString BuildCommitConfirmMessage(const FHCIAbilityKitAgentPlan& Plan);
+	static FString BuildSearchPathEvidenceSummary(const TArray<FHCIAbilityKitAgentExecutorStepResult>& StepResults);
 };

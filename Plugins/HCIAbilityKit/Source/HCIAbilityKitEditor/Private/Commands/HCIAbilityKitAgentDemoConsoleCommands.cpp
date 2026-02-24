@@ -1359,6 +1359,108 @@ static bool HCI_BuildAgentPlanDemoPlan(
 		OutError);
 }
 
+static bool HCI_TryParseLlmMockModeArg(const FString& InMode, EHCIAbilityKitAgentPlannerLlmMockMode& OutMode)
+{
+	const FString Mode = InMode.TrimStartAndEnd().ToLower();
+	if (Mode == TEXT("none"))
+	{
+		OutMode = EHCIAbilityKitAgentPlannerLlmMockMode::None;
+		return true;
+	}
+	if (Mode == TEXT("timeout"))
+	{
+		OutMode = EHCIAbilityKitAgentPlannerLlmMockMode::Timeout;
+		return true;
+	}
+	if (Mode == TEXT("invalid_json"))
+	{
+		OutMode = EHCIAbilityKitAgentPlannerLlmMockMode::InvalidJson;
+		return true;
+	}
+	if (Mode == TEXT("contract_invalid"))
+	{
+		OutMode = EHCIAbilityKitAgentPlannerLlmMockMode::ContractInvalid;
+		return true;
+	}
+	if (Mode == TEXT("empty"))
+	{
+		OutMode = EHCIAbilityKitAgentPlannerLlmMockMode::EmptyResponse;
+		return true;
+	}
+	return false;
+}
+
+static bool HCI_BuildAgentPlanWithLlmPreferred(
+	const FString& UserText,
+	const FString& RequestId,
+	const EHCIAbilityKitAgentPlannerLlmMockMode LlmMockMode,
+	FHCIAbilityKitAgentPlan& OutPlan,
+	FString& OutRouteReason,
+	FHCIAbilityKitAgentPlannerResultMetadata& OutPlannerMetadata,
+	FHCIAbilityKitAgentPlanValidationResult& OutValidation,
+	FString& OutError)
+{
+	FHCIAbilityKitToolRegistry& ToolRegistry = FHCIAbilityKitToolRegistry::Get();
+	ToolRegistry.ResetToDefaults();
+
+	FHCIAbilityKitAgentPlannerBuildOptions PlannerOptions;
+	PlannerOptions.bPreferLlm = true;
+	PlannerOptions.LlmMockMode = LlmMockMode;
+
+	if (!FHCIAbilityKitAgentPlanner::BuildPlanFromNaturalLanguageWithProvider(
+			UserText,
+			RequestId,
+			ToolRegistry,
+			PlannerOptions,
+			OutPlan,
+			OutRouteReason,
+			OutPlannerMetadata,
+			OutError))
+	{
+		OutValidation = FHCIAbilityKitAgentPlanValidationResult();
+		return false;
+	}
+
+	if (!FHCIAbilityKitAgentPlanValidator::ValidatePlan(OutPlan, ToolRegistry, OutValidation))
+	{
+		OutError = FString::Printf(
+			TEXT("plan_validation_failed code=%s reason=%s field=%s"),
+			OutValidation.ErrorCode.IsEmpty() ? TEXT("-") : *OutValidation.ErrorCode,
+			OutValidation.Reason.IsEmpty() ? TEXT("-") : *OutValidation.Reason,
+			OutValidation.Field.IsEmpty() ? TEXT("-") : *OutValidation.Field);
+		return false;
+	}
+
+	return true;
+}
+
+static void HCI_LogAgentPlanWithProviderSummary(
+	const TCHAR* CaseName,
+	const FString& UserText,
+	const FString& RouteReason,
+	const FHCIAbilityKitAgentPlan& Plan,
+	const FHCIAbilityKitAgentPlannerResultMetadata& PlannerMetadata,
+	const FHCIAbilityKitAgentPlanValidationResult& Validation)
+{
+	UE_LOG(
+		LogHCIAbilityKitAgentDemo,
+		Display,
+		TEXT("[HCIAbilityKit][AgentPlanLLM] case=%s summary request_id=%s intent=%s input=%s provider=%s fallback_used=%s fallback_reason=%s error_code=%s plan_validation=%s validation_code=%s validation_reason=%s route_reason=%s steps=%d"),
+		CaseName,
+		*Plan.RequestId,
+		*Plan.Intent,
+		*UserText,
+		*PlannerMetadata.PlannerProvider,
+		PlannerMetadata.bFallbackUsed ? TEXT("true") : TEXT("false"),
+		*PlannerMetadata.FallbackReason,
+		*PlannerMetadata.ErrorCode,
+		Validation.bValid ? TEXT("ok") : TEXT("fail"),
+		Validation.ErrorCode.IsEmpty() ? TEXT("-") : *Validation.ErrorCode,
+		Validation.Reason.IsEmpty() ? TEXT("-") : *Validation.Reason,
+		*RouteReason,
+		Plan.Steps.Num());
+}
+
 static void HCI_LogAgentPlanRows(const TCHAR* CaseName, const FString& UserText, const FString& RouteReason, const FHCIAbilityKitAgentPlan& Plan)
 {
 	for (int32 Index = 0; Index < Plan.Steps.Num(); ++Index)
@@ -1380,8 +1482,116 @@ static void HCI_LogAgentPlanRows(const TCHAR* CaseName, const FString& UserText,
 			*Step.RollbackStrategy,
 			*RouteReason,
 			*FString::Join(Step.ExpectedEvidence, TEXT("|")),
-			*HCI_JsonObjectToCompactString(Step.Args));
+		*HCI_JsonObjectToCompactString(Step.Args));
 	}
+}
+
+static void HCI_RunAbilityKitAgentPlanWithLLMDemoCommand(const TArray<FString>& Args)
+{
+	const FString UserText =
+		Args.Num() > 0 ? HCI_JoinConsoleArgsAsText(Args) : FString(TEXT("整理临时目录资产并归档"));
+	if (UserText.IsEmpty())
+	{
+		UE_LOG(LogHCIAbilityKitAgentDemo, Error, TEXT("[HCIAbilityKit][AgentPlanLLM] invalid_args reason=empty input text"));
+		return;
+	}
+
+	FHCIAbilityKitAgentPlan Plan;
+	FString RouteReason;
+	FHCIAbilityKitAgentPlannerResultMetadata PlannerMetadata;
+	FHCIAbilityKitAgentPlanValidationResult Validation;
+	FString Error;
+	if (!HCI_BuildAgentPlanWithLlmPreferred(
+			UserText,
+			TEXT("req_cli_h1_llm"),
+			EHCIAbilityKitAgentPlannerLlmMockMode::None,
+			Plan,
+			RouteReason,
+			PlannerMetadata,
+			Validation,
+			Error))
+	{
+		UE_LOG(
+			LogHCIAbilityKitAgentDemo,
+			Error,
+			TEXT("[HCIAbilityKit][AgentPlanLLM] build_failed input=%s provider=%s fallback_used=%s fallback_reason=%s error_code=%s reason=%s"),
+			*UserText,
+			*PlannerMetadata.PlannerProvider,
+			PlannerMetadata.bFallbackUsed ? TEXT("true") : TEXT("false"),
+			*PlannerMetadata.FallbackReason,
+			PlannerMetadata.ErrorCode.IsEmpty() ? TEXT("-") : *PlannerMetadata.ErrorCode,
+			*Error);
+		return;
+	}
+
+	GHCIAbilityKitAgentPlanPreviewState = Plan;
+	HCI_LogAgentPlanWithProviderSummary(TEXT("custom"), UserText, RouteReason, Plan, PlannerMetadata, Validation);
+	HCI_LogAgentPlanRows(TEXT("custom"), UserText, RouteReason, Plan);
+}
+
+static void HCI_RunAbilityKitAgentPlanWithLLMFallbackDemoCommand(const TArray<FString>& Args)
+{
+	if (Args.Num() < 1)
+	{
+		UE_LOG(
+			LogHCIAbilityKitAgentDemo,
+			Error,
+			TEXT("[HCIAbilityKit][AgentPlanLLM] invalid_args usage=HCIAbilityKit.AgentPlanWithLLMFallbackDemo [timeout|invalid_json|empty|contract_invalid] [自然语言文本...]"));
+		return;
+	}
+
+	EHCIAbilityKitAgentPlannerLlmMockMode LlmMockMode = EHCIAbilityKitAgentPlannerLlmMockMode::None;
+	if (!HCI_TryParseLlmMockModeArg(Args[0], LlmMockMode) || LlmMockMode == EHCIAbilityKitAgentPlannerLlmMockMode::None)
+	{
+		UE_LOG(
+			LogHCIAbilityKitAgentDemo,
+			Error,
+			TEXT("[HCIAbilityKit][AgentPlanLLM] invalid_args reason=mock_mode must be timeout|invalid_json|empty|contract_invalid"));
+		return;
+	}
+
+	TArray<FString> PromptArgs;
+	if (Args.Num() > 1)
+	{
+		for (int32 Index = 1; Index < Args.Num(); ++Index)
+		{
+			PromptArgs.Add(Args[Index]);
+		}
+	}
+	const FString UserText =
+		PromptArgs.Num() > 0 ? HCI_JoinConsoleArgsAsText(PromptArgs) : FString(TEXT("整理临时目录资产并归档"));
+
+	FHCIAbilityKitAgentPlan Plan;
+	FString RouteReason;
+	FHCIAbilityKitAgentPlannerResultMetadata PlannerMetadata;
+	FHCIAbilityKitAgentPlanValidationResult Validation;
+	FString Error;
+	if (!HCI_BuildAgentPlanWithLlmPreferred(
+			UserText,
+			TEXT("req_cli_h1_fallback"),
+			LlmMockMode,
+			Plan,
+			RouteReason,
+			PlannerMetadata,
+			Validation,
+			Error))
+	{
+		UE_LOG(
+			LogHCIAbilityKitAgentDemo,
+			Error,
+			TEXT("[HCIAbilityKit][AgentPlanLLM] fallback_build_failed input=%s provider=%s fallback_used=%s fallback_reason=%s error_code=%s reason=%s"),
+			*UserText,
+			*PlannerMetadata.PlannerProvider,
+			PlannerMetadata.bFallbackUsed ? TEXT("true") : TEXT("false"),
+			*PlannerMetadata.FallbackReason,
+			PlannerMetadata.ErrorCode.IsEmpty() ? TEXT("-") : *PlannerMetadata.ErrorCode,
+			*Error);
+		return;
+	}
+
+	GHCIAbilityKitAgentPlanPreviewState = Plan;
+	HCI_LogAgentPlanWithProviderSummary(TEXT("fallback"), UserText, RouteReason, Plan, PlannerMetadata, Validation);
+	HCI_LogAgentPlanRows(TEXT("fallback"), UserText, RouteReason, Plan);
 }
 
 static void HCI_RunAbilityKitAgentPlanDemoCommand(const TArray<FString>& Args)
@@ -7277,6 +7487,22 @@ void FHCIAbilityKitAgentDemoConsoleCommands::Startup()
 			FConsoleCommandWithArgsDelegate::CreateStatic(&HCI_RunAbilityKitAgentPlanDemoJsonCommand));
 	}
 
+	if (!AgentPlanWithLLMDemoCommand.IsValid())
+	{
+		AgentPlanWithLLMDemoCommand = MakeUnique<FAutoConsoleCommand>(
+			TEXT("HCIAbilityKit.AgentPlanWithLLMDemo"),
+			TEXT("H1 NL->Plan JSON demo (LLM preferred + validator). Usage: HCIAbilityKit.AgentPlanWithLLMDemo [natural language text...]"),
+			FConsoleCommandWithArgsDelegate::CreateStatic(&HCI_RunAbilityKitAgentPlanWithLLMDemoCommand));
+	}
+
+	if (!AgentPlanWithLLMFallbackDemoCommand.IsValid())
+	{
+		AgentPlanWithLLMFallbackDemoCommand = MakeUnique<FAutoConsoleCommand>(
+			TEXT("HCIAbilityKit.AgentPlanWithLLMFallbackDemo"),
+			TEXT("H1 NL->Plan JSON fallback demo. Usage: HCIAbilityKit.AgentPlanWithLLMFallbackDemo [timeout|invalid_json|empty|contract_invalid] [natural language text...]"),
+			FConsoleCommandWithArgsDelegate::CreateStatic(&HCI_RunAbilityKitAgentPlanWithLLMFallbackDemoCommand));
+	}
+
 	if (!AgentPlanValidateDemoCommand.IsValid())
 	{
 		AgentPlanValidateDemoCommand = MakeUnique<FAutoConsoleCommand>(
@@ -7632,6 +7858,8 @@ void FHCIAbilityKitAgentDemoConsoleCommands::Shutdown()
 	AgentLodSafetyDemoCommand.Reset();
 	AgentPlanDemoCommand.Reset();
 	AgentPlanDemoJsonCommand.Reset();
+	AgentPlanWithLLMDemoCommand.Reset();
+	AgentPlanWithLLMFallbackDemoCommand.Reset();
 	AgentPlanValidateDemoCommand.Reset();
 	AgentExecutePlanDemoCommand.Reset();
 	AgentExecutePlanFailDemoCommand.Reset();

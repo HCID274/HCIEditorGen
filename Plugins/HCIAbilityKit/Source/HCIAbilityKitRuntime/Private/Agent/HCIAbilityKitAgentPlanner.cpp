@@ -6,6 +6,14 @@
 
 namespace
 {
+static const TCHAR* const HCI_LlmProviderName = TEXT("llm");
+static const TCHAR* const HCI_KeywordProviderName = TEXT("keyword_fallback");
+static const TCHAR* const HCI_FallbackReasonNone = TEXT("none");
+static const TCHAR* const HCI_FallbackReasonTimeout = TEXT("llm_timeout");
+static const TCHAR* const HCI_FallbackReasonInvalidJson = TEXT("llm_invalid_json");
+static const TCHAR* const HCI_FallbackReasonContractInvalid = TEXT("llm_contract_invalid");
+static const TCHAR* const HCI_FallbackReasonEmptyResponse = TEXT("llm_empty_response");
+
 static EHCIAbilityKitAgentPlanRiskLevel HCI_ToPlanRiskLevel(EHCIAbilityKitToolCapability Capability)
 {
 	switch (Capability)
@@ -117,9 +125,8 @@ static TSharedPtr<FJsonObject> HCI_MakeScanAssetsArgs()
 {
 	return MakeShared<FJsonObject>();
 }
-}
 
-bool FHCIAbilityKitAgentPlanner::BuildPlanFromNaturalLanguage(
+static bool HCI_BuildKeywordPlan(
 	const FString& UserText,
 	const FString& RequestId,
 	const FHCIAbilityKitToolRegistry& ToolRegistry,
@@ -257,5 +264,132 @@ bool FHCIAbilityKitAgentPlanner::BuildPlanFromNaturalLanguage(
 		return false;
 	}
 
+	return true;
+}
+
+static bool HCI_TryBuildMockLlmPlan(
+	const FString& UserText,
+	const FString& RequestId,
+	const FHCIAbilityKitToolRegistry& ToolRegistry,
+	const FHCIAbilityKitAgentPlannerBuildOptions& Options,
+	FHCIAbilityKitAgentPlan& OutPlan,
+	FString& OutRouteReason,
+	FString& OutFallbackReason,
+	FString& OutErrorCode,
+	FString& OutError)
+{
+	OutPlan = FHCIAbilityKitAgentPlan();
+	OutRouteReason.Reset();
+	OutFallbackReason = HCI_FallbackReasonNone;
+	OutErrorCode = TEXT("-");
+	OutError.Reset();
+
+	switch (Options.LlmMockMode)
+	{
+	case EHCIAbilityKitAgentPlannerLlmMockMode::Timeout:
+		OutFallbackReason = HCI_FallbackReasonTimeout;
+		OutErrorCode = TEXT("E4301");
+		OutError = TEXT("llm_request_timeout");
+		return false;
+	case EHCIAbilityKitAgentPlannerLlmMockMode::InvalidJson:
+		OutFallbackReason = HCI_FallbackReasonInvalidJson;
+		OutErrorCode = TEXT("E4302");
+		OutError = TEXT("llm_response_invalid_json");
+		return false;
+	case EHCIAbilityKitAgentPlannerLlmMockMode::EmptyResponse:
+		OutFallbackReason = HCI_FallbackReasonEmptyResponse;
+		OutErrorCode = TEXT("E4304");
+		OutError = TEXT("llm_empty_response");
+		return false;
+	case EHCIAbilityKitAgentPlannerLlmMockMode::ContractInvalid:
+		OutFallbackReason = HCI_FallbackReasonContractInvalid;
+		OutErrorCode = TEXT("E4303");
+		OutPlan = FHCIAbilityKitAgentPlan();
+		OutPlan.RequestId = RequestId;
+		OutPlan.Intent = TEXT("invalid_plan_for_contract_check");
+		OutRouteReason = TEXT("llm_mock_contract_invalid");
+		break;
+	case EHCIAbilityKitAgentPlannerLlmMockMode::None:
+	default:
+		return HCI_BuildKeywordPlan(UserText, RequestId, ToolRegistry, OutPlan, OutRouteReason, OutError);
+	}
+
+	FString ContractError;
+	if (!FHCIAbilityKitAgentPlanContract::ValidateMinimalContract(OutPlan, ContractError))
+	{
+		OutError = ContractError;
+		return false;
+	}
+	return true;
+}
+}
+
+bool FHCIAbilityKitAgentPlanner::BuildPlanFromNaturalLanguage(
+	const FString& UserText,
+	const FString& RequestId,
+	const FHCIAbilityKitToolRegistry& ToolRegistry,
+	FHCIAbilityKitAgentPlan& OutPlan,
+	FString& OutRouteReason,
+	FString& OutError)
+{
+	return HCI_BuildKeywordPlan(UserText, RequestId, ToolRegistry, OutPlan, OutRouteReason, OutError);
+}
+
+bool FHCIAbilityKitAgentPlanner::BuildPlanFromNaturalLanguageWithProvider(
+	const FString& UserText,
+	const FString& RequestId,
+	const FHCIAbilityKitToolRegistry& ToolRegistry,
+	const FHCIAbilityKitAgentPlannerBuildOptions& Options,
+	FHCIAbilityKitAgentPlan& OutPlan,
+	FString& OutRouteReason,
+	FHCIAbilityKitAgentPlannerResultMetadata& OutMetadata,
+	FString& OutError)
+{
+	OutMetadata = FHCIAbilityKitAgentPlannerResultMetadata();
+	OutError.Reset();
+
+	if (!Options.bPreferLlm)
+	{
+		OutMetadata.PlannerProvider = HCI_KeywordProviderName;
+		OutMetadata.bFallbackUsed = false;
+		OutMetadata.FallbackReason = HCI_FallbackReasonNone;
+		return HCI_BuildKeywordPlan(UserText, RequestId, ToolRegistry, OutPlan, OutRouteReason, OutError);
+	}
+
+	FString LlmFallbackReason = HCI_FallbackReasonNone;
+	FString LlmErrorCode = TEXT("-");
+	FString LlmError;
+	if (HCI_TryBuildMockLlmPlan(
+			UserText,
+			RequestId,
+			ToolRegistry,
+			Options,
+			OutPlan,
+			OutRouteReason,
+			LlmFallbackReason,
+			LlmErrorCode,
+			LlmError))
+	{
+		OutMetadata.PlannerProvider = HCI_LlmProviderName;
+		OutMetadata.bFallbackUsed = false;
+		OutMetadata.FallbackReason = HCI_FallbackReasonNone;
+		OutMetadata.ErrorCode = TEXT("-");
+		return true;
+	}
+
+	if (!HCI_BuildKeywordPlan(UserText, RequestId, ToolRegistry, OutPlan, OutRouteReason, OutError))
+	{
+		OutMetadata.PlannerProvider = HCI_KeywordProviderName;
+		OutMetadata.bFallbackUsed = true;
+		OutMetadata.FallbackReason = LlmFallbackReason;
+		OutMetadata.ErrorCode = LlmErrorCode;
+		return false;
+	}
+
+	OutMetadata.PlannerProvider = HCI_KeywordProviderName;
+	OutMetadata.bFallbackUsed = true;
+	OutMetadata.FallbackReason = LlmFallbackReason;
+	OutMetadata.ErrorCode = LlmErrorCode;
+	OutError.Reset();
 	return true;
 }

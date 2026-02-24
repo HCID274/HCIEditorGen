@@ -72,27 +72,20 @@ Scope: whole repo.
   - `Stage A~D` 资产审计主链路：完成并通过门禁。
   - `Stage E` Agent 安全执行：完成并通过门禁。
   - `Stage F` 指令解析与执行编排（`F1~F15`）：完成并通过门禁。
-  - `Stage G`：`G1~G9` 完成并通过门禁。
+  - `Stage G`（`G1~G10`）：完成并通过 UE 手测门禁。
 - 当前切片：
-  - `Stage H-SliceH1`：`待文档冻结（禁止直接实现）`。
-  - `Stage G-SliceG10`：`已完成并通过 UE 手测门禁`。
-  - 冻结结果：`G10` 继续 `simulate_dry_run`，新增 `StageGExecutionReadinessReport` 与错误码 `E4218/E4219`。
-  - UE 手测命令（G10）：
-    - `HCIAbilityKit.AgentExecutePlanReviewPrepareStageGExecutionReadiness 1 none`
-    - `HCIAbilityKit.AgentExecutePlanReviewPrepareStageGExecutionReadiness 0 none`
-    - `HCIAbilityKit.AgentExecutePlanReviewPrepareStageGExecutionReadiness 1 digest`
-    - `HCIAbilityKit.AgentExecutePlanReviewPrepareStageGExecutionReadiness 1 archive`
-    - `HCIAbilityKit.AgentExecutePlanReviewPrepareStageGExecutionReadiness 1 mode`
-    - `HCIAbilityKit.AgentExecutePlanReviewPrepareStageGExecutionReadinessJson 1 none`
+  - `Stage H-SliceH1`：`文档冻结已完成，待代码实现`。
+  - `H1` 范围：仅接入 LLM Planner，保持 `simulate_dry_run`，不改执行门禁语义。
+- UE 手测命令（G10，历史通过记录）：
+  - `HCIAbilityKit.AgentExecutePlanReviewPrepareStageGExecutionReadiness 1 none`
+  - `HCIAbilityKit.AgentExecutePlanReviewPrepareStageGExecutionReadiness 0 none`
+  - `HCIAbilityKit.AgentExecutePlanReviewPrepareStageGExecutionReadiness 1 digest`
+  - `HCIAbilityKit.AgentExecutePlanReviewPrepareStageGExecutionReadiness 1 archive`
+  - `HCIAbilityKit.AgentExecutePlanReviewPrepareStageGExecutionReadiness 1 mode`
+  - `HCIAbilityKit.AgentExecutePlanReviewPrepareStageGExecutionReadinessJson 1 none`
 - 下一切片：
-  - `Stage H-SliceH1`（当前待冻结）：LLM Planner 接入，保持 `simulate_dry_run`。
-- 兼容性口径：
-  - 时间字符串统一北京时间 `+08:00`；
-  - 字段名（如 `updated_utc/generated_utc/timestamp_utc`）保持兼容。
-- 详细历史与证据入口（不再在本文件展开）：
-  - 进度权威：`Source/HCIEditorGen/文档/00_总进度.md`
-  - 执行主计划：`Source/HCIEditorGen/文档/05_开发执行总方案_资产审计.md`
-  - 测试记录：`Source/HCIEditorGen/文档/测试记录/`
+  - `H2`：LLM 稳定性与降级策略；
+  - `I1`：最小只读 UI（Plan 预览 + DryRunDiff + Locate）。
 
 ## 9. 用户协作习惯（固定）
 
@@ -104,3 +97,4 @@ Scope: whole repo.
 - 继续坚持“接口简单、深度功能、依赖抽象、高内聚低耦合”。
 - 始终坚持“文档先行”：先定框架（目标边界、契约字段、门禁口径），再在框架内实现；框架外需求必须先更新文档并得到用户确认。
 - 若当前切片已按计划完成，助手必须先向用户确认“下一步做哪一片”，再继续执行，不得默认跳片推进。
+

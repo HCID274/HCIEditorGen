@@ -77,7 +77,12 @@
 ```
 
 - `planner_provider` 枚举：`llm|keyword_fallback`
-- `fallback_reason` 枚举：`llm_timeout|llm_invalid_json|llm_contract_invalid|llm_empty_response|none`
+- `fallback_reason` 枚举：`llm_timeout|llm_invalid_json|llm_contract_invalid|llm_empty_response|llm_circuit_open|none`
+- H2 观测字段：
+  - `llm_attempts`：本次请求 LLM 尝试次数（含重试）。
+  - `retry_used`：是否发生重试。
+  - `circuit_open`：是否命中熔断打开态。
+  - `consecutive_llm_failures`：当前连续 LLM 失败计数。
 - 结果必须继续过 `PlanValidator`，失败不得进入执行。
 
 ## 4. 错误码（当前）
@@ -90,6 +95,8 @@
   - `E4302`：`llm_response_invalid_json`
   - `E4303`：`llm_plan_contract_invalid`
   - `E4304`：`llm_empty_response`
+- H2 新增：
+  - `E4305`：`llm_circuit_open`
 
 ## 5. 不可违反约束
 

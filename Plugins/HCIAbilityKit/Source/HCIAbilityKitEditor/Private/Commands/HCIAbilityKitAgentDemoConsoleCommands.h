@@ -21,6 +21,8 @@ private:
 	TUniquePtr<FAutoConsoleCommand> AgentPlanDemoJsonCommand;
 	TUniquePtr<FAutoConsoleCommand> AgentPlanWithLLMDemoCommand;
 	TUniquePtr<FAutoConsoleCommand> AgentPlanWithLLMFallbackDemoCommand;
+	TUniquePtr<FAutoConsoleCommand> AgentPlanWithLLMStabilityDemoCommand;
+	TUniquePtr<FAutoConsoleCommand> AgentPlanWithLLMMetricsDumpCommand;
 	TUniquePtr<FAutoConsoleCommand> AgentPlanValidateDemoCommand;
 	TUniquePtr<FAutoConsoleCommand> AgentExecutePlanDemoCommand;
 	TUniquePtr<FAutoConsoleCommand> AgentExecutePlanFailDemoCommand;

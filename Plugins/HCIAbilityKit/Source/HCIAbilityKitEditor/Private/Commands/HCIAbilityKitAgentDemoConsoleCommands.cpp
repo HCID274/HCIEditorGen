@@ -1393,7 +1393,7 @@ static bool HCI_TryParseLlmMockModeArg(const FString& InMode, EHCIAbilityKitAgen
 static bool HCI_BuildAgentPlanWithLlmPreferred(
 	const FString& UserText,
 	const FString& RequestId,
-	const EHCIAbilityKitAgentPlannerLlmMockMode LlmMockMode,
+	const FHCIAbilityKitAgentPlannerBuildOptions& PlannerOptions,
 	FHCIAbilityKitAgentPlan& OutPlan,
 	FString& OutRouteReason,
 	FHCIAbilityKitAgentPlannerResultMetadata& OutPlannerMetadata,
@@ -1402,10 +1402,6 @@ static bool HCI_BuildAgentPlanWithLlmPreferred(
 {
 	FHCIAbilityKitToolRegistry& ToolRegistry = FHCIAbilityKitToolRegistry::Get();
 	ToolRegistry.ResetToDefaults();
-
-	FHCIAbilityKitAgentPlannerBuildOptions PlannerOptions;
-	PlannerOptions.bPreferLlm = true;
-	PlannerOptions.LlmMockMode = LlmMockMode;
 
 	if (!FHCIAbilityKitAgentPlanner::BuildPlanFromNaturalLanguageWithProvider(
 			UserText,
@@ -1445,7 +1441,7 @@ static void HCI_LogAgentPlanWithProviderSummary(
 	UE_LOG(
 		LogHCIAbilityKitAgentDemo,
 		Display,
-		TEXT("[HCIAbilityKit][AgentPlanLLM] case=%s summary request_id=%s intent=%s input=%s provider=%s fallback_used=%s fallback_reason=%s error_code=%s plan_validation=%s validation_code=%s validation_reason=%s route_reason=%s steps=%d"),
+		TEXT("[HCIAbilityKit][AgentPlanLLM] case=%s summary request_id=%s intent=%s input=%s provider=%s fallback_used=%s fallback_reason=%s error_code=%s llm_attempts=%d retry_used=%s circuit_open=%s consecutive_llm_failures=%d plan_validation=%s validation_code=%s validation_reason=%s route_reason=%s steps=%d"),
 		CaseName,
 		*Plan.RequestId,
 		*Plan.Intent,
@@ -1454,6 +1450,10 @@ static void HCI_LogAgentPlanWithProviderSummary(
 		PlannerMetadata.bFallbackUsed ? TEXT("true") : TEXT("false"),
 		*PlannerMetadata.FallbackReason,
 		*PlannerMetadata.ErrorCode,
+		PlannerMetadata.LlmAttemptCount,
+		PlannerMetadata.bRetryUsed ? TEXT("true") : TEXT("false"),
+		PlannerMetadata.bCircuitBreakerOpen ? TEXT("true") : TEXT("false"),
+		PlannerMetadata.ConsecutiveLlmFailures,
 		Validation.bValid ? TEXT("ok") : TEXT("fail"),
 		Validation.ErrorCode.IsEmpty() ? TEXT("-") : *Validation.ErrorCode,
 		Validation.Reason.IsEmpty() ? TEXT("-") : *Validation.Reason,
@@ -1500,11 +1500,14 @@ static void HCI_RunAbilityKitAgentPlanWithLLMDemoCommand(const TArray<FString>& 
 	FString RouteReason;
 	FHCIAbilityKitAgentPlannerResultMetadata PlannerMetadata;
 	FHCIAbilityKitAgentPlanValidationResult Validation;
+	FHCIAbilityKitAgentPlannerBuildOptions PlannerOptions;
+	PlannerOptions.bPreferLlm = true;
+	PlannerOptions.LlmMockMode = EHCIAbilityKitAgentPlannerLlmMockMode::None;
 	FString Error;
 	if (!HCI_BuildAgentPlanWithLlmPreferred(
 			UserText,
 			TEXT("req_cli_h1_llm"),
-			EHCIAbilityKitAgentPlannerLlmMockMode::None,
+			PlannerOptions,
 			Plan,
 			RouteReason,
 			PlannerMetadata,
@@ -1565,11 +1568,14 @@ static void HCI_RunAbilityKitAgentPlanWithLLMFallbackDemoCommand(const TArray<FS
 	FString RouteReason;
 	FHCIAbilityKitAgentPlannerResultMetadata PlannerMetadata;
 	FHCIAbilityKitAgentPlanValidationResult Validation;
+	FHCIAbilityKitAgentPlannerBuildOptions PlannerOptions;
+	PlannerOptions.bPreferLlm = true;
+	PlannerOptions.LlmMockMode = LlmMockMode;
 	FString Error;
 	if (!HCI_BuildAgentPlanWithLlmPreferred(
 			UserText,
 			TEXT("req_cli_h1_fallback"),
-			LlmMockMode,
+			PlannerOptions,
 			Plan,
 			RouteReason,
 			PlannerMetadata,
@@ -1592,6 +1598,190 @@ static void HCI_RunAbilityKitAgentPlanWithLLMFallbackDemoCommand(const TArray<FS
 	GHCIAbilityKitAgentPlanPreviewState = Plan;
 	HCI_LogAgentPlanWithProviderSummary(TEXT("fallback"), UserText, RouteReason, Plan, PlannerMetadata, Validation);
 	HCI_LogAgentPlanRows(TEXT("fallback"), UserText, RouteReason, Plan);
+}
+
+static void HCI_LogAgentPlannerMetrics()
+{
+	const FHCIAbilityKitAgentPlannerMetricsSnapshot Metrics = FHCIAbilityKitAgentPlanner::GetMetricsSnapshot();
+	UE_LOG(
+		LogHCIAbilityKitAgentDemo,
+		Display,
+		TEXT("[HCIAbilityKit][AgentPlanLLM][Metrics] total_requests=%d llm_preferred_requests=%d llm_success_requests=%d keyword_fallback_requests=%d retry_used_requests=%d retry_attempts=%d circuit_open_fallback_requests=%d consecutive_llm_failures=%d"),
+		Metrics.TotalRequests,
+		Metrics.LlmPreferredRequests,
+		Metrics.LlmSuccessRequests,
+		Metrics.KeywordFallbackRequests,
+		Metrics.RetryUsedRequests,
+		Metrics.RetryAttempts,
+		Metrics.CircuitOpenFallbackRequests,
+		Metrics.ConsecutiveLlmFailures);
+}
+
+static void HCI_RunAbilityKitAgentPlanWithLLMStabilityDemoCommand(const TArray<FString>& Args)
+{
+	const FString CaseKey = Args.Num() > 0 ? Args[0].TrimStartAndEnd().ToLower() : FString(TEXT("all"));
+	TArray<FString> PromptArgs;
+	if (Args.Num() > 1)
+	{
+		for (int32 Index = 1; Index < Args.Num(); ++Index)
+		{
+			PromptArgs.Add(Args[Index]);
+		}
+	}
+	const FString UserText =
+		PromptArgs.Num() > 0 ? HCI_JoinConsoleArgsAsText(PromptArgs) : FString(TEXT("整理临时目录资产并归档"));
+
+	auto RunOneCase = [&UserText](const TCHAR* InCaseName, const TCHAR* InRequestId, const FHCIAbilityKitAgentPlannerBuildOptions& InPlannerOptions)
+	{
+		FHCIAbilityKitAgentPlan Plan;
+		FString RouteReason;
+		FHCIAbilityKitAgentPlannerResultMetadata PlannerMetadata;
+		FHCIAbilityKitAgentPlanValidationResult Validation;
+		FString Error;
+		if (!HCI_BuildAgentPlanWithLlmPreferred(
+				UserText,
+				InRequestId,
+				InPlannerOptions,
+				Plan,
+				RouteReason,
+				PlannerMetadata,
+				Validation,
+				Error))
+		{
+			UE_LOG(
+				LogHCIAbilityKitAgentDemo,
+				Error,
+				TEXT("[HCIAbilityKit][AgentPlanLLM][H2] case=%s build_failed input=%s provider=%s fallback_used=%s fallback_reason=%s error_code=%s reason=%s"),
+				InCaseName,
+				*UserText,
+				*PlannerMetadata.PlannerProvider,
+				PlannerMetadata.bFallbackUsed ? TEXT("true") : TEXT("false"),
+				*PlannerMetadata.FallbackReason,
+				PlannerMetadata.ErrorCode.IsEmpty() ? TEXT("-") : *PlannerMetadata.ErrorCode,
+				*Error);
+			return false;
+		}
+
+		GHCIAbilityKitAgentPlanPreviewState = Plan;
+		HCI_LogAgentPlanWithProviderSummary(InCaseName, UserText, RouteReason, Plan, PlannerMetadata, Validation);
+		HCI_LogAgentPlanRows(InCaseName, UserText, RouteReason, Plan);
+		return true;
+	};
+
+	if (CaseKey == TEXT("reset_metrics"))
+	{
+		FHCIAbilityKitAgentPlanner::ResetMetricsForTesting();
+		UE_LOG(LogHCIAbilityKitAgentDemo, Display, TEXT("[HCIAbilityKit][AgentPlanLLM][H2] reset_metrics=ok"));
+		HCI_LogAgentPlannerMetrics();
+		return;
+	}
+
+	if (CaseKey == TEXT("retry_success"))
+	{
+		FHCIAbilityKitAgentPlannerBuildOptions RetrySuccessOptions;
+		RetrySuccessOptions.bPreferLlm = true;
+		RetrySuccessOptions.LlmMockMode = EHCIAbilityKitAgentPlannerLlmMockMode::Timeout;
+		RetrySuccessOptions.LlmRetryCount = 1;
+		RetrySuccessOptions.LlmMockFailAttempts = 1;
+		RetrySuccessOptions.CircuitBreakerFailureThreshold = 3;
+		RetrySuccessOptions.CircuitBreakerOpenForRequests = 2;
+		RunOneCase(TEXT("retry_success"), TEXT("req_cli_h2_retry_success"), RetrySuccessOptions);
+		HCI_LogAgentPlannerMetrics();
+		return;
+	}
+
+	if (CaseKey == TEXT("retry_fallback"))
+	{
+		FHCIAbilityKitAgentPlannerBuildOptions RetryFallbackOptions;
+		RetryFallbackOptions.bPreferLlm = true;
+		RetryFallbackOptions.LlmMockMode = EHCIAbilityKitAgentPlannerLlmMockMode::Timeout;
+		RetryFallbackOptions.LlmRetryCount = 1;
+		RetryFallbackOptions.CircuitBreakerFailureThreshold = 3;
+		RetryFallbackOptions.CircuitBreakerOpenForRequests = 2;
+		RunOneCase(TEXT("retry_fallback"), TEXT("req_cli_h2_retry_fallback"), RetryFallbackOptions);
+		HCI_LogAgentPlannerMetrics();
+		return;
+	}
+
+	if (CaseKey == TEXT("circuit_open"))
+	{
+		FHCIAbilityKitAgentPlanner::ResetMetricsForTesting();
+
+		FHCIAbilityKitAgentPlannerBuildOptions TriggerOpenOptions;
+		TriggerOpenOptions.bPreferLlm = true;
+		TriggerOpenOptions.LlmMockMode = EHCIAbilityKitAgentPlannerLlmMockMode::Timeout;
+		TriggerOpenOptions.LlmRetryCount = 0;
+		TriggerOpenOptions.CircuitBreakerFailureThreshold = 1;
+		TriggerOpenOptions.CircuitBreakerOpenForRequests = 1;
+		RunOneCase(TEXT("circuit_open_trigger"), TEXT("req_cli_h2_circuit_01"), TriggerOpenOptions);
+
+		FHCIAbilityKitAgentPlannerBuildOptions OpenFallbackOptions;
+		OpenFallbackOptions.bPreferLlm = true;
+		OpenFallbackOptions.LlmMockMode = EHCIAbilityKitAgentPlannerLlmMockMode::None;
+		OpenFallbackOptions.LlmRetryCount = 0;
+		OpenFallbackOptions.CircuitBreakerFailureThreshold = 1;
+		OpenFallbackOptions.CircuitBreakerOpenForRequests = 1;
+		RunOneCase(TEXT("circuit_open_fallback"), TEXT("req_cli_h2_circuit_02"), OpenFallbackOptions);
+
+		HCI_LogAgentPlannerMetrics();
+		return;
+	}
+
+	if (CaseKey == TEXT("all"))
+	{
+		FHCIAbilityKitAgentPlanner::ResetMetricsForTesting();
+
+		FHCIAbilityKitAgentPlannerBuildOptions RetrySuccessOptions;
+		RetrySuccessOptions.bPreferLlm = true;
+		RetrySuccessOptions.LlmMockMode = EHCIAbilityKitAgentPlannerLlmMockMode::Timeout;
+		RetrySuccessOptions.LlmRetryCount = 1;
+		RetrySuccessOptions.LlmMockFailAttempts = 1;
+		RetrySuccessOptions.CircuitBreakerFailureThreshold = 3;
+		RetrySuccessOptions.CircuitBreakerOpenForRequests = 2;
+		RunOneCase(TEXT("retry_success"), TEXT("req_cli_h2_all_01"), RetrySuccessOptions);
+
+		FHCIAbilityKitAgentPlannerBuildOptions RetryFallbackOptions;
+		RetryFallbackOptions.bPreferLlm = true;
+		RetryFallbackOptions.LlmMockMode = EHCIAbilityKitAgentPlannerLlmMockMode::Timeout;
+		RetryFallbackOptions.LlmRetryCount = 1;
+		RetryFallbackOptions.CircuitBreakerFailureThreshold = 3;
+		RetryFallbackOptions.CircuitBreakerOpenForRequests = 2;
+		RunOneCase(TEXT("retry_fallback"), TEXT("req_cli_h2_all_02"), RetryFallbackOptions);
+
+		FHCIAbilityKitAgentPlannerBuildOptions TriggerOpenOptions;
+		TriggerOpenOptions.bPreferLlm = true;
+		TriggerOpenOptions.LlmMockMode = EHCIAbilityKitAgentPlannerLlmMockMode::Timeout;
+		TriggerOpenOptions.LlmRetryCount = 0;
+		TriggerOpenOptions.CircuitBreakerFailureThreshold = 1;
+		TriggerOpenOptions.CircuitBreakerOpenForRequests = 1;
+		RunOneCase(TEXT("circuit_open_trigger"), TEXT("req_cli_h2_all_03"), TriggerOpenOptions);
+
+		FHCIAbilityKitAgentPlannerBuildOptions OpenFallbackOptions;
+		OpenFallbackOptions.bPreferLlm = true;
+		OpenFallbackOptions.LlmMockMode = EHCIAbilityKitAgentPlannerLlmMockMode::None;
+		OpenFallbackOptions.LlmRetryCount = 0;
+		OpenFallbackOptions.CircuitBreakerFailureThreshold = 1;
+		OpenFallbackOptions.CircuitBreakerOpenForRequests = 1;
+		RunOneCase(TEXT("circuit_open_fallback"), TEXT("req_cli_h2_all_04"), OpenFallbackOptions);
+
+		UE_LOG(
+			LogHCIAbilityKitAgentDemo,
+			Display,
+			TEXT("[HCIAbilityKit][AgentPlanLLM][H2] summary total_cases=4 includes=retry_success|retry_fallback|circuit_open_trigger|circuit_open_fallback validation=ok"));
+		HCI_LogAgentPlannerMetrics();
+		return;
+	}
+
+	UE_LOG(
+		LogHCIAbilityKitAgentDemo,
+		Error,
+		TEXT("[HCIAbilityKit][AgentPlanLLM][H2] invalid_args usage=HCIAbilityKit.AgentPlanWithLLMStabilityDemo [all|retry_success|retry_fallback|circuit_open|reset_metrics] [自然语言文本...]"));
+}
+
+static void HCI_RunAbilityKitAgentPlanWithLLMMetricsDumpCommand(const TArray<FString>& Args)
+{
+	(void)Args;
+	HCI_LogAgentPlannerMetrics();
 }
 
 static void HCI_RunAbilityKitAgentPlanDemoCommand(const TArray<FString>& Args)
@@ -7503,6 +7693,22 @@ void FHCIAbilityKitAgentDemoConsoleCommands::Startup()
 			FConsoleCommandWithArgsDelegate::CreateStatic(&HCI_RunAbilityKitAgentPlanWithLLMFallbackDemoCommand));
 	}
 
+	if (!AgentPlanWithLLMStabilityDemoCommand.IsValid())
+	{
+		AgentPlanWithLLMStabilityDemoCommand = MakeUnique<FAutoConsoleCommand>(
+			TEXT("HCIAbilityKit.AgentPlanWithLLMStabilityDemo"),
+			TEXT("H2 LLM stability demo (retry/circuit/metrics). Usage: HCIAbilityKit.AgentPlanWithLLMStabilityDemo [all|retry_success|retry_fallback|circuit_open|reset_metrics] [natural language text...]"),
+			FConsoleCommandWithArgsDelegate::CreateStatic(&HCI_RunAbilityKitAgentPlanWithLLMStabilityDemoCommand));
+	}
+
+	if (!AgentPlanWithLLMMetricsDumpCommand.IsValid())
+	{
+		AgentPlanWithLLMMetricsDumpCommand = MakeUnique<FAutoConsoleCommand>(
+			TEXT("HCIAbilityKit.AgentPlanWithLLMMetricsDump"),
+			TEXT("H2 dump planner stability metrics snapshot."),
+			FConsoleCommandWithArgsDelegate::CreateStatic(&HCI_RunAbilityKitAgentPlanWithLLMMetricsDumpCommand));
+	}
+
 	if (!AgentPlanValidateDemoCommand.IsValid())
 	{
 		AgentPlanValidateDemoCommand = MakeUnique<FAutoConsoleCommand>(
@@ -7860,6 +8066,8 @@ void FHCIAbilityKitAgentDemoConsoleCommands::Shutdown()
 	AgentPlanDemoJsonCommand.Reset();
 	AgentPlanWithLLMDemoCommand.Reset();
 	AgentPlanWithLLMFallbackDemoCommand.Reset();
+	AgentPlanWithLLMStabilityDemoCommand.Reset();
+	AgentPlanWithLLMMetricsDumpCommand.Reset();
 	AgentPlanValidateDemoCommand.Reset();
 	AgentExecutePlanDemoCommand.Reset();
 	AgentExecutePlanFailDemoCommand.Reset();

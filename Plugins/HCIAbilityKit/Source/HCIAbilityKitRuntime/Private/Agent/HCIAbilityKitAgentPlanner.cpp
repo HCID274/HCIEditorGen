@@ -13,6 +13,16 @@ static const TCHAR* const HCI_FallbackReasonTimeout = TEXT("llm_timeout");
 static const TCHAR* const HCI_FallbackReasonInvalidJson = TEXT("llm_invalid_json");
 static const TCHAR* const HCI_FallbackReasonContractInvalid = TEXT("llm_contract_invalid");
 static const TCHAR* const HCI_FallbackReasonEmptyResponse = TEXT("llm_empty_response");
+static const TCHAR* const HCI_FallbackReasonCircuitOpen = TEXT("llm_circuit_open");
+
+struct FHCIAbilityKitAgentPlannerRuntimeState
+{
+	int32 ConsecutiveLlmFailures = 0;
+	int32 CircuitOpenRemainingRequests = 0;
+	FHCIAbilityKitAgentPlannerMetricsSnapshot Metrics;
+};
+
+static FHCIAbilityKitAgentPlannerRuntimeState GHCIAbilityKitAgentPlannerRuntimeState;
 
 static EHCIAbilityKitAgentPlanRiskLevel HCI_ToPlanRiskLevel(EHCIAbilityKitToolCapability Capability)
 {
@@ -272,6 +282,7 @@ static bool HCI_TryBuildMockLlmPlan(
 	const FString& RequestId,
 	const FHCIAbilityKitToolRegistry& ToolRegistry,
 	const FHCIAbilityKitAgentPlannerBuildOptions& Options,
+	const int32 AttemptIndex,
 	FHCIAbilityKitAgentPlan& OutPlan,
 	FString& OutRouteReason,
 	FString& OutFallbackReason,
@@ -283,6 +294,13 @@ static bool HCI_TryBuildMockLlmPlan(
 	OutFallbackReason = HCI_FallbackReasonNone;
 	OutErrorCode = TEXT("-");
 	OutError.Reset();
+
+	if (Options.LlmMockMode != EHCIAbilityKitAgentPlannerLlmMockMode::None &&
+		Options.LlmMockFailAttempts > 0 &&
+		AttemptIndex > Options.LlmMockFailAttempts)
+	{
+		return HCI_BuildKeywordPlan(UserText, RequestId, ToolRegistry, OutPlan, OutRouteReason, OutError);
+	}
 
 	switch (Options.LlmMockMode)
 	{
@@ -322,6 +340,11 @@ static bool HCI_TryBuildMockLlmPlan(
 	}
 	return true;
 }
+
+static bool HCI_IsRetryableLlmFailure(const FString& FallbackReason)
+{
+	return FallbackReason == HCI_FallbackReasonTimeout || FallbackReason == HCI_FallbackReasonEmptyResponse;
+}
 }
 
 bool FHCIAbilityKitAgentPlanner::BuildPlanFromNaturalLanguage(
@@ -345,6 +368,7 @@ bool FHCIAbilityKitAgentPlanner::BuildPlanFromNaturalLanguageWithProvider(
 	FHCIAbilityKitAgentPlannerResultMetadata& OutMetadata,
 	FString& OutError)
 {
+	GHCIAbilityKitAgentPlannerRuntimeState.Metrics.TotalRequests += 1;
 	OutMetadata = FHCIAbilityKitAgentPlannerResultMetadata();
 	OutError.Reset();
 
@@ -353,43 +377,119 @@ bool FHCIAbilityKitAgentPlanner::BuildPlanFromNaturalLanguageWithProvider(
 		OutMetadata.PlannerProvider = HCI_KeywordProviderName;
 		OutMetadata.bFallbackUsed = false;
 		OutMetadata.FallbackReason = HCI_FallbackReasonNone;
+		OutMetadata.ConsecutiveLlmFailures = GHCIAbilityKitAgentPlannerRuntimeState.ConsecutiveLlmFailures;
 		return HCI_BuildKeywordPlan(UserText, RequestId, ToolRegistry, OutPlan, OutRouteReason, OutError);
 	}
 
-	FString LlmFallbackReason = HCI_FallbackReasonNone;
-	FString LlmErrorCode = TEXT("-");
-	FString LlmError;
-	if (HCI_TryBuildMockLlmPlan(
-			UserText,
-			RequestId,
-			ToolRegistry,
-			Options,
-			OutPlan,
-			OutRouteReason,
-			LlmFallbackReason,
-			LlmErrorCode,
-			LlmError))
+	GHCIAbilityKitAgentPlannerRuntimeState.Metrics.LlmPreferredRequests += 1;
+	const bool bCircuitBreakerEnabled = Options.bEnableCircuitBreaker && Options.CircuitBreakerFailureThreshold > 0 && Options.CircuitBreakerOpenForRequests > 0;
+	if (bCircuitBreakerEnabled && GHCIAbilityKitAgentPlannerRuntimeState.CircuitOpenRemainingRequests > 0)
 	{
+		GHCIAbilityKitAgentPlannerRuntimeState.CircuitOpenRemainingRequests -= 1;
+		GHCIAbilityKitAgentPlannerRuntimeState.Metrics.CircuitOpenFallbackRequests += 1;
+		GHCIAbilityKitAgentPlannerRuntimeState.Metrics.KeywordFallbackRequests += 1;
+
+		OutMetadata.PlannerProvider = HCI_KeywordProviderName;
+		OutMetadata.bFallbackUsed = true;
+		OutMetadata.FallbackReason = HCI_FallbackReasonCircuitOpen;
+		OutMetadata.ErrorCode = TEXT("E4305");
+		OutMetadata.bCircuitBreakerOpen = true;
+		OutMetadata.ConsecutiveLlmFailures = GHCIAbilityKitAgentPlannerRuntimeState.ConsecutiveLlmFailures;
+
+		if (!HCI_BuildKeywordPlan(UserText, RequestId, ToolRegistry, OutPlan, OutRouteReason, OutError))
+		{
+			return false;
+		}
+		OutError.Reset();
+		return true;
+	}
+
+	const int32 RetryCount = FMath::Max(0, Options.LlmRetryCount);
+	const int32 MaxAttempts = 1 + RetryCount;
+	int32 AttemptsUsed = 0;
+	FString LastFallbackReason = HCI_FallbackReasonNone;
+	FString LastErrorCode = TEXT("-");
+	FString LastError;
+
+	bool bLlmSucceeded = false;
+	for (int32 AttemptIndex = 1; AttemptIndex <= MaxAttempts; ++AttemptIndex)
+	{
+		AttemptsUsed = AttemptIndex;
+		if (HCI_TryBuildMockLlmPlan(
+				UserText,
+				RequestId,
+				ToolRegistry,
+				Options,
+				AttemptIndex,
+				OutPlan,
+				OutRouteReason,
+				LastFallbackReason,
+				LastErrorCode,
+				LastError))
+		{
+			bLlmSucceeded = true;
+			break;
+		}
+
+		if (AttemptIndex < MaxAttempts && HCI_IsRetryableLlmFailure(LastFallbackReason))
+		{
+			continue;
+		}
+		break;
+	}
+
+	OutMetadata.LlmAttemptCount = AttemptsUsed;
+	OutMetadata.bRetryUsed = AttemptsUsed > 1;
+	if (OutMetadata.bRetryUsed)
+	{
+		GHCIAbilityKitAgentPlannerRuntimeState.Metrics.RetryUsedRequests += 1;
+		GHCIAbilityKitAgentPlannerRuntimeState.Metrics.RetryAttempts += (AttemptsUsed - 1);
+	}
+
+	if (bLlmSucceeded)
+	{
+		GHCIAbilityKitAgentPlannerRuntimeState.ConsecutiveLlmFailures = 0;
+		GHCIAbilityKitAgentPlannerRuntimeState.Metrics.ConsecutiveLlmFailures = 0;
 		OutMetadata.PlannerProvider = HCI_LlmProviderName;
 		OutMetadata.bFallbackUsed = false;
 		OutMetadata.FallbackReason = HCI_FallbackReasonNone;
 		OutMetadata.ErrorCode = TEXT("-");
+		OutMetadata.ConsecutiveLlmFailures = 0;
+		GHCIAbilityKitAgentPlannerRuntimeState.Metrics.LlmSuccessRequests += 1;
 		return true;
 	}
 
-	if (!HCI_BuildKeywordPlan(UserText, RequestId, ToolRegistry, OutPlan, OutRouteReason, OutError))
+	GHCIAbilityKitAgentPlannerRuntimeState.ConsecutiveLlmFailures += 1;
+	GHCIAbilityKitAgentPlannerRuntimeState.Metrics.ConsecutiveLlmFailures = GHCIAbilityKitAgentPlannerRuntimeState.ConsecutiveLlmFailures;
+	if (bCircuitBreakerEnabled &&
+		GHCIAbilityKitAgentPlannerRuntimeState.ConsecutiveLlmFailures >= Options.CircuitBreakerFailureThreshold)
 	{
-		OutMetadata.PlannerProvider = HCI_KeywordProviderName;
-		OutMetadata.bFallbackUsed = true;
-		OutMetadata.FallbackReason = LlmFallbackReason;
-		OutMetadata.ErrorCode = LlmErrorCode;
-		return false;
+		GHCIAbilityKitAgentPlannerRuntimeState.CircuitOpenRemainingRequests = Options.CircuitBreakerOpenForRequests;
+		OutMetadata.bCircuitBreakerOpen = true;
 	}
 
+	GHCIAbilityKitAgentPlannerRuntimeState.Metrics.KeywordFallbackRequests += 1;
 	OutMetadata.PlannerProvider = HCI_KeywordProviderName;
 	OutMetadata.bFallbackUsed = true;
-	OutMetadata.FallbackReason = LlmFallbackReason;
-	OutMetadata.ErrorCode = LlmErrorCode;
+	OutMetadata.FallbackReason = LastFallbackReason;
+	OutMetadata.ErrorCode = LastErrorCode;
+	OutMetadata.ConsecutiveLlmFailures = GHCIAbilityKitAgentPlannerRuntimeState.ConsecutiveLlmFailures;
+	OutError = LastError;
+
+	if (!HCI_BuildKeywordPlan(UserText, RequestId, ToolRegistry, OutPlan, OutRouteReason, OutError))
+	{
+		return false;
+	}
 	OutError.Reset();
 	return true;
+}
+
+FHCIAbilityKitAgentPlannerMetricsSnapshot FHCIAbilityKitAgentPlanner::GetMetricsSnapshot()
+{
+	return GHCIAbilityKitAgentPlannerRuntimeState.Metrics;
+}
+
+void FHCIAbilityKitAgentPlanner::ResetMetricsForTesting()
+{
+	GHCIAbilityKitAgentPlannerRuntimeState = FHCIAbilityKitAgentPlannerRuntimeState();
 }

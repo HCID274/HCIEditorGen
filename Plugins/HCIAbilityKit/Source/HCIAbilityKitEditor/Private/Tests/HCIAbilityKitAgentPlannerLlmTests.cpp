@@ -118,4 +118,144 @@ bool FHCIAbilityKitAgentPlannerLlmInvalidJsonFallbackTest::RunTest(const FString
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FHCIAbilityKitAgentPlannerLlmRetrySuccessTest,
+	"HCIAbilityKit.Editor.AgentPlanLLM.RetryTimeoutThenLlmSuccess",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FHCIAbilityKitAgentPlannerLlmRetrySuccessTest::RunTest(const FString& Parameters)
+{
+	FHCIAbilityKitAgentPlanner::ResetMetricsForTesting();
+	FHCIAbilityKitToolRegistry& Registry = FHCIAbilityKitToolRegistry::Get();
+	Registry.ResetToDefaults();
+
+	FHCIAbilityKitAgentPlannerBuildOptions Options;
+	Options.bPreferLlm = true;
+	Options.LlmMockMode = EHCIAbilityKitAgentPlannerLlmMockMode::Timeout;
+	Options.LlmRetryCount = 1;
+	Options.LlmMockFailAttempts = 1;
+
+	FHCIAbilityKitAgentPlan Plan;
+	FString RouteReason;
+	FHCIAbilityKitAgentPlannerResultMetadata Metadata;
+	FString Error;
+	const bool bBuilt = FHCIAbilityKitAgentPlanner::BuildPlanFromNaturalLanguageWithProvider(
+		TEXT("整理临时目录资产并归档"),
+		TEXT("req_h2_llm_01"),
+		Registry,
+		Options,
+		Plan,
+		RouteReason,
+		Metadata,
+		Error);
+
+	TestTrue(TEXT("Retry success should build plan"), bBuilt);
+	TestEqual(TEXT("Planner provider should be llm"), Metadata.PlannerProvider, FString(TEXT("llm")));
+	TestFalse(TEXT("Fallback should not be used"), Metadata.bFallbackUsed);
+	TestTrue(TEXT("Retry should be used"), Metadata.bRetryUsed);
+	TestEqual(TEXT("LLM attempts should be 2"), Metadata.LlmAttemptCount, 2);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FHCIAbilityKitAgentPlannerLlmCircuitOpenFallbackTest,
+	"HCIAbilityKit.Editor.AgentPlanLLM.CircuitOpenForcesKeywordFallback",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FHCIAbilityKitAgentPlannerLlmCircuitOpenFallbackTest::RunTest(const FString& Parameters)
+{
+	FHCIAbilityKitAgentPlanner::ResetMetricsForTesting();
+	FHCIAbilityKitToolRegistry& Registry = FHCIAbilityKitToolRegistry::Get();
+	Registry.ResetToDefaults();
+
+	FHCIAbilityKitAgentPlannerBuildOptions TriggerOptions;
+	TriggerOptions.bPreferLlm = true;
+	TriggerOptions.LlmMockMode = EHCIAbilityKitAgentPlannerLlmMockMode::Timeout;
+	TriggerOptions.CircuitBreakerFailureThreshold = 1;
+	TriggerOptions.CircuitBreakerOpenForRequests = 1;
+
+	FHCIAbilityKitAgentPlan TriggerPlan;
+	FString TriggerRoute;
+	FHCIAbilityKitAgentPlannerResultMetadata TriggerMetadata;
+	FString TriggerError;
+	TestTrue(
+		TEXT("Initial timeout should still fallback to keyword"),
+		FHCIAbilityKitAgentPlanner::BuildPlanFromNaturalLanguageWithProvider(
+			TEXT("整理临时目录资产并归档"),
+			TEXT("req_h2_llm_02"),
+			Registry,
+			TriggerOptions,
+			TriggerPlan,
+			TriggerRoute,
+			TriggerMetadata,
+			TriggerError));
+
+	FHCIAbilityKitAgentPlannerBuildOptions OpenOptions;
+	OpenOptions.bPreferLlm = true;
+	OpenOptions.LlmMockMode = EHCIAbilityKitAgentPlannerLlmMockMode::None;
+	OpenOptions.CircuitBreakerFailureThreshold = 1;
+	OpenOptions.CircuitBreakerOpenForRequests = 1;
+
+	FHCIAbilityKitAgentPlan OpenPlan;
+	FString OpenRoute;
+	FHCIAbilityKitAgentPlannerResultMetadata OpenMetadata;
+	FString OpenError;
+	const bool bOpenBuilt = FHCIAbilityKitAgentPlanner::BuildPlanFromNaturalLanguageWithProvider(
+		TEXT("整理临时目录资产并归档"),
+		TEXT("req_h2_llm_03"),
+		Registry,
+		OpenOptions,
+		OpenPlan,
+		OpenRoute,
+		OpenMetadata,
+		OpenError);
+	TestTrue(TEXT("Circuit-open request should fallback and still build plan"), bOpenBuilt);
+	TestEqual(TEXT("Provider should be keyword_fallback"), OpenMetadata.PlannerProvider, FString(TEXT("keyword_fallback")));
+	TestEqual(TEXT("Fallback reason should be llm_circuit_open"), OpenMetadata.FallbackReason, FString(TEXT("llm_circuit_open")));
+	TestEqual(TEXT("Error code should be E4305"), OpenMetadata.ErrorCode, FString(TEXT("E4305")));
+	TestTrue(TEXT("Circuit-open metadata should be true"), OpenMetadata.bCircuitBreakerOpen);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FHCIAbilityKitAgentPlannerLlmMetricsSnapshotTest,
+	"HCIAbilityKit.Editor.AgentPlanLLM.MetricsSnapshotTracksRetryAndCircuit",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FHCIAbilityKitAgentPlannerLlmMetricsSnapshotTest::RunTest(const FString& Parameters)
+{
+	FHCIAbilityKitAgentPlanner::ResetMetricsForTesting();
+	FHCIAbilityKitToolRegistry& Registry = FHCIAbilityKitToolRegistry::Get();
+	Registry.ResetToDefaults();
+
+	FHCIAbilityKitAgentPlannerBuildOptions Options;
+	Options.bPreferLlm = true;
+	Options.LlmMockMode = EHCIAbilityKitAgentPlannerLlmMockMode::Timeout;
+	Options.LlmRetryCount = 1;
+
+	FHCIAbilityKitAgentPlan Plan;
+	FString RouteReason;
+	FHCIAbilityKitAgentPlannerResultMetadata Metadata;
+	FString Error;
+	TestTrue(
+		TEXT("Retry fallback should still build"),
+		FHCIAbilityKitAgentPlanner::BuildPlanFromNaturalLanguageWithProvider(
+			TEXT("整理临时目录资产并归档"),
+			TEXT("req_h2_llm_04"),
+			Registry,
+			Options,
+			Plan,
+			RouteReason,
+			Metadata,
+			Error));
+
+	const FHCIAbilityKitAgentPlannerMetricsSnapshot Metrics = FHCIAbilityKitAgentPlanner::GetMetricsSnapshot();
+	TestEqual(TEXT("Total requests should be 1"), Metrics.TotalRequests, 1);
+	TestEqual(TEXT("LLM preferred requests should be 1"), Metrics.LlmPreferredRequests, 1);
+	TestEqual(TEXT("Keyword fallback requests should be 1"), Metrics.KeywordFallbackRequests, 1);
+	TestEqual(TEXT("Retry used requests should be 1"), Metrics.RetryUsedRequests, 1);
+	TestEqual(TEXT("Retry attempts should be 1"), Metrics.RetryAttempts, 1);
+	return true;
+}
+
 #endif

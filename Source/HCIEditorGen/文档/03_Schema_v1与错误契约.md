@@ -1,8 +1,8 @@
 # HCIAbilityKit Schema v1 与错误契约
 
-> 状态：冻结（M0-V3）
-> 版本：v3
-> 更新时间：2026-02-21
+> 状态：冻结（M0-V4）
+> 版本：v4
+> 更新时间：2026-02-24
 
 ## 1. 数据输入契约（SourceData）
 
@@ -101,7 +101,7 @@
 - 必填字段：`code/file/field/reason`
 - 禁止行为：失败后脏写、半写、无提示静默失败
 
-## 5. 错误码（v3）
+## 5. 错误码（v4）
 
 - `E1001`：JSON 格式非法
 - `E1002`：缺失必填字段
@@ -124,6 +124,25 @@
 - `E4010`：LOD 工具目标资产类型不支持或 Nanite 已启用
 - `E4011`：关卡风险扫描目标非法（非 Actor 范围或参数不合法）
 - `E4012`：命名溯源信息缺失且无法生成安全命名提案
+- `E4201`：审阅选择参数非法（空选择或越界）
+- `E4202`：跨阶段契约完整性不一致（id/digest/target mismatch）
+- `E4203`：ApplyRequest 未就绪（存在阻断项）
+- `E4204`：ConfirmRequest 未就绪
+- `E4205`：ExecuteTicket 未就绪
+- `E4206`：SimExecuteReceipt 未被接受
+- `E4207`：SimFinalReport 未完成
+- `E4208`：SimArchiveBundle 未就绪
+- `E4209`：SimHandoffEnvelope 未就绪
+- `E4210`：StageGExecuteIntent 未就绪
+- `E4211`：StageGWriteEnableRequest 未就绪
+- `E4212`：StageGExecutePermitTicket 未就绪
+- `E4213`：StageGExecuteDispatchRequest 未就绪
+- `E4214`：StageGExecuteDispatchReceipt 未就绪
+- `E4215`：StageGExecuteCommitRequest 未就绪
+- `E4216`：StageGExecuteCommitReceipt 未就绪
+- `E4217`：StageGExecuteFinalReport 未完成
+- `E4218`：StageGExecuteArchiveBundle 未就绪（G10 就绪校验阻断）
+- `E4219`：G10 不允许真实写执行模式（仅允许 `simulate_dry_run`）
 
 ## 6. 测试样例（固定）
 
@@ -146,6 +165,8 @@
 - `TC_AGENT_FAIL_09`：`ScanLevelMeshRisks` 传入非法 `scope/checks`（期望 `E4011`）
 - `TC_AGENT_OK_04`：`NormalizeAssetNamingByMetadata` 可读取 `UAssetImportData/AssetUserData` 生成前缀命名与 Move 计划（Dry-Run）
 - `TC_AGENT_FAIL_10`：命名归档工具元数据不足且无法安全推断（期望 `E4012`）
+- `TC_AGENT_FAIL_11`：G10 就绪校验时 `StageGExecuteArchiveBundle` 未就绪（期望 `E4218`）
+- `TC_AGENT_FAIL_12`：G10 强制写执行模式（期望 `E4219`）
 
 ## 7. 检索文档契约（Step3-Slice1，历史基线）
 

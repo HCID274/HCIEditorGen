@@ -39,6 +39,8 @@ Scope: whole repo.
 - 每个切片开发完成后必须停下，等待用户在 UE 手测。
 - 用户未明确 Pass，不得进入下一个切片。
 - 重构优先级：先结构迁移，再服务抽离，再审计主链路完善，再 UI 升级。
+- 进度节奏不得拖慢：默认每个切片按“文档冻结 -> 实现 -> UE 手测门禁”短周期推进；若超过约定窗口，必须主动给出阻塞原因与加速方案。
+- 当“当前计划规定内容”已完成时，必须立即停下并询问用户下一步动向；禁止助手自行扩展到未冻结范围。
 
 ## 5. 测试与数据留存
 
@@ -62,216 +64,27 @@ Scope: whole repo.
 - 错误信息必须可定位（文件/字段/原因/建议）。
 - 未通过验证的结论不得标记为“完成”。
 
-## 8. 当前进度快照（2026-02-23）
+## 8. 当前进度快照（精简，2026-02-24）
 
-- Step 1（结构迁移）已关闭：
-  - Slice1：插件双模块骨架落地并通过。
-  - Slice2：资产/Factory/Reimport 迁移到插件并通过。
-  - Slice3：项目本体 Editor 空壳模块下线并通过。
-  - Slice4：Reimport 失败通知可视化（含错误原因）并通过。
-- Step 2（服务抽离）已关闭：
-  - Slice1：JSON 解析从 `UHCIAbilityKitFactory` 抽离到 Runtime `FHCIAbilityKitParserService`，通过。
-  - Slice2：打通 `Factory -> Runtime Service -> UE Python` 最小链路，受控失败可见（`__force_python_fail__`），通过。
-  - Slice3：Python 结构化输出接入 `DisplayName` 字段映射，通过。
-  - Slice4：统一错误契约与 Python 审计输出，通过。
-- 检索实验线（历史基线）：
-  - `Step3-Slice1~Slice3` 代码与门禁已完成，保留为历史基线能力。
-- 当前主线（资产审计优先）：
-  - `Stage A-SliceA1` 已完成：路线重规划文档冻结。
-  - `Stage A-SliceA2` 已完成：审计结果契约/面数提取/RuleRegistry 冻结。
-  - `Stage A-SliceA3` 已完成：实战资产导入方案冻结（种子资产、RepresentingMesh 引用链、Stage B 启动门禁）。
-  - `Stage B-SliceB0` 已通过：种子资产清单扫描与 10k 引用链绑定验证。
-  - B0 结果：
-    - 已完成：Seed 资产体检（`/Game/Seed` 资产类型分布、StaticMesh 面数读取）。
-    - 已完成：在用户授权下批量重命名 12 个 StaticMesh，命名规范化为 `SM_*`（不合规从 12 降至 0）。
-    - 已完成：`seed_mesh_manifest` build/validate（12 条）与 10k 生成绑定验证（`representing_mesh_assigned=10000`）。
-    - 已完成：UE 手测门禁，用户已反馈 `StageB-SliceB0 Pass`。
-  - `Stage B-SliceB1` 已通过：`RepresentingMesh` 字段接入与导入绑定。
-  - B1 最新状态：
-    - 已完成：`FHCIAbilityKitParsedData` 增加 `RepresentingMeshPath`，并解析 `representing_mesh`（可选）字段。
-    - 已完成：`UHCIAbilityKitAsset` 增加 `RepresentingMesh(TSoftObjectPtr<UStaticMesh>)`。
-    - 已完成：Factory 增加 `E1006` 校验（路径格式/目标存在/类型为 StaticMesh）并完成 Import/Reimport 绑定。
-    - 已完成：Python Hook patch 支持可选 `representing_mesh` 覆盖。
-    - 已完成：UE 编译通过（`Build.bat HCIEditorGenEditor Win64 Development ...`）。
-    - 已完成：UE 导入/重导手测门禁，用户已反馈 `StageB-SliceB1 Pass`。
-  - `Stage B-SliceB2` 已通过：`AssetRegistry + FAssetData` 全量枚举。
-  - B2 最新状态：
-    - 已完成：Runtime 新增 `FHCIAbilityKitAuditScanService`，全量枚举 `UHCIAbilityKitAsset` 元数据（不加载资产对象）。
-    - 已完成：`UHCIAbilityKitAsset::GetAssetRegistryTags` 写入 `hci_id/hci_display_name/hci_damage/hci_representing_mesh` 标签，支撑纯元数据扫描。
-    - 已完成：Editor 新增控制台命令 `HCIAbilityKit.AuditScan [log_top_n]`，输出扫描统计与样本行。
-    - 已完成：UE 编译通过（`Build.bat HCIEditorGenEditor Win64 Development ...`）。
-    - 已完成：UE 手测通过（`assets=2`，其中 1 个历史资产字段为空导致覆盖率 `50%`，符合预期；用户反馈 `Pass`）。
-  - `Stage B-SliceB4` 已通过：任务中断/重试与失败收敛。
-  - B4 最新状态：
-    - 已完成：异步扫描状态机抽离（支持 `Running/Cancelled/Failed`）。
-    - 已完成：新增控制台命令 `HCIAbilityKit.AuditScanAsyncStop` 与 `HCIAbilityKit.AuditScanAsyncRetry`。
-    - 已完成：`HCIAbilityKit.AuditScanProgress` 增强，支持 `cancelled/failed/idle/running` 状态输出。
-    - 已完成：UE 手测通过（用户日志命中 `interrupted ... can_retry=true` 与 `retry start ...`，反馈 `OK`）。
-  - `Stage B-SliceB5` 已通过：`triangle_count` Tag 采集与 `triangle_source=tag_cached` 来源标记。
-  - B5 最新状态：
-    - 已完成：扩展 `triangle_count` Tag 候选解析（含 `hci_triangles_lod0/triangle_count_lod0/triangles_lod0/lod0_triangles/Triangles/NumTriangles`）。
-    - 已完成：`AuditScan/AuditScanAsync` 输出 `triangle_count_lod0/triangle_source/triangle_source_tag`。
-    - 已完成：统计摘要新增 `triangle_tag_coverage`。
-    - 已完成：UE 手测通过（用户日志命中 `triangle_tag_coverage=99.5%`，且多条 `triangle_source=tag_cached triangle_source_tag=Triangles`）。
-  - `Stage B-SliceB6` 已通过：状态过滤（`Locked/Dirty`）与跳过留痕。
-  - B6 最新状态：
-    - 已完成：同步/异步扫描统一输出 `scan_state/skip_reason`。
-    - 已完成：`Dirty` 包跳过并记录 `scan_state=skipped_locked_or_dirty skip_reason=package_dirty`。
-    - 已完成：只读包跳过并记录 `scan_state=skipped_locked_or_dirty skip_reason=package_read_only`。
-    - 已完成：摘要新增 `skipped_locked_or_dirty` 计数。
-    - 已完成：用户手测确认 `Pass`。
-  - `Stage B-SliceB7` 已通过：数据驱动预览体与拖入场景可视化验证。
-  - B7 最新状态：
-    - 已完成：新增 `AHCIAbilityKitPreviewActor`，读取 `AbilityAsset.RepresentingMesh` 并驱动 `PreviewMeshComponent` 显示。
-    - 已完成：支持 `OnConstruction` 与 `RefreshPreview(CallInEditor)` 刷新。
-    - 已完成：修复 Details 分类混淆，将分类统一为 `HCIAudit`（去除 `HCI|Audit` 层级分组）。
-    - 已完成：用户手测确认 `Pass`。
-  - `Stage B-SliceB8` 已通过：预览体自动同步（`PostEditChangeProperty` + Reimport 后主动刷新）。
-  - `Stage C-SliceC1` 已通过：RuleRegistry 框架与规则接口落地。
-    - 已完成：Runtime 新增 `IHCIAbilityAuditRule` 契约与 `FHCIAbilityKitAuditRuleRegistry` 注册中心。
-    - 已完成：默认规则 `TriangleExpectedMismatchRule`（`actual vs expected`）接入扫描链路。
-    - 已完成：导入解析支持可选 `params.triangle_count_lod0`，并写入资产标签 `hci_triangle_expected_lod0`。
-    - 已完成：`AuditScan/AuditScanAsync` 增加规则 issue 统计字段（`issue_assets/info/warn/error`）与行级 issue 输出。
-    - 已完成：自动化测试 `HCIAbilityKit.Editor.AuditRules.TriangleExpectedMismatchWarn` 与 `...TriangleExpectedMissingShouldNotWarn`。
-    - 已完成：用户 UE 手测通过（同步/异步扫描无异常，C1 新增摘要/行字段完整且 expected 缺失时不误报）。
-  - `Stage C-SliceC2` 已通过：首批规则 `TextureNPOTRule + HighPolyAutoLODRule` 落地。
-    - 已完成：默认 RuleRegistry 扩展首批规则 `TextureNPOTRule + HighPolyAutoLODRule`。
-    - 已完成：`HighPolyAutoLODRule` 使用 UE 真实 Tag（`Triangles/LODs/NaniteEnabled`）判断高面数且缺失额外 LOD。
-    - 已完成：`TextureNPOTRule` 使用 `Dimensions`（`WxH`）判定 NPOT，规则级自动化测试通过。
-    - 已完成：`AuditScan/AuditScanAsync` 行日志新增 `class/mesh_lods/mesh_nanite/tex_dims` 字段，便于 UE 手测定位规则证据。
-    - 已完成：用户 UE 手测通过（3 个高面数非 Nanite 单 LOD 样本命中 `HighPolyAutoLODRule`；摘要与行日志一致）。
-  - `Stage C-SliceC3` 已通过：统一审计结果结构与严重级别。
-    - 已完成：Runtime 新增 `FHCIAbilityKitAuditReport / FHCIAbilityKitAuditResultEntry` 统一结果结构。
-    - 已完成：`FHCIAbilityKitAuditReportBuilder` 支持将 `ScanSnapshot` 扁平化为 `results[]`（为 `C4` JSON 导出复用）。
-    - 已完成：严重级别统一字符串化 `Info/Warn/Error`，扫描行日志新增 `first_issue_severity_name`。
-    - 已完成：用户 UE 手测通过（同步/异步扫描正常；`1 <-> Warn` 映射一致）。
-  - `Stage C-SliceC4` 已通过：JSON 报告导出（含 `triangle_source` 与规则证据）。
-    - 已完成：Runtime 新增 `FHCIAbilityKitAuditReportJsonSerializer`（`AuditReport -> JSON`）。
-    - 已完成：Editor 新增命令 `HCIAbilityKit.AuditExportJson [output_json_path]`。
-    - 已完成：本地 smoke 验证导出成功并落盘（`c4_local_smoke.json`，含 `triangle_source/evidence`）。
-    - 已完成：用户 UE 手测通过（无参数/指定路径导出均成功；日志含 `path/run_id/results`）。
-  - `Stage D-SliceD1` 已通过：深度检查批次策略与分批加载释放。
-    - 已完成：`HCIAbilityKit.AuditScanAsync` 新增可选参数 `deep_mesh_check=0|1`（默认 `0`）。
-    - 已完成：开启深度模式后，按异步批次对 `RepresentingMesh` 执行同步加载，补齐 `triangle_count_lod0/mesh_lods/mesh_nanite` 缺失信号。
-    - 已完成：每次加载后立即释放 `FStreamableHandle` 强引用；完成日志输出 `[AuditScanAsync][Deep]` 聚合统计（`load_attempts/load_success/handle_releases/...`）。
-    - 已完成：自动化测试新增 `HCIAbilityKit.Editor.AuditScanAsync.DeepModeRetryPersistence`（中断/重试保留深度模式开关），本地通过。
-    - 已完成：用户 UE 手测通过（`deep_mesh_check=true` 在 start/retry 保留；深度统计行输出；样本全 `tag_cached` 时统计为 `0` 符合预期）。
-  - `Stage D-SliceD2` 已通过：GC 节流策略。
-    - 已完成：`HCIAbilityKit.AuditScanAsync` 新增第 4 参数 `gc_every_n_batches>=0`（深度模式默认 `16`）。
-    - 已完成：按批次节流调用 `CollectGarbage`（在深度批次处理且释放加载句柄之后执行）。
-    - 已完成：深度统计扩展 `batches/gc_every_n_batches/gc_runs/max_batch_ms/max_gc_ms/peak_used_physical_mib`。
-    - 已完成：自动化测试新增 `HCIAbilityKit.Editor.AuditScanAsync.GcThrottleRetryPersistence`（重试保留 GC 节流配置），本地通过。
-    - 已完成：用户 UE 手测通过（`gc_every_n_batches=1` 高频 GC 命中 `gc_runs=274`；`Stop/Retry` 保留 `gc_every_n_batches=3` 并生效）。
-  - `Stage D-SliceD3` 已通过：峰值内存与吞吐日志监控。
-    - 已完成：新增运行中性能监控日志 `[HCIAbilityKit][AuditScanAsync][Perf]`，在进度点输出 `avg_assets_per_sec/window_assets_per_sec/eta_s/used_physical_mib/peak_used_physical_mib/gc_runs`。
-    - 已完成：新增完成态性能汇总日志 `[HCIAbilityKit][AuditScanAsync][PerfSummary]`，输出 `avg/p50/p95/max_batch_assets_per_sec` 与峰值内存。
-    - 已完成：新增性能统计辅助 `FHCIAbilityKitAuditPerfMetrics`（吞吐率换算 + nearest-rank 分位数）。
-    - 已完成：自动化测试新增 `HCIAbilityKit.Editor.AuditScanAsync.PerfMetricsHelper`，本地通过（`AuditScanAsync` 5/5，`AuditResults` 回归 3/3）。
-    - 已完成：用户 UE 手测通过（`AuditScanAsync 1 20 1 3` 无 Error；运行中 `[Perf]` 日志字段完整；完成态 `[PerfSummary]` 输出 `p50/p95/max batch throughput + peak_used_physical_mib`；原有 `[Deep]` 日志仍存在，无回归）。
-  - `Stage E-SliceE1` 已通过：Tool Registry 能力声明冻结。
-    - 已完成：Runtime 新增 `FHCIAbilityKitToolRegistry`，冻结一期 7 个工具白名单与 `args_schema` 枚举/边界（`SetTextureMaxSize/SetMeshLODGroup/ScanLevelMeshRisks/NormalizeAssetNamingByMetadata/RenameAsset/MoveAsset + ScanAssets`）。
-    - 已完成：能力元信息覆盖 `capability/supports_dry_run/supports_undo/destructive/domain`，并校验三维业务覆盖（`AssetCompliance/LevelRisk/NamingTraceability`）。
-    - 已完成：Editor 新增只读控制台命令 `HCIAbilityKit.ToolRegistryDump [tool_name]`，用于 UE 手测核验 Tool 声明与参数约束日志。
-    - 已完成：自动化测试新增 `HCIAbilityKit.Editor.AgentTools.*`（3/3），且 `AuditScanAsync`（5/5）/`AuditResults`（3/3）回归通过。
-    - 已完成：用户 UE 手测通过（`ToolRegistryDump` 全量/单工具命令均无 Error/Warning；汇总行 `total_registered=7 validation=ok`；白名单 7 工具齐全；`SetMeshLODGroup/SetTextureMaxSize/ScanLevelMeshRisks` 参数枚举与边界日志符合冻结口径）。
-  - `Stage E-SliceE2` 已通过：Dry-Run Diff 契约与 UE 面板展示（最小预览链路）。
-    - 已完成：Runtime 新增 `FHCIAbilityKitDryRunDiffReport/Item/Summary` 与 `FHCIAbilityKitDryRunDiffJsonSerializer`，覆盖 `request_id/summary/diff_items[]` 及扩展字段 `object_type/locate_strategy/evidence_key`。
-    - 已完成：`NormalizeAndFinalize` 自动推导定位策略（`actor -> camera_focus`, `asset -> sync_browser`）并汇总 `total_candidates/modifiable/skipped`。
-    - 已完成：Editor 新增 `HCIAbilityKit.DryRunDiffPreviewDemo`（Diff 列表预览）、`HCIAbilityKit.DryRunDiffLocate [row_index]`（定位入口）、`HCIAbilityKit.DryRunDiffPreviewJson`（契约 JSON 输出）。
-    - 已完成：自动化测试新增 `HCIAbilityKit.Editor.AgentDryRun.*`（2/2），且 `AgentTools`（3/3）/`AuditResults`（3/3）/`AuditScanAsync`（5/5）回归通过。
-    - 已完成：用户 UE 手测通过（`DryRunDiffPreviewDemo` 摘要与 `row=` 字段完整；覆盖 `asset->sync_browser` 与 `actor->camera_focus`；`DryRunDiffPreviewJson` 含核心契约字段；`DryRunDiffLocate 0/2` 输出定位策略日志，`actor_not_found` 在样例场景下可接受）。
-  - `Stage E-SliceE3` 已通过：确认门禁（未确认不得执行写操作）。
-    - 已完成：Runtime 新增 `FHCIAbilityKitAgentExecutionGate`，基于 `ToolRegistry` 能力执行确认门禁判定（`read_only` 放行；`write/destructive` 未确认拦截）。
-    - 已完成：错误收敛口径：未确认写操作返回 `E4005`（`user_not_confirmed/write_step_requires_confirm`）；非白名单工具返回 `E4002`。
-    - 已完成：Editor 新增 `HCIAbilityKit.AgentConfirmGateDemo` 控制台命令（默认三案例 + 自定义参数），用于 UE 手测日志验证。
-    - 已完成：自动化测试新增 `HCIAbilityKit.Editor.AgentExec.*`（3/3：未确认写阻断/只读放行/确认写放行），本地通过；`AgentTools`（3/3）与 `AgentDryRun`（2/2）回归通过。
-    - 已完成：用户 UE 手测通过（无参命令摘要命中 `total_cases=3 validation=ok`；`RenameAsset 1 0` 命中 `E4005/user_not_confirmed`；`ScanAssets 0 0` 与 `SetTextureMaxSize 1 1` 分别命中 `read_only/write` 放行）。
-  - `Stage E-SliceE4` 已通过：Blast Radius 极简限流（硬编码阈值）。
-    - 已完成：在 `FHCIAbilityKitAgentExecutionGate` 中新增 Blast Radius 判定，固定 `MAX_ASSET_MODIFY_LIMIT=50`。
-    - 已完成：`write/destructive` 工具 `target_modify_count > 50` 返回 `E4004`（`modify_limit_exceeded`）；`read_only` 工具不受限。
-    - 已完成：Editor 新增 `HCIAbilityKit.AgentBlastRadiusDemo` 控制台命令（默认三案例 + 自定义参数）用于 UE 手测日志验证。
-    - 已完成：自动化测试 `HCIAbilityKit.Editor.AgentExec` 扩展至 6/6（新增 `BlastRadiusBlocksOverLimit/AllowsAtLimit/SkipsReadOnlyTool`），本地通过；`AgentTools`（3/3）与 `AgentDryRun`（2/2）回归通过。
-    - 已完成：用户 UE 手测通过（无参命令摘要命中 `total_cases=3 max_limit=50 expected_blocked_code=E4004 validation=ok`；`RenameAsset 51` 命中 `E4004/modify_limit_exceeded`；`SetTextureMaxSize 50` 边界值放行；`ScanAssets 999` 只读不受限）。
-  - `Stage E-SliceE5` 已通过：事务策略 All-or-Nothing（最小可撤销执行骨架）。
-    - 已完成：在 `FHCIAbilityKitAgentExecutionGate` 中新增 `EvaluateAllOrNothingTransaction`，固定 `transaction_mode=all_or_nothing`，支持预检白名单拦截（`E4002`）与步骤失败整单回滚（`E4007`）。
-    - 已完成：失败收敛口径：`reason=step_failed_all_or_nothing_rollback`；失败时 `committed_steps=0`，无部分提交残留。
-    - 已完成：Editor 新增 `HCIAbilityKit.AgentTransactionDemo` 控制台命令（默认三案例 + 自定义 `total_steps/fail_step_index`）用于 UE 手测日志验证。
-    - 已完成：自动化测试 `HCIAbilityKit.Editor.AgentExec` 扩展至 9/9（新增 `TransactionCommitsAllStepsOnSuccess/TransactionRollsBackOnFailure/TransactionRejectsUnknownToolBeforeExecution`），本地通过；`AgentTools`（3/3）与 `AgentDryRun`（2/2）回归通过。
-    - 已完成：用户 UE 手测通过（无参命令摘要命中 `total_cases=3 committed=1 rolled_back=2 transaction_mode=all_or_nothing expected_failed_code=E4007 validation=ok`；`AgentTransactionDemo 3 0` 命中全提交；`AgentTransactionDemo 3 2` 命中 `E4007/step_failed_all_or_nothing_rollback` 且 `committed_steps=0`）。
-  - `Stage E-SliceE6` 已通过：SourceControl Fail-Fast + 离线本地模式。
-    - 已完成：在 `FHCIAbilityKitAgentExecutionGate` 中新增 `EvaluateSourceControlFailFast`，统一判定 `read_only` 绕过 Checkout、`SC disabled` 进入离线本地模式放行、`SC enabled + checkout fail` 返回 `E4006`（`source_control_checkout_failed_fail_fast`）。
-    - 已完成：Editor 新增 `HCIAbilityKit.AgentSourceControlDemo` 控制台命令（默认三案例 + 自定义 `tool_name/source_control_enabled/checkout_succeeded`）用于 UE 手测验证日志口径。
-    - 已完成：自动化测试 `HCIAbilityKit.Editor.AgentExec` 扩展至 13/13（新增 4 条 `SourceControl*` 测试），本地通过；`AgentTools`（3/3）与 `AgentDryRun`（2/2）回归通过。
-    - 已完成：用户 UE 手测通过（无参命令摘要命中 `total_cases=3 allowed=2 blocked=1 offline_local_mode_cases=1 fail_fast=true expected_blocked_code=E4006 validation=ok`；`RenameAsset 0 0` 命中离线本地模式放行；`RenameAsset 1 0` 命中 `E4006/source_control_checkout_failed_fail_fast`；`MoveAsset 1 1` 命中 checkout 成功放行）。
-  - `Stage E-SliceE7` 已通过：本地 Mock 鉴权与本地审计日志。
-    - 已完成：`FHCIAbilityKitAgentExecutionGate` 新增 `EvaluateMockRbac`（本地用户名映射 + 默认 `Guest(read_only)` 回退；未授权写操作返回 `E4008`）。
-    - 已完成：新增本地审计日志 JSONL 序列化接口 `SerializeLocalAuditLogRecordToJsonLine`（核心字段含 `timestamp_utc/user/request_id/tool_name/asset_count/result/error_code`）。
-    - 已完成：Editor 新增 `HCIAbilityKit.AgentRbacDemo [user_name] [tool_name] [asset_count>=0]` 控制台命令（默认三案例 + 自定义参数），并写入 `Saved/HCIAbilityKit/Audit/agent_exec_log.jsonl`。
-    - 已完成：新增默认 RBAC 配表 `SourceData/AbilityKits/Config/agent_rbac_mock.json`（`artist_a/ta_a/reviewer_a`）。
-    - 已完成：自动化测试 `HCIAbilityKit.Editor.AgentExec` 扩展至 17/17（新增 `MockRbac*` 与 `LocalAuditLogJsonLineIncludesCoreFields`），本地通过；`AgentTools`（3/3）与 `AgentDryRun`（2/2）回归通过。
-    - 已完成：用户 UE 手测通过（无参摘要命中 `total_cases=3 ... guest_fallback_cases=2 ... audit_log_appends=3 ... validation=ok`；`unknown_guest RenameAsset 1` 命中 `E4008/guest_read_only_write_blocked`；`unknown_guest ScanAssets 0` 命中 `guest_read_only_allowed`；`artist_a SetTextureMaxSize 3` 命中 `rbac_allowed`；并确认 `agent_exec_log.jsonl` 存在且字段齐全）。
-  - `Stage E-SliceE8` 已通过：规则级安全边界收束（LOD Nanite 拦截 / 类型校验）。
-    - 已完成：`FHCIAbilityKitAgentExecutionGate` 新增 `EvaluateLodToolSafety`，对 `SetMeshLODGroup` 执行类型校验与 Nanite 拦截（非 `StaticMesh` 或 `Nanite=true` 返回 `E4010`）。
-    - 已完成：Editor 新增 `HCIAbilityKit.AgentLodSafetyDemo [tool_name] [target_object_class] [nanite_enabled 0|1]`（默认三案例 + 自定义参数）用于 UE 手测日志验证。
-    - 已完成：自动化测试 `HCIAbilityKit.Editor.AgentExec` 扩展至 E8（新增 `LodSafetyBlocksNonStaticMeshTarget/LodSafetyBlocksNaniteMesh/LodSafetyAllowsNonNaniteStaticMesh`），本地通过；`AgentTools`（3/3）与 `AgentDryRun`（2/2）回归通过。
-    - 已完成：用户 UE 手测通过（无参摘要命中 `total_cases=3 allowed=1 blocked=2 type_blocked=1 nanite_blocked=1 expected_blocked_code=E4010 validation=ok`；`Texture2D` 类型拦截与 `Nanite` 拦截均返回 `E4010`；`UStaticMesh + nanite=false` 放行）。
-  - `Stage F-SliceF1` 已通过：自然语言 -> Plan JSON 契约冻结与最小落地。
-    - 已完成：Runtime 新增 `FHCIAbilityKitAgentPlan/FHCIAbilityKitAgentPlanStep`、`FHCIAbilityKitAgentPlanContract::ValidateMinimalContract`、`FHCIAbilityKitAgentPlanJsonSerializer`。
-    - 已完成：Runtime 新增最小关键词规划器 `FHCIAbilityKitAgentPlanner`，覆盖 `命名溯源整理 / 关卡排雷 / 资产规范合规` 三类一期意图，并支持“整理临时目录资产”命名归档意图路由到 `NormalizeAssetNamingByMetadata`。
-    - 已完成：Editor 新增 `HCIAbilityKit.AgentPlanDemo` 与 `HCIAbilityKit.AgentPlanDemoJson` 控制台命令（默认三案例 + 自定义自然语言输入）用于 UE 手测验证摘要/步骤字段及 JSON 契约输出。
-    - 已完成：新增自动化测试 `HCIAbilityKit.Editor.AgentPlan`（3/3）并本地通过；`AgentTools`（3/3）回归通过。
-    - 已完成：用户 UE 手测通过（无参摘要命中 `total_cases=3 built=3 validation_ok=3 plan_version=1 supports_intents=naming_traceability|level_risk|asset_compliance validation=ok`；命名归档意图命中 `intent=normalize_temp_assets_by_metadata route_reason=naming_traceability_temp_assets tool_name=NormalizeAssetNamingByMetadata risk_level=write`；关卡排雷意图命中 `intent=scan_level_mesh_risks tool_name=ScanLevelMeshRisks risk_level=read_only`；`AgentPlanDemoJson` 输出 JSON 覆盖 `plan_version/request_id/intent/steps/tool_name/args/risk_level/requires_confirm/rollback_strategy/expected_evidence`）。
-  - `Stage F-SliceF2` 已通过：Plan 校验器（参数完整性/权限/风险/阈值）。
-    - 已完成：Runtime 新增 `FHCIAbilityKitAgentPlanValidator` 与 `FHCIAbilityKitAgentPlanValidationResult/Context`，基于 `ToolRegistry args_schema` 执行 Plan 校验。
-    - 已完成：错误收敛覆盖 `E4001/E4002/E4004/E4009`，并新增特判 `E4011`（`ScanLevelMeshRisks` 的 `scope/checks` 非法）与 `E4012`（命名元数据不足 mock seam）；`risk_level/requires_confirm` 与工具能力不一致返回 `E4003`。
-    - 已完成：Editor 新增 `HCIAbilityKit.AgentPlanValidateDemo [case_key]` 控制台命令（默认 7 案例 + 自定义单案例）用于 UE 手测验证。
-    - 已完成：新增自动化测试 `HCIAbilityKit.Editor.AgentPlanValidation`（7/7：成功路径 + `E4001/E4002/E4004/E4009/E4011/E4012`），本地通过；`AgentPlan`（3/3）与 `AgentTools`（3/3）回归通过。
-    - 已完成：用户 UE 手测通过（无参摘要命中 `total_cases=7 supports_checks=schema|whitelist|risk|threshold|special_cases validation=ok`；无参案例完整覆盖 `ok_naming + E4001/E4002/E4004/E4009/E4011/E4012`；`fail_unknown_tool` 命中 `E4002/tool_not_whitelisted`；`fail_level_scope` 命中 `E4011 field=steps[0].args.scope`；`fail_naming_metadata` 命中 `E4012/naming_metadata_insufficient_no_safe_proposal`）。
-  - F3 前结构重构已通过：
-    - `Refactor-R1`：`ContentBrowser MenuRegistrar` 抽离（菜单注册/反注册生命周期成对管理）。
-    - `Refactor-R2`：`Agent*Demo` 控制台命令抽离到 `Private/Commands/HCIAbilityKitAgentDemoConsoleCommands.*`，`EditorModule` 收敛为装配入口。
-  - `Stage F-SliceF3` 已通过：计划执行骨架与收敛日志。
-    - 已完成：Runtime 新增 `FHCIAbilityKitAgentExecutor`（默认 `simulate_dry_run`，执行前复用 `PlanValidator`，输出 `FHCIAbilityKitAgentExecutorRunResult + step_results[]`）。
-    - 已完成：Editor 新增 `HCIAbilityKit.AgentExecutePlanDemo [自然语言文本...]`（默认三案例 + 自定义文本）输出 `route_reason + summary + row=` 收敛日志。
-    - 已完成：新增自动化测试 `HCIAbilityKit.Editor.AgentExecutor`（3/3：成功执行、预检拒绝、证据键覆盖），并完成 `AgentPlan`（3/3）与 `AgentPlanValidation`（8/8）回归。
-    - 已完成：用户 UE 手测通过（`AgentExecutePlanDemo` 无参/命名归档/关卡排雷三条命令均无异常；`summary` 与 `row=` 字段完整；命名归档命中 `NormalizeAssetNamingByMetadata`，关卡排雷命中 `ScanLevelMeshRisks` 且证据键覆盖 `actor_path|issue|evidence`）。
-  - `Stage F-SliceF4` 已通过：失败收敛（步骤级错误码与终止策略）。
-    - 已完成：Runtime 扩展 `FHCIAbilityKitAgentExecutor`，新增 `termination_policy/skipped_steps` 与失败步骤元数据收敛（`failed_step_index/failed_step_id/failed_tool_name`）。
-    - 已完成：支持两种模拟执行终止策略：`stop_on_first_failure`（后续步骤生成 `status=skipped` 行）与 `continue_on_failure`（继续执行并收敛 `completed_with_failures`）。
-    - 已完成：新增 F4 演示命令 `HCIAbilityKit.AgentExecutePlanFailDemo [ok|fail_stop|fail_continue]`（默认三案例）。
-    - 已完成：自动化测试 `HCIAbilityKit.Editor.AgentExecutor` 扩展至 5/5（含两条 F4 失败收敛用例），并完成 `AgentPlan` 前缀回归与 `AgentPlanValidation`（8/8）回归。
-    - 已完成：用户 UE 手测通过（`AgentExecutePlanFailDemo` 无参摘要命中 `total_cases=3 stop_policy_cases=2 continue_policy_cases=1 ... validation=ok`；`fail_stop` 命中 `terminal_status=failed/E4101` 且含 `status=skipped` 行；`fail_continue` 命中 `completed_with_failures/E4102` 且同时含失败行与成功行）。
-  - `Stage F-SliceF5` 已通过：`Executor` 预检门禁链路接入（`Confirm/BlastRadius/RBAC/SourceControl/LOD Safety`）已接入并通过 UE 手测。
-  - `Stage F-SliceF6` 已通过：`Executor -> Dry-Run Diff` 审阅桥接（`RunResult(step_results[]) -> DryRunDiffReport`）已接入并通过 UE 手测，复用 E2 `DryRunDiff` JSON 契约与定位策略。
-  - `Stage F-SliceF7` 已通过：ExecutorReview 定位闭环（F6 审阅桥接结果按行定位，`AgentExecutePlanReviewLocate` 打通 `计划 -> 执行 -> 审阅 -> 定位` 最小交互闭环）已接入并通过 UE 手测。
-  - `Stage F-SliceF8` 已通过：ExecutorReview 逐项采纳选择契约与过滤预览（在最新审阅预览上按 `row_index` 列表去重/校验/过滤，输出已采纳子集 `DryRunDiffReport` 与 JSON；仍为 `simulate_dry_run`，不触发真实资产写入）已接入并通过 UE 手测。
-  - `Stage F-SliceF9` 已通过：ExecutorReview 采纳子集 -> ApplyRequest 执行申请包桥接（将 F8 已采纳审阅子集 `DryRunDiffReport` 转换为 `ApplyRequest` 契约与 JSON，输出 `selection_digest/ready/blocked_rows` 等收敛字段；仍为 `simulate_dry_run`，不触发真实资产写入）已接入并通过 UE 手测。
-  - `Stage F-SliceF10` 已通过：ApplyRequest 确认前校验 -> ConfirmRequest 执行确认申请桥接（校验 `review_request_id + selection_digest + ready + user_confirmed`，输出 `ConfirmRequest` 契约与 JSON；仍为 `simulate_dry_run`）已接入并通过 UE 手测。
-  - `Stage F-SliceF11` 已通过：ConfirmRequest 确认后校验 -> ExecuteTicket 执行票据桥接（校验 `apply_request_id + review_request_id + selection_digest + ready_to_execute + user_confirmed`，输出 `ExecuteTicket` 契约与 JSON；仍为 `simulate_dry_run`）已接入并通过 UE 手测。
-  - `Stage F-SliceF12` 已通过：ExecuteTicket 执行前投递校验 -> SimExecuteReceipt 模拟执行回执桥接（校验 `confirm_request_id + apply_request_id + review_request_id + selection_digest + ready_to_simulate_execute + user_confirmed`，输出 `SimExecuteReceipt` 契约与 JSON；仍为 `simulate_dry_run`）已接入并通过 UE 手测。
-  - `Stage F-SliceF13` 已通过：SimExecuteReceipt 回执后完整性校验 -> SimFinalReport 最终模拟执行报告桥接（校验 `execute_ticket_id + confirm_request_id + apply_request_id + review_request_id + selection_digest + ready_to_simulate_execute + simulated_dispatch_accepted + user_confirmed`，输出 `SimFinalReport` 契约与 JSON；仍为 `simulate_dry_run`）已接入并通过 UE 手测。
-  - `Stage F-SliceF14` 已通过：SimFinalReport 最终模拟执行报告完整性校验 -> SimArchiveBundle 最终模拟存证包桥接（校验 `sim_execute_receipt_id + execute_ticket_id + confirm_request_id + apply_request_id + review_request_id + selection_digest + ready_to_simulate_execute + simulated_dispatch_accepted + simulation_completed + terminal_status + user_confirmed`，输出 `SimArchiveBundle` 契约与 JSON；仍为 `simulate_dry_run`）已接入并通过 UE 手测。
-  - `Stage F-SliceF15` 已通过：SimArchiveBundle 最终模拟存证包完整性校验 -> SimHandoffEnvelope（Stage G 输入信封）桥接（校验 `sim_archive_bundle_id + sim_final_report_id + sim_execute_receipt_id + execute_ticket_id + confirm_request_id + apply_request_id + review_request_id + selection_digest + archive_digest + archive_ready + archive_status + user_confirmed`，输出 `SimHandoffEnvelope` 契约与 JSON；仍为 `simulate_dry_run`）已接入并通过 UE 手测。
-  - `Stage F` 当前状态：`已收官（F1~F15 全部通过）`
-  - `Stage G-SliceG1` 已通过：SimHandoffEnvelope（Stage G 输入信封）完整性校验 -> StageGExecuteIntent（Stage G 入口意图包，validate-only）桥接（校验 `sim_archive_bundle_id + sim_final_report_id + sim_execute_receipt_id + execute_ticket_id + confirm_request_id + apply_request_id + review_request_id + selection_digest + archive_digest + handoff_digest + handoff_ready + handoff_status + user_confirmed`，输出 `StageGExecuteIntent` 契约与 JSON；固定 `write_enabled=false`）已接入并通过 UE 手测。
-  - `Stage G-SliceG2` 已通过：StageGExecuteIntent（validate-only 入口意图包）完整性校验 + Stage G 写权限二次确认 -> StageGWriteEnableRequest（写权限启用请求，dry-run）桥接（新增 `write_enable_confirmed` 二次确认门禁，输出 `stage_g_write_enable_digest/stage_g_write_status/ready_for_stage_g_execute`；用户在 UE 手测中发现并推动修复 `intent` 篡改未拦截漏洞，现已命中 `E4202/stage_g_execute_intent_id_mismatch`，且正常场景回归通过）已接入并通过 UE 手测。
-  - `Stage G-SliceG3` 已通过：StageGWriteEnableRequest（写权限启用请求，dry-run）完整性校验 -> StageGExecutePermitTicket（Stage G 执行许可票据，dry-run）桥接（新增 `stage_g_write_enable_request_id/stage_g_write_enable_digest/stage_g_execute_permit_digest/stage_g_execute_permit_status/stage_g_execute_permit_ready`，新增 `E4211/stage_g_write_enable_request_not_ready`；用户 UE 手测验证正常场景 `stage_g_execute_permit_ticket_ready` 与 `E4005/E4211/E4202` 阻断链路均正确）已接入并通过 UE 手测。
-  - `Stage G-SliceG4` 已通过：StageGExecutePermitTicket（执行许可票据，dry-run）完整性校验 + 执行派发二次确认 -> StageGExecuteDispatchRequest（执行派发请求，dry-run）桥接（新增 `execute_dispatch_confirmed`、`stage_g_execute_permit_ticket_id/stage_g_execute_dispatch_digest/stage_g_execute_dispatch_status/stage_g_execute_dispatch_ready`，新增 `E4212/stage_g_execute_permit_ticket_not_ready`；用户 UE 手测验证正常场景 `stage_g_execute_dispatch_request_ready`、`E4005/E4212/E4202` 阻断链路与 JSON/行级定位字段均正确；`1 permit` 手测输入触发 `invalid_args`，但 `1 ready` 已完成 `E4212` 覆盖验证）。
-  - `Stage G-SliceG5` 已通过：StageGExecuteDispatchRequest（执行派发请求，dry-run）完整性校验 -> StageGExecuteDispatchReceipt（执行派发回执，dry-run）桥接（新增 `stage_g_execute_dispatch_request_id/stage_g_execute_dispatch_receipt_digest/stage_g_execute_dispatch_receipt_status/stage_g_execute_dispatch_accepted/stage_g_execute_dispatch_receipt_ready` 与 `E4213/stage_g_execute_dispatch_request_not_ready`；用户 UE 手测验证正常场景 `stage_g_execute_dispatch_receipt_ready`、`E4202/E4213` 阻断链路、可选 `E4005` 穿透回溯，以及 JSON/行级定位字段均正确）已接入并通过 UE 手测。
-  - `Stage G-SliceG6` 已通过：StageGExecuteDispatchReceipt（执行派发回执，dry-run）完整性校验 + 执行提交二次确认 -> StageGExecuteCommitRequest（执行提交请求，dry-run）桥接（新增 `stage_g_execute_dispatch_receipt_id/stage_g_execute_dispatch_receipt_digest/stage_g_execute_commit_request_digest/stage_g_execute_commit_request_status/stage_g_execute_commit_request_ready/execute_commit_confirmed`，新增 `E4214/stage_g_execute_dispatch_receipt_not_ready` 与 `E4005/stage_g_execute_commit_not_confirmed`；用户 UE 手测验证正常场景 `stage_g_execute_commit_request_ready`、`E4005/E4214/E4202` 阻断链路，以及 JSON/行级定位字段均正确）已接入并通过 UE 手测。
-  - `Stage G-SliceG7` 已通过：StageGExecuteCommitRequest（执行提交请求，dry-run）完整性校验 -> StageGExecuteCommitReceipt（执行提交回执，dry-run）桥接（新增 `stage_g_execute_commit_request_id/stage_g_execute_commit_request_digest/stage_g_execute_commit_receipt_digest/stage_g_execute_commit_receipt_status/stage_g_execute_commit_accepted/stage_g_execute_commit_receipt_ready` 与 `E4215/stage_g_execute_commit_request_not_ready`；用户 UE 手测验证正常场景 `stage_g_execute_commit_receipt_status=accepted`、`ready` 场景命中 `E4215`、未确认链路命中 `E4005`、篡改场景 `commit/dispatch/intent/digest` 命中 `E4202`，且 JSON 保留全路径递归摘要与审计定位字段）。
-  - `Stage G-SliceG8` 已通过：StageGExecuteCommitReceipt（执行提交回执，dry-run）完整性校验 -> StageGExecuteFinalReport（执行最终报告，dry-run）桥接（新增 `stage_g_execute_commit_receipt_id/stage_g_execute_commit_receipt_digest/stage_g_execute_final_report_digest/stage_g_execute_final_report_status/stage_g_execute_finalized/stage_g_execute_final_report_ready` 与 `E4216/stage_g_execute_commit_receipt_not_ready`；用户 UE 手测验证正常场景 `stage_g_execute_finalized=true / stage_g_execute_final_report_status=completed`，`ready` 场景命中 `E4216`，篡改场景 `digest/intent/handoff/dispatch/receipt/commit/commitreceipt` 命中 `E4202`，可选未确认链路命中 `E4005`，且 JSON 保留全路径递归摘要与审计定位字段）。
-  - `Stage G-SliceG9` 已通过：StageGExecuteFinalReport（执行最终报告，dry-run）完整性校验 -> StageGExecuteArchiveBundle（执行归档包，dry-run）桥接（新增 `stage_g_execute_final_report_id/stage_g_execute_final_report_digest/stage_g_execute_archive_bundle_digest/stage_g_execute_archive_bundle_status/stage_g_execute_archived/stage_g_execute_archive_bundle_ready` 与 `E4217/stage_g_execute_final_report_not_completed`；用户 UE 手测验证正常场景 `stage_g_execute_archive_bundle_status=ready / stage_g_execute_archived=true / stage_g_execute_archive_bundle_ready=true`，`ready` 场景命中 `E4217`，篡改场景 `digest/intent/handoff/dispatch/receipt/commit/commitreceipt/final` 命中 `E4202`，可选未确认链路命中 `E4005`，且 JSON 保留 11 级递归摘要与审计定位字段）。
-  - 当前切片：`Stage G-SliceG10`（待定义；文档先行）
-  - 下一切片：`Stage G-SliceG10`（冻结后实现）
-  - 兼容性说明（时间字符串）：对外日志/JSON 的时间值已统一改为北京时间 `+08:00` 输出；字段名（如 `updated_utc/generated_utc/timestamp_utc`）暂保持不变以兼容既有门禁与测试。
-  - D 段收尾后续主线：`Stage E`（安全执行：Dry-Run/Confirm/Transaction/SC）-> `Stage F`（NL->Plan->Executor）。
-  - B3 最新状态：
-    - 已完成：新增 `HCIAbilityKit.AuditScanAsync [batch_size] [log_top_n]`，按分片执行 `AssetRegistry + FAssetData` 扫描，避免单帧全量阻塞。
-    - 已完成：新增 `HCIAbilityKit.AuditScanProgress`，可在扫描期间查询进度。
-    - 已完成：异步扫描输出 `progress=%` 与完成摘要（覆盖率/耗时/样本行）。
-    - 已完成：UE 编译通过（`Build.bat HCIEditorGenEditor Win64 Development ...`）。
-    - 已完成：UE 手测通过（`progress=idle -> start -> 50% -> 100% -> summary -> progress=idle`，用户反馈 `Pass`）。
+- 已完成阶段：
+  - `Step 1` 结构迁移：完成并通过门禁。
+  - `Step 2` 服务抽离：完成并通过门禁。
+  - `Stage A~D` 资产审计主链路：完成并通过门禁。
+  - `Stage E` Agent 安全执行：完成并通过门禁。
+  - `Stage F` 指令解析与执行编排（`F1~F15`）：完成并通过门禁。
+  - `Stage G`：`G1~G9` 完成并通过门禁。
+- 当前切片：
+  - `Stage G-SliceG10`：`DocFreeze 已冻结；待实现 + UE 手测门禁`。
+  - 冻结结果：`G10` 继续 `simulate_dry_run`，新增 `StageGExecutionReadinessReport` 与错误码 `E4218/E4219`。
+- 下一切片：
+  - `Stage H-SliceH1`（仅在 `G10 Pass` 后启动）：LLM Planner 接入，保持 `simulate_dry_run`。
+- 兼容性口径：
+  - 时间字符串统一北京时间 `+08:00`；
+  - 字段名（如 `updated_utc/generated_utc/timestamp_utc`）保持兼容。
+- 详细历史与证据入口（不再在本文件展开）：
+  - 进度权威：`Source/HCIEditorGen/文档/00_总进度.md`
+  - 执行主计划：`Source/HCIEditorGen/文档/05_开发执行总方案_资产审计.md`
+  - 测试记录：`Source/HCIEditorGen/文档/测试记录/`
 
 ## 9. 用户协作习惯（固定）
 
@@ -281,3 +94,5 @@ Scope: whole repo.
 - 用户用 `Pass/Fail` 作为门禁信号；未收到 Pass 不得进入下一切片。
 - 回归步骤要具体可执行（短步骤、可复现、可定位失败原因）。
 - 继续坚持“接口简单、深度功能、依赖抽象、高内聚低耦合”。
+- 始终坚持“文档先行”：先定框架（目标边界、契约字段、门禁口径），再在框架内实现；框架外需求必须先更新文档并得到用户确认。
+- 若当前切片已按计划完成，助手必须先向用户确认“下一步做哪一片”，再继续执行，不得默认跳片推进。

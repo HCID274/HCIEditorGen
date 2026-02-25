@@ -628,7 +628,11 @@ private:
 			return false;
 		}
 
-		UWorld* World = GEditor ? GEditor->GetEditorWorldContext().World() : nullptr;
+		UWorld* World = GWorld;
+		if (!World && GEditor)
+		{
+			World = GEditor->GetEditorWorldContext().World();
+		}
 		if (!World)
 		{
 			OutResult = FHCIAbilityKitAgentToolActionResult();
@@ -638,7 +642,7 @@ private:
 			return false;
 		}
 
-		TArray<AStaticMeshActor*> ActorsToScan;
+		TArray<AActor*> ActorsToScan;
 		if (Scope == TEXT("selected"))
 		{
 			USelection* SelectedActors = GEditor ? GEditor->GetSelectedActors() : nullptr;
@@ -646,16 +650,16 @@ private:
 			{
 				for (FSelectionIterator It(*SelectedActors); It; ++It)
 				{
-					if (AStaticMeshActor* SMA = Cast<AStaticMeshActor>(*It))
+					if (AActor* Actor = Cast<AActor>(*It))
 					{
-						ActorsToScan.Add(SMA);
+						ActorsToScan.Add(Actor);
 					}
 				}
 			}
 		}
 		else // "all"
 		{
-			for (TActorIterator<AStaticMeshActor> It(World); It; ++It)
+			for (TActorIterator<AActor> It(World); It; ++It)
 			{
 				ActorsToScan.Add(*It);
 			}
@@ -669,7 +673,7 @@ private:
 		TArray<FString> DefaultMaterialActors;
 		int32 ScannedCount = 0;
 
-		for (AStaticMeshActor* SMA : ActorsToScan)
+		for (AActor* Actor : ActorsToScan)
 		{
 			if (ScannedCount >= MaxActorCount)
 			{
@@ -677,7 +681,21 @@ private:
 			}
 			++ScannedCount;
 
-			UStaticMeshComponent* SMC = SMA->GetStaticMeshComponent();
+			TArray<UStaticMeshComponent*> MeshComponents;
+			Actor->GetComponents<UStaticMeshComponent>(MeshComponents);
+
+			if (MeshComponents.Num() == 0) continue;
+
+			UStaticMeshComponent* SMC = nullptr;
+			for (UStaticMeshComponent* Comp : MeshComponents)
+			{
+				if (Comp && Comp->GetStaticMesh())
+				{
+					SMC = Comp;
+					break;
+				}
+			}
+
 			if (!SMC) continue;
 
 			UStaticMesh* SM = SMC->GetStaticMesh();
@@ -693,7 +711,7 @@ private:
 				{
 					bHasRisk = true;
 					RiskReason += TEXT("[MissingCollision]");
-					MissingCollisionActors.Add(SMA->GetActorLabel());
+					MissingCollisionActors.Add(Actor->GetActorLabel());
 				}
 			}
 
@@ -726,13 +744,13 @@ private:
 				{
 					bHasRisk = true;
 					RiskReason += TEXT("[DefaultMaterial]");
-					DefaultMaterialActors.Add(SMA->GetActorLabel());
+					DefaultMaterialActors.Add(Actor->GetActorLabel());
 				}
 			}
 
 			if (bHasRisk)
 			{
-				RiskyActorNames.Add(FString::Printf(TEXT("%s %s"), *SMA->GetActorLabel(), *RiskReason));
+				RiskyActorNames.Add(FString::Printf(TEXT("%s %s"), *Actor->GetActorLabel(), *RiskReason));
 			}
 		}
 

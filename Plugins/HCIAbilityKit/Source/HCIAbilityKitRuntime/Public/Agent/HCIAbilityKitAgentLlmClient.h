@@ -41,4 +41,6 @@ public:
 		FString& OutContent,
 		FString& OutErrorCode,
 		FString& OutError);
+
+	static void ResetRoutingStateForTesting();
 };

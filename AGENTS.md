@@ -68,7 +68,7 @@ Scope: whole repo.
 - 错误信息必须可定位（文件/字段/原因/建议）。
 - 未通过验证的结论不得标记为“完成”。
 
-## 8. 当前进度快照（精简，2026-02-24）
+## 8. 当前进度快照（精简，2026-02-25）
 
 - 已完成阶段：
   - `Step 1` 结构迁移：完成并通过门禁。
@@ -82,6 +82,7 @@ Scope: whole repo.
   - `Stage H-SliceH2`：已通过 UE 手测（稳定性：retry/circuit/metrics）。
   - `Stage H-SliceH3`：已通过 UE 手测（真实 LLM Provider：`C++ + FHttpModule + 本地配置文件`）。
   - `Stage H-SliceH3-Prompt`：已完成 Skills Bundle 化（`H3_AgentPlanner`）并切换 Runtime 读取（`prompt.md + tools_schema.json` 注入）。
+  - `Stage H-SliceH4`：已通过 UE 手测（Runtime 透明路由：`<50%` 成功率剔除 + `smooth_wrr` 按到期权重轮询）。
   - `Stage I-SliceI1`：已通过 UE 手测（PlanPreviewUI 真实 LLM 链路 + SearchPath 管道修复）。
   - `Stage I-SliceI2`：已通过 UE 手测（UI 展示优化 + 变量管道顺序归一化）。
   - `Stage I-SliceI3`：已通过 UE 手测（确认并执行真实写操作闭环）。

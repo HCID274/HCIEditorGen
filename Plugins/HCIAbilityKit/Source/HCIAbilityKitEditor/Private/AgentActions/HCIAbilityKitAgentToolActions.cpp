@@ -665,6 +665,8 @@ private:
 		const bool bCheckDefaultMaterial = Checks.Contains(TEXT("default_material"));
 
 		TArray<FString> RiskyActorNames;
+		TArray<FString> MissingCollisionActors;
+		TArray<FString> DefaultMaterialActors;
 		int32 ScannedCount = 0;
 
 		for (AStaticMeshActor* SMA : ActorsToScan)
@@ -691,21 +693,40 @@ private:
 				{
 					bHasRisk = true;
 					RiskReason += TEXT("[MissingCollision]");
+					MissingCollisionActors.Add(SMA->GetActorLabel());
 				}
 			}
 
 			if (bCheckDefaultMaterial)
 			{
+				bool bHasDefaultMat = false;
 				const int32 NumMaterials = SMC->GetNumMaterials();
-				for (int32 i = 0; i < NumMaterials; ++i)
+				if (NumMaterials == 0)
 				{
-					UMaterialInterface* Mat = SMC->GetMaterial(i);
-					if (!Mat || Mat->GetName().Contains(TEXT("DefaultMaterial")) || Mat->GetPathName().Contains(TEXT("EngineMaterials")))
+					bHasDefaultMat = true;
+				}
+				else
+				{
+					for (int32 i = 0; i < NumMaterials; ++i)
 					{
-						bHasRisk = true;
-						RiskReason += TEXT("[DefaultMaterial]");
-						break; // One default material is enough
+						UMaterialInterface* Mat = SMC->GetMaterial(i);
+						if (!Mat || 
+							Mat->GetName().Contains(TEXT("DefaultMaterial")) || 
+							Mat->GetName().Contains(TEXT("WorldGridMaterial")) ||
+							Mat->GetName().Contains(TEXT("BasicShapeMaterial")) ||
+							Mat->GetPathName().StartsWith(TEXT("/Engine/")))
+						{
+							bHasDefaultMat = true;
+							break;
+						}
 					}
+				}
+
+				if (bHasDefaultMat)
+				{
+					bHasRisk = true;
+					RiskReason += TEXT("[DefaultMaterial]");
+					DefaultMaterialActors.Add(SMA->GetActorLabel());
 				}
 			}
 
@@ -723,10 +744,28 @@ private:
 		OutResult.Evidence.Add(TEXT("scope"), Scope);
 		OutResult.Evidence.Add(TEXT("scanned_count"), FString::FromInt(ScannedCount));
 		OutResult.Evidence.Add(TEXT("risky_count"), FString::FromInt(RiskyActorNames.Num()));
+		OutResult.Evidence.Add(TEXT("risk_summary"), FString::Printf(TEXT("Scanned %d actors, found %d with risks."), ScannedCount, RiskyActorNames.Num()));
 		
 		if (RiskyActorNames.Num() > 0)
 		{
 			OutResult.Evidence.Add(TEXT("risky_actors"), FString::Join(RiskyActorNames, TEXT(" | ")));
+		}
+		if (MissingCollisionActors.Num() > 0)
+		{
+			OutResult.Evidence.Add(TEXT("missing_collision_actors"), FString::Join(MissingCollisionActors, TEXT(" | ")));
+		}
+		else
+		{
+			OutResult.Evidence.Add(TEXT("missing_collision_actors"), TEXT("none"));
+		}
+
+		if (DefaultMaterialActors.Num() > 0)
+		{
+			OutResult.Evidence.Add(TEXT("default_material_actors"), FString::Join(DefaultMaterialActors, TEXT(" | ")));
+		}
+		else
+		{
+			OutResult.Evidence.Add(TEXT("default_material_actors"), TEXT("none"));
 		}
 		
 		OutResult.Evidence.Add(TEXT("result"), TEXT("scan_level_mesh_risks_ok"));

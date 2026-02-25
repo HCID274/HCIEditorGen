@@ -4,7 +4,12 @@
 #include "AssetRegistry/AssetRegistryModule.h"
 #include "Dom/JsonObject.h"
 #include "EditorAssetLibrary.h"
+#include "Editor.h"
+#include "Engine/Selection.h"
+#include "Engine/StaticMeshActor.h"
+#include "EngineUtils.h"
 #include "Modules/ModuleManager.h"
+#include "PhysicsEngine/BodySetup.h"
 #include "UObject/ObjectRedirector.h"
 
 DEFINE_LOG_CATEGORY_STATIC(LogHCIAbilityKitAgentToolActions, Log, All);
@@ -73,6 +78,43 @@ static bool HCI_TryReadRequiredStringArg(
 	}
 	OutValue.TrimStartAndEndInline();
 	return !OutValue.IsEmpty();
+}
+
+static bool HCI_TryReadRequiredStringArrayArg(
+	const TSharedPtr<FJsonObject>& Args,
+	const TCHAR* Field,
+	TArray<FString>& OutValue)
+{
+	OutValue.Reset();
+	if (!Args.IsValid())
+	{
+		return false;
+	}
+	const TArray<TSharedPtr<FJsonValue>>* JsonArray = nullptr;
+	if (!Args->TryGetArrayField(Field, JsonArray))
+	{
+		return false;
+	}
+	for (const TSharedPtr<FJsonValue>& Val : *JsonArray)
+	{
+		if (Val.IsValid() && Val->Type == EJson::String)
+		{
+			OutValue.Add(Val->AsString());
+		}
+	}
+	return OutValue.Num() > 0;
+}
+
+static bool HCI_TryReadRequiredIntArg(
+	const TSharedPtr<FJsonObject>& Args,
+	const TCHAR* Field,
+	int32& OutValue)
+{
+	if (!Args.IsValid())
+	{
+		return false;
+	}
+	return Args->TryGetNumberField(Field, OutValue);
 }
 
 static bool HCI_ValidateSourceAssetExists(
@@ -543,6 +585,153 @@ private:
 	}
 };
 
+class FHCIAbilityKitScanLevelMeshRisksToolAction final : public IHCIAbilityKitAgentToolAction
+{
+public:
+	virtual FName GetToolName() const override
+	{
+		return TEXT("ScanLevelMeshRisks");
+	}
+
+	virtual bool DryRun(
+		const FHCIAbilityKitAgentToolActionRequest& Request,
+		FHCIAbilityKitAgentToolActionResult& OutResult) const override
+	{
+		return RunInternal(Request, OutResult);
+	}
+
+	virtual bool Execute(
+		const FHCIAbilityKitAgentToolActionRequest& Request,
+		FHCIAbilityKitAgentToolActionResult& OutResult) const override
+	{
+		return RunInternal(Request, OutResult);
+	}
+
+private:
+	static bool RunInternal(
+		const FHCIAbilityKitAgentToolActionRequest& Request,
+		FHCIAbilityKitAgentToolActionResult& OutResult)
+	{
+		FString Scope;
+		TArray<FString> Checks;
+		int32 MaxActorCount = 0;
+		if (!HCI_TryReadRequiredStringArg(Request.Args, TEXT("scope"), Scope) ||
+			!HCI_TryReadRequiredStringArrayArg(Request.Args, TEXT("checks"), Checks) ||
+			!HCI_TryReadRequiredIntArg(Request.Args, TEXT("max_actor_count"), MaxActorCount))
+		{
+			OutResult = FHCIAbilityKitAgentToolActionResult();
+			OutResult.bSucceeded = false;
+			OutResult.ErrorCode = TEXT("E4001");
+			OutResult.Reason = TEXT("required_arg_missing");
+			return false;
+		}
+
+		UWorld* World = GEditor ? GEditor->GetEditorWorldContext().World() : nullptr;
+		if (!World)
+		{
+			OutResult = FHCIAbilityKitAgentToolActionResult();
+			OutResult.bSucceeded = false;
+			OutResult.ErrorCode = TEXT("E4205");
+			OutResult.Reason = TEXT("no_editor_world");
+			return false;
+		}
+
+		TArray<AStaticMeshActor*> ActorsToScan;
+		if (Scope == TEXT("selected"))
+		{
+			USelection* SelectedActors = GEditor ? GEditor->GetSelectedActors() : nullptr;
+			if (SelectedActors)
+			{
+				for (FSelectionIterator It(*SelectedActors); It; ++It)
+				{
+					if (AStaticMeshActor* SMA = Cast<AStaticMeshActor>(*It))
+					{
+						ActorsToScan.Add(SMA);
+					}
+				}
+			}
+		}
+		else // "all"
+		{
+			for (TActorIterator<AStaticMeshActor> It(World); It; ++It)
+			{
+				ActorsToScan.Add(*It);
+			}
+		}
+
+		const bool bCheckMissingCollision = Checks.Contains(TEXT("missing_collision"));
+		const bool bCheckDefaultMaterial = Checks.Contains(TEXT("default_material"));
+
+		TArray<FString> RiskyActorNames;
+		int32 ScannedCount = 0;
+
+		for (AStaticMeshActor* SMA : ActorsToScan)
+		{
+			if (ScannedCount >= MaxActorCount)
+			{
+				break;
+			}
+			++ScannedCount;
+
+			UStaticMeshComponent* SMC = SMA->GetStaticMeshComponent();
+			if (!SMC) continue;
+
+			UStaticMesh* SM = SMC->GetStaticMesh();
+			if (!SM) continue;
+
+			bool bHasRisk = false;
+			FString RiskReason;
+
+			if (bCheckMissingCollision)
+			{
+				UBodySetup* BodySetup = SM->GetBodySetup();
+				if (!BodySetup || (BodySetup->AggGeom.GetElementCount() == 0 && !BodySetup->bMeshCollideAll))
+				{
+					bHasRisk = true;
+					RiskReason += TEXT("[MissingCollision]");
+				}
+			}
+
+			if (bCheckDefaultMaterial)
+			{
+				const int32 NumMaterials = SMC->GetNumMaterials();
+				for (int32 i = 0; i < NumMaterials; ++i)
+				{
+					UMaterialInterface* Mat = SMC->GetMaterial(i);
+					if (!Mat || Mat->GetName().Contains(TEXT("DefaultMaterial")) || Mat->GetPathName().Contains(TEXT("EngineMaterials")))
+					{
+						bHasRisk = true;
+						RiskReason += TEXT("[DefaultMaterial]");
+						break; // One default material is enough
+					}
+				}
+			}
+
+			if (bHasRisk)
+			{
+				RiskyActorNames.Add(FString::Printf(TEXT("%s %s"), *SMA->GetActorLabel(), *RiskReason));
+			}
+		}
+
+		OutResult = FHCIAbilityKitAgentToolActionResult();
+		OutResult.bSucceeded = true;
+		OutResult.Reason = TEXT("scan_level_mesh_risks_ok");
+		OutResult.EstimatedAffectedCount = RiskyActorNames.Num();
+		
+		OutResult.Evidence.Add(TEXT("scope"), Scope);
+		OutResult.Evidence.Add(TEXT("scanned_count"), FString::FromInt(ScannedCount));
+		OutResult.Evidence.Add(TEXT("risky_count"), FString::FromInt(RiskyActorNames.Num()));
+		
+		if (RiskyActorNames.Num() > 0)
+		{
+			OutResult.Evidence.Add(TEXT("risky_actors"), FString::Join(RiskyActorNames, TEXT(" | ")));
+		}
+		
+		OutResult.Evidence.Add(TEXT("result"), TEXT("scan_level_mesh_risks_ok"));
+		return true;
+	}
+};
+
 class FHCIAbilityKitRenameAssetToolAction final : public IHCIAbilityKitAgentToolAction
 {
 public:
@@ -764,6 +953,7 @@ void HCIAbilityKitAgentToolActions::BuildStageIDraftActions(TMap<FName, TSharedP
 	OutActions.Reset();
 	OutActions.Add(TEXT("ScanAssets"), MakeShared<FHCIAbilityKitScanAssetsToolAction>());
 	OutActions.Add(TEXT("SearchPath"), MakeShared<FHCIAbilityKitSearchPathToolAction>());
+	OutActions.Add(TEXT("ScanLevelMeshRisks"), MakeShared<FHCIAbilityKitScanLevelMeshRisksToolAction>());
 	OutActions.Add(TEXT("RenameAsset"), MakeShared<FHCIAbilityKitRenameAssetToolAction>());
 	OutActions.Add(TEXT("MoveAsset"), MakeShared<FHCIAbilityKitMoveAssetToolAction>());
 }

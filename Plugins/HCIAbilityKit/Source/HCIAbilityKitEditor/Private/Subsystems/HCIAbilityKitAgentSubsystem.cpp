@@ -13,7 +13,7 @@
 
 namespace
 {
-static FHCIAbilityKitAgentPromptBundleOptions HCI_MakeChatSummaryPromptBundleOptions()
+static FHCIAbilityKitAgentPromptBundleOptions HCI_MakeChatSummaryPromptBundleOptions_Subsystem()
 {
 	FHCIAbilityKitAgentPromptBundleOptions Options;
 	Options.SkillBundleRelativeDir = TEXT("Source/HCIEditorGen/文档/提示词/Skills/I7_AgentChatSummary");
@@ -29,7 +29,7 @@ static bool HCI_LoadChatQuickCommandsFromBundle(
 	OutCommands.Reset();
 	OutError.Reset();
 
-	const FHCIAbilityKitAgentPromptBundleOptions Options = HCI_MakeChatSummaryPromptBundleOptions();
+	const FHCIAbilityKitAgentPromptBundleOptions Options = HCI_MakeChatSummaryPromptBundleOptions_Subsystem();
 	FString BundleDir;
 	if (!FHCIAbilityKitAgentPromptBuilder::ResolveSkillBundleDirectory(Options, BundleDir, OutError))
 	{

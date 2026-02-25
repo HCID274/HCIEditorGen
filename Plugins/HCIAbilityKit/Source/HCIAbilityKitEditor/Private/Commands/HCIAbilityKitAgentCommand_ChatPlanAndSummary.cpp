@@ -238,26 +238,20 @@ void UHCIAbilityKitAgentCommand_ChatPlanAndSummary::ExecuteAsync(
 	const FString UserText = Context.InputParam.TrimStartAndEnd();
 	const FString SourceTag = Context.SourceTag.IsEmpty() ? TEXT("AgentChatUI") : Context.SourceTag;
 
-	auto Complete = [OnComplete = MoveTemp(OnComplete)](
-		const bool bSuccess,
-		const bool bSummaryFailure,
-		const FString& Message) mutable
+	auto Complete = [OnComplete = MoveTemp(OnComplete)](FHCIAbilityKitAgentCommandResult&& Result) mutable
 	{
 		if (!OnComplete.IsBound())
 		{
 			return;
 		}
 
-		FHCIAbilityKitAgentCommandResult Result;
-		Result.bSuccess = bSuccess;
-		Result.bSummaryFailure = bSummaryFailure;
-		Result.Message = Message;
 		OnComplete.Execute(Result);
 	};
 
 	const bool bAccepted = HCI_RequestAgentPlanPreviewFromUi(
 		UserText,
 		SourceTag,
+		false,
 		[Complete](const bool bSuccess,
 			const FString& RequestText,
 			const FHCIAbilityKitAgentPlan& Plan,
@@ -267,38 +261,56 @@ void UHCIAbilityKitAgentCommand_ChatPlanAndSummary::ExecuteAsync(
 		{
 			if (!bSuccess)
 			{
-				Complete(
-					false,
-					false,
-					FString::Printf(
-						TEXT("规划失败：input=%s reason=%s provider=%s fallback=%s error_code=%s"),
-						RequestText.IsEmpty() ? TEXT("-") : *RequestText,
-						Error.IsEmpty() ? TEXT("-") : *Error,
-						PlannerMetadata.PlannerProvider.IsEmpty() ? TEXT("-") : *PlannerMetadata.PlannerProvider,
-						PlannerMetadata.FallbackReason.IsEmpty() ? TEXT("-") : *PlannerMetadata.FallbackReason,
-						PlannerMetadata.ErrorCode.IsEmpty() ? TEXT("-") : *PlannerMetadata.ErrorCode));
+				FHCIAbilityKitAgentCommandResult Result;
+				Result.bSuccess = false;
+				Result.bSummaryFailure = false;
+				Result.Message = FString::Printf(
+					TEXT("规划失败：input=%s reason=%s provider=%s fallback=%s error_code=%s"),
+					RequestText.IsEmpty() ? TEXT("-") : *RequestText,
+					Error.IsEmpty() ? TEXT("-") : *Error,
+					PlannerMetadata.PlannerProvider.IsEmpty() ? TEXT("-") : *PlannerMetadata.PlannerProvider,
+					PlannerMetadata.FallbackReason.IsEmpty() ? TEXT("-") : *PlannerMetadata.FallbackReason,
+					PlannerMetadata.ErrorCode.IsEmpty() ? TEXT("-") : *PlannerMetadata.ErrorCode);
+				Complete(MoveTemp(Result));
 				return;
 			}
+
+			FHCIAbilityKitAgentCommandResult BaseResult;
+			BaseResult.bHasPlanPayload = true;
+			BaseResult.Plan = Plan;
+			BaseResult.RouteReason = RouteReason;
+			BaseResult.PlannerMetadata = PlannerMetadata;
 
 			HCI_RequestChatSummaryFromPromptAsync(
 				RequestText,
 				Plan,
 				RouteReason,
 				PlannerMetadata,
-				[Complete](const bool bSummaryOk, const FString& SummaryMessage) mutable
+				[Complete, BaseResult = MoveTemp(BaseResult)](const bool bSummaryOk, const FString& SummaryMessage) mutable
 				{
+					FHCIAbilityKitAgentCommandResult Result = BaseResult;
 					if (bSummaryOk)
 					{
-						Complete(true, false, SummaryMessage);
+						Result.bSuccess = true;
+						Result.bSummaryFailure = false;
+						Result.Message = SummaryMessage;
+						Complete(MoveTemp(Result));
 						return;
 					}
 
-					Complete(false, true, SummaryMessage);
+					Result.bSuccess = false;
+					Result.bSummaryFailure = true;
+					Result.Message = SummaryMessage;
+					Complete(MoveTemp(Result));
 				});
 		});
 
 	if (!bAccepted)
 	{
-		Complete(false, false, TEXT("已有请求执行中，请等待当前请求完成后再发送。"));
+		FHCIAbilityKitAgentCommandResult Result;
+		Result.bSuccess = false;
+		Result.bSummaryFailure = false;
+		Result.Message = TEXT("已有请求执行中，请等待当前请求完成后再发送。");
+		Complete(MoveTemp(Result));
 	}
 }

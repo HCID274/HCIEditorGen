@@ -1659,6 +1659,7 @@ bool HCI_IsAgentPlanPreviewRequestInFlight()
 bool HCI_RequestAgentPlanPreviewFromUi(
 	const FString& UserText,
 	const FString& SourceTag,
+	const bool bAutoOpenPreviewWindow,
 	FHCIAbilityKitAgentPlanPreviewRequestOnComplete&& OnComplete)
 {
 	const FString SafeUserText = UserText.TrimStartAndEnd();
@@ -1713,10 +1714,10 @@ bool HCI_RequestAgentPlanPreviewFromUi(
 		TEXT("req_cli_i1_preview_ui"),
 		ToolRegistry,
 		PlannerOptions,
-		[SafeUserText, SafeSourceTag, ToolRegistryPtr = &ToolRegistry, OnComplete = MoveTemp(OnComplete)](
-			bool bBuilt,
-			FHCIAbilityKitAgentPlan Plan,
-			FString RouteReason,
+			[SafeUserText, SafeSourceTag, bAutoOpenPreviewWindow, ToolRegistryPtr = &ToolRegistry, OnComplete = MoveTemp(OnComplete)](
+				bool bBuilt,
+				FHCIAbilityKitAgentPlan Plan,
+				FString RouteReason,
 			FHCIAbilityKitAgentPlannerResultMetadata PlannerMetadata,
 			FString Error) mutable
 		{
@@ -1768,26 +1769,41 @@ bool HCI_RequestAgentPlanPreviewFromUi(
 				return;
 			}
 
-			HCI_State().AgentPlanPreviewState = Plan;
-			HCI_LogAgentPlanWithProviderSummary(TEXT("preview_ui_real_http"), SafeUserText, RouteReason, Plan, PlannerMetadata, Validation);
-			HCI_LogAgentPlanRows(TEXT("preview_ui_real_http"), SafeUserText, RouteReason, Plan);
-			const FHCIAbilityKitAgentPlanPreviewContext PreviewContext = HCI_MakePlanPreviewContext(RouteReason, PlannerMetadata);
-			FHCIAbilityKitAgentPlanPreviewWindow::OpenWindow(
-				Plan,
-				PreviewContext);
+				HCI_State().AgentPlanPreviewState = Plan;
+				HCI_LogAgentPlanWithProviderSummary(TEXT("preview_ui_real_http"), SafeUserText, RouteReason, Plan, PlannerMetadata, Validation);
+				HCI_LogAgentPlanRows(TEXT("preview_ui_real_http"), SafeUserText, RouteReason, Plan);
+				if (bAutoOpenPreviewWindow)
+				{
+					const FHCIAbilityKitAgentPlanPreviewContext PreviewContext = HCI_MakePlanPreviewContext(RouteReason, PlannerMetadata);
+					FHCIAbilityKitAgentPlanPreviewWindow::OpenWindow(
+						Plan,
+						PreviewContext);
 
-			UE_LOG(
-				LogHCIAbilityKitAgentDemo,
-				Display,
-				TEXT("[HCIAbilityKit][AgentPlanPreviewUI] opened request_id=%s intent=%s route_reason=%s steps=%d source=%s"),
-				*Plan.RequestId,
-				*Plan.Intent,
-				*RouteReason,
-				Plan.Steps.Num(),
-				*SafeSourceTag);
-			if (OnComplete)
-			{
-				OnComplete(true, SafeUserText, Plan, RouteReason, PlannerMetadata, FString());
+					UE_LOG(
+						LogHCIAbilityKitAgentDemo,
+						Display,
+						TEXT("[HCIAbilityKit][AgentPlanPreviewUI] opened request_id=%s intent=%s route_reason=%s steps=%d source=%s"),
+						*Plan.RequestId,
+						*Plan.Intent,
+						*RouteReason,
+						Plan.Steps.Num(),
+						*SafeSourceTag);
+				}
+				else
+				{
+					UE_LOG(
+						LogHCIAbilityKitAgentDemo,
+						Display,
+						TEXT("[HCIAbilityKit][AgentPlanPreviewUI] prepared request_id=%s intent=%s route_reason=%s steps=%d source=%s auto_open=false"),
+						*Plan.RequestId,
+						*Plan.Intent,
+						*RouteReason,
+						Plan.Steps.Num(),
+						*SafeSourceTag);
+				}
+				if (OnComplete)
+				{
+					OnComplete(true, SafeUserText, Plan, RouteReason, PlannerMetadata, FString());
 			}
 		});
 	return true;
@@ -1800,6 +1816,7 @@ void HCI_RunAbilityKitAgentPlanPreviewUiCommand(const TArray<FString>& Args)
 	HCI_RequestAgentPlanPreviewFromUi(
 		UserText,
 		TEXT("AgentPlanPreviewUI"),
+		true,
 		FHCIAbilityKitAgentPlanPreviewRequestOnComplete());
 }
 

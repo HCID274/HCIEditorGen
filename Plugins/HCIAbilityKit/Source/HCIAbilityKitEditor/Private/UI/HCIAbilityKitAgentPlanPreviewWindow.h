@@ -38,6 +38,20 @@ struct FHCIAbilityKitAgentPlanCommitRiskSummary
 	bool bRequiresConfirmDialog = false;
 };
 
+struct FHCIAbilityKitAgentPlanExecutionReport
+{
+	bool bRunOk = false;
+	bool bDryRun = true;
+	FString ExecutionMode = TEXT("-");
+	FString TerminalStatus = TEXT("-");
+	FString TerminalReason = TEXT("-");
+	int32 SucceededSteps = 0;
+	int32 FailedSteps = 0;
+	int32 ScannedAssets = 0;
+	FString SummaryText;
+	FString SearchPathEvidenceText;
+};
+
 class HCIABILITYKITEDITOR_API FHCIAbilityKitAgentPlanPreviewWindow
 {
 public:
@@ -46,4 +60,9 @@ public:
 	static FHCIAbilityKitAgentPlanCommitRiskSummary BuildCommitRiskSummary(const FHCIAbilityKitAgentPlan& Plan);
 	static FString BuildCommitConfirmMessage(const FHCIAbilityKitAgentPlan& Plan);
 	static FString BuildSearchPathEvidenceSummary(const TArray<FHCIAbilityKitAgentExecutorStepResult>& StepResults);
+	static bool ExecutePlan(
+		const FHCIAbilityKitAgentPlan& Plan,
+		bool bDryRun,
+		bool bUserConfirmedWriteSteps,
+		FHCIAbilityKitAgentPlanExecutionReport& OutReport);
 };

@@ -1,6 +1,8 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "Agent/Planner/HCIAbilityKitAgentPlan.h"
+#include "Agent/Planner/HCIAbilityKitAgentPlanner.h"
 #include "UObject/Object.h"
 #include "HCIAbilityKitAgentCommandBase.generated.h"
 
@@ -15,6 +17,10 @@ struct FHCIAbilityKitAgentCommandResult
 	bool bSuccess = false;
 	bool bSummaryFailure = false;
 	FString Message;
+	bool bHasPlanPayload = false;
+	FHCIAbilityKitAgentPlan Plan;
+	FString RouteReason;
+	FHCIAbilityKitAgentPlannerResultMetadata PlannerMetadata;
 };
 
 DECLARE_DELEGATE_OneParam(FHCIAbilityKitAgentCommandComplete, const FHCIAbilityKitAgentCommandResult&);

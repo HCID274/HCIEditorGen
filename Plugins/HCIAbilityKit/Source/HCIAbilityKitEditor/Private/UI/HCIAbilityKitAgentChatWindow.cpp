@@ -154,6 +154,53 @@ public:
 				]
 				+ SVerticalBox::Slot()
 				.AutoHeight()
+				.Padding(0.0f, 0.0f, 0.0f, 8.0f)
+				[
+					SNew(SBorder)
+					.BorderImage(FAppStyle::GetBrush("ToolPanel.GroupBorder"))
+					.Padding(8.0f)
+					[
+						SNew(SVerticalBox)
+						+ SVerticalBox::Slot()
+						.AutoHeight()
+						[
+							SNew(STextBlock)
+							.Text(FText::FromString(TEXT("最新计划（I8）")))
+						]
+						+ SVerticalBox::Slot()
+						.AutoHeight()
+						.Padding(0.0f, 4.0f, 0.0f, 4.0f)
+						[
+							SAssignNew(PlanCardTextBox, SMultiLineEditableTextBox)
+							.IsReadOnly(true)
+							.AutoWrapText(true)
+						]
+						+ SVerticalBox::Slot()
+						.AutoHeight()
+						[
+							SNew(SHorizontalBox)
+							+ SHorizontalBox::Slot()
+							.AutoWidth()
+							[
+								SAssignNew(OpenPreviewButton, SButton)
+								.Text(FText::FromString(TEXT("打开预览")))
+								.IsEnabled(false)
+								.OnClicked(this, &SHCIAbilityKitAgentChatWindow::HandleOpenPreviewClicked)
+							]
+							+ SHorizontalBox::Slot()
+							.AutoWidth()
+							.Padding(8.0f, 0.0f, 0.0f, 0.0f)
+							[
+								SAssignNew(CommitPlanButton, SButton)
+								.Text(FText::FromString(TEXT("确认并执行")))
+								.IsEnabled(false)
+								.OnClicked(this, &SHCIAbilityKitAgentChatWindow::HandleCommitLastPlanClicked)
+							]
+						]
+					]
+				]
+				+ SVerticalBox::Slot()
+				.AutoHeight()
 				.Padding(0.0f, 8.0f, 0.0f, 0.0f)
 				[
 					SNew(SHorizontalBox)
@@ -227,6 +274,7 @@ public:
 				SetStatus(TEXT("状态：忙碌（已有请求执行中）"));
 			}
 		}
+		RefreshPlanCardFromSubsystem();
 
 		if (!InitialInput.TrimStartAndEnd().IsEmpty() && InputTextBox.IsValid())
 		{
@@ -246,6 +294,7 @@ private:
 		{
 			ChatLineHandle = AgentSubsystem->OnChatLine.AddSP(this, &SHCIAbilityKitAgentChatWindow::HandleSubsystemChatLine);
 			StatusChangedHandle = AgentSubsystem->OnStatusChanged.AddSP(this, &SHCIAbilityKitAgentChatWindow::HandleSubsystemStatusChanged);
+			PlanReadyHandle = AgentSubsystem->OnPlanReady.AddSP(this, &SHCIAbilityKitAgentChatWindow::HandleSubsystemPlanReady);
 		}
 	}
 
@@ -262,6 +311,11 @@ private:
 			{
 				AgentSubsystem->OnStatusChanged.Remove(StatusChangedHandle);
 				StatusChangedHandle.Reset();
+			}
+			if (PlanReadyHandle.IsValid())
+			{
+				AgentSubsystem->OnPlanReady.Remove(PlanReadyHandle);
+				PlanReadyHandle.Reset();
 			}
 		}
 	}
@@ -341,6 +395,70 @@ private:
 	void HandleSubsystemStatusChanged(const FString& StatusText)
 	{
 		SetStatus(StatusText);
+	}
+
+	void HandleSubsystemPlanReady()
+	{
+		RefreshPlanCardFromSubsystem();
+		AppendAssistantLine(TEXT("计划卡片已更新，可直接点击“打开预览”或“确认并执行”。"));
+	}
+
+	void RefreshPlanCardFromSubsystem()
+	{
+		TArray<FString> CardLines;
+		bool bHasPlan = false;
+		if (UHCIAbilityKitAgentSubsystem* AgentSubsystem = GetAgentSubsystem())
+		{
+			bHasPlan = AgentSubsystem->BuildLastPlanCardLines(CardLines);
+		}
+
+		if (PlanCardTextBox.IsValid())
+		{
+			if (!bHasPlan || CardLines.Num() <= 0)
+			{
+				PlanCardTextBox->SetText(FText::FromString(TEXT("暂无计划。发送请求后将自动展示 intent/steps/risk。")));
+			}
+			else
+			{
+				FString CardText;
+				for (int32 Index = 0; Index < CardLines.Num(); ++Index)
+				{
+					if (Index > 0)
+					{
+						CardText += LINE_TERMINATOR;
+					}
+					CardText += CardLines[Index];
+				}
+				PlanCardTextBox->SetText(FText::FromString(CardText));
+			}
+		}
+
+		if (OpenPreviewButton.IsValid())
+		{
+			OpenPreviewButton->SetEnabled(bHasPlan);
+		}
+		if (CommitPlanButton.IsValid())
+		{
+			CommitPlanButton->SetEnabled(bHasPlan);
+		}
+	}
+
+	FReply HandleOpenPreviewClicked()
+	{
+		if (UHCIAbilityKitAgentSubsystem* AgentSubsystem = GetAgentSubsystem())
+		{
+			AgentSubsystem->OpenLastPlanPreview();
+		}
+		return FReply::Handled();
+	}
+
+	FReply HandleCommitLastPlanClicked()
+	{
+		if (UHCIAbilityKitAgentSubsystem* AgentSubsystem = GetAgentSubsystem())
+		{
+			AgentSubsystem->CommitLastPlanFromChat();
+		}
+		return FReply::Handled();
 	}
 
 	void AppendUserLine(const FString& Text)
@@ -461,18 +579,22 @@ private:
 	TArray<FString> HistoryLines;
 	TArray<FHCIAbilityKitAgentQuickCommand> QuickCommands;
 	TSharedPtr<SMultiLineEditableTextBox> HistoryTextBox;
+	TSharedPtr<SMultiLineEditableTextBox> PlanCardTextBox;
 	TSharedPtr<SEditableTextBox> InputTextBox;
 	TSharedPtr<STextBlock> StatusTextBlock;
 	TSharedPtr<SHorizontalBox> QuickCommandsBox;
+	TSharedPtr<SButton> OpenPreviewButton;
+	TSharedPtr<SButton> CommitPlanButton;
 	FDelegateHandle ChatLineHandle;
 	FDelegateHandle StatusChangedHandle;
+	FDelegateHandle PlanReadyHandle;
 };
 }
 
 void FHCIAbilityKitAgentChatWindow::OpenWindow(const FString& InitialInput)
 {
 	TSharedRef<SWindow> Window = SNew(SWindow)
-		.Title(FText::FromString(TEXT("HCIAbilityKit Agent Chat (Stage I7 Draft)")))
+		.Title(FText::FromString(TEXT("HCIAbilityKit Agent Chat (Stage I8 Draft)")))
 		.ClientSize(FVector2D(860.0f, 620.0f))
 		.SupportsMaximize(true)
 		.SupportsMinimize(true);

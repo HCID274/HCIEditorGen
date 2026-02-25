@@ -1,6 +1,8 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "Agent/Planner/HCIAbilityKitAgentPlan.h"
+#include "Agent/Planner/HCIAbilityKitAgentPlanner.h"
 #include "Commands/HCIAbilityKitAgentCommandBase.h"
 #include "EditorSubsystem.h"
 #include "HCIAbilityKitAgentSubsystem.generated.h"
@@ -16,6 +18,7 @@ struct FHCIAbilityKitAgentQuickCommand
 DECLARE_MULTICAST_DELEGATE_OneParam(FHCIAbilityKitAgentChatLineEvent, const FString& /*Line*/);
 DECLARE_MULTICAST_DELEGATE_OneParam(FHCIAbilityKitAgentStatusEvent, const FString& /*StatusText*/);
 DECLARE_MULTICAST_DELEGATE_OneParam(FHCIAbilityKitAgentSummaryEvent, const FString& /*SummaryText*/);
+DECLARE_MULTICAST_DELEGATE(FHCIAbilityKitAgentPlanReadyEvent);
 
 /**
  * Agent 聊天编排入口：统一受理 UI 输入并分发命令。
@@ -31,6 +34,10 @@ public:
 
 	bool SubmitChatInput(const FString& UserInput, const FString& SourceTag = TEXT("AgentChatUI"));
 	bool IsBusy() const;
+	bool HasLastPlan() const;
+	bool BuildLastPlanCardLines(TArray<FString>& OutLines) const;
+	bool OpenLastPlanPreview();
+	bool CommitLastPlanFromChat();
 
 	void ReloadQuickCommands();
 	const TArray<FHCIAbilityKitAgentQuickCommand>& GetQuickCommands() const;
@@ -39,6 +46,7 @@ public:
 	FHCIAbilityKitAgentChatLineEvent OnChatLine;
 	FHCIAbilityKitAgentStatusEvent OnStatusChanged;
 	FHCIAbilityKitAgentSummaryEvent OnSummaryReceived;
+	FHCIAbilityKitAgentPlanReadyEvent OnPlanReady;
 
 private:
 	void EmitUserLine(const FString& Text);
@@ -55,4 +63,8 @@ private:
 	TMap<FName, TSubclassOf<UHCIAbilityKitAgentCommandBase>> CommandRegistry;
 	TArray<FHCIAbilityKitAgentQuickCommand> QuickCommands;
 	FString QuickCommandsLoadError;
+	bool bHasLastPlan = false;
+	FHCIAbilityKitAgentPlan LastPlan;
+	FString LastRouteReason;
+	FHCIAbilityKitAgentPlannerResultMetadata LastPlannerMetadata;
 };

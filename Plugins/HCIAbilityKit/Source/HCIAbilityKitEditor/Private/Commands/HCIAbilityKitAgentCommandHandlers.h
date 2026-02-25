@@ -27,6 +27,7 @@ bool HCI_IsAgentPlanPreviewRequestInFlight();
 bool HCI_RequestAgentPlanPreviewFromUi(
 	const FString& UserText,
 	const FString& SourceTag,
+	bool bAutoOpenPreviewWindow,
 	FHCIAbilityKitAgentPlanPreviewRequestOnComplete&& OnComplete);
 void HCI_RunAbilityKitAgentPlanWithLLMDemoCommand(const TArray<FString>& Args);
 void HCI_RunAbilityKitAgentPlanWithRealLLMDemoCommand(const TArray<FString>& Args);

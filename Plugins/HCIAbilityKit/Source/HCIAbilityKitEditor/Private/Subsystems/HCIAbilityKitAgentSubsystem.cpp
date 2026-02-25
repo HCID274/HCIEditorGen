@@ -5,9 +5,11 @@
 #include "Commands/HCIAbilityKitAgentCommand_ChatPlanAndSummary.h"
 #include "Dom/JsonObject.h"
 #include "Misc/FileHelper.h"
+#include "Misc/MessageDialog.h"
 #include "Misc/Paths.h"
 #include "Serialization/JsonReader.h"
 #include "Serialization/JsonSerializer.h"
+#include "UI/HCIAbilityKitAgentPlanPreviewWindow.h"
 
 namespace
 {
@@ -94,6 +96,20 @@ static bool HCI_LoadChatQuickCommandsFromBundle(
 
 	return true;
 }
+
+static FHCIAbilityKitAgentPlanPreviewContext HCI_MakePreviewContext(
+	const FString& RouteReason,
+	const FHCIAbilityKitAgentPlannerResultMetadata& PlannerMetadata)
+{
+	FHCIAbilityKitAgentPlanPreviewContext PreviewContext;
+	PreviewContext.RouteReason = RouteReason;
+	PreviewContext.PlannerProvider = PlannerMetadata.PlannerProvider.IsEmpty() ? TEXT("-") : PlannerMetadata.PlannerProvider;
+	PreviewContext.ProviderMode = PlannerMetadata.ProviderMode.IsEmpty() ? TEXT("-") : PlannerMetadata.ProviderMode;
+	PreviewContext.bFallbackUsed = PlannerMetadata.bFallbackUsed;
+	PreviewContext.FallbackReason = PlannerMetadata.FallbackReason.IsEmpty() ? TEXT("-") : PlannerMetadata.FallbackReason;
+	PreviewContext.EnvScannedAssetCount = PlannerMetadata.bEnvContextInjected ? PlannerMetadata.EnvContextAssetCount : INDEX_NONE;
+	return PreviewContext;
+}
 }
 
 void UHCIAbilityKitAgentSubsystem::Initialize(FSubsystemCollectionBase& Collection)
@@ -112,6 +128,10 @@ void UHCIAbilityKitAgentSubsystem::Deinitialize()
 	CommandRegistry.Reset();
 	QuickCommands.Reset();
 	QuickCommandsLoadError.Reset();
+	bHasLastPlan = false;
+	LastPlan = FHCIAbilityKitAgentPlan();
+	LastRouteReason.Reset();
+	LastPlannerMetadata = FHCIAbilityKitAgentPlannerResultMetadata();
 	Super::Deinitialize();
 }
 
@@ -150,6 +170,92 @@ bool UHCIAbilityKitAgentSubsystem::SubmitChatInput(const FString& UserInput, con
 bool UHCIAbilityKitAgentSubsystem::IsBusy() const
 {
 	return ActiveCommand != nullptr;
+}
+
+bool UHCIAbilityKitAgentSubsystem::HasLastPlan() const
+{
+	return bHasLastPlan;
+}
+
+bool UHCIAbilityKitAgentSubsystem::BuildLastPlanCardLines(TArray<FString>& OutLines) const
+{
+	OutLines.Reset();
+	if (!bHasLastPlan)
+	{
+		return false;
+	}
+
+	OutLines.Add(FString::Printf(
+		TEXT("request_id=%s | intent=%s | steps=%d"),
+		LastPlan.RequestId.IsEmpty() ? TEXT("-") : *LastPlan.RequestId,
+		LastPlan.Intent.IsEmpty() ? TEXT("-") : *LastPlan.Intent,
+		LastPlan.Steps.Num()));
+	OutLines.Add(FString::Printf(
+		TEXT("route_reason=%s | provider=%s | mode=%s | fallback=%s"),
+		LastRouteReason.IsEmpty() ? TEXT("-") : *LastRouteReason,
+		LastPlannerMetadata.PlannerProvider.IsEmpty() ? TEXT("-") : *LastPlannerMetadata.PlannerProvider,
+		LastPlannerMetadata.ProviderMode.IsEmpty() ? TEXT("-") : *LastPlannerMetadata.ProviderMode,
+		LastPlannerMetadata.bFallbackUsed ? TEXT("true") : TEXT("false")));
+
+	for (int32 Index = 0; Index < LastPlan.Steps.Num(); ++Index)
+	{
+		const FHCIAbilityKitAgentPlanStep& Step = LastPlan.Steps[Index];
+		OutLines.Add(FString::Printf(
+			TEXT("%d. %s | tool=%s | risk=%s"),
+			Index + 1,
+			Step.StepId.IsEmpty() ? TEXT("-") : *Step.StepId,
+			*Step.ToolName.ToString(),
+			*FHCIAbilityKitAgentPlanContract::RiskLevelToString(Step.RiskLevel)));
+	}
+
+	return true;
+}
+
+bool UHCIAbilityKitAgentSubsystem::OpenLastPlanPreview()
+{
+	if (!bHasLastPlan)
+	{
+		EmitAssistantLine(TEXT("暂无可预览计划，请先发送一条请求。"));
+		return false;
+	}
+
+	const FHCIAbilityKitAgentPlanPreviewContext PreviewContext = HCI_MakePreviewContext(LastRouteReason, LastPlannerMetadata);
+	FHCIAbilityKitAgentPlanPreviewWindow::OpenWindow(LastPlan, PreviewContext);
+	EmitAssistantLine(TEXT("已打开计划预览窗口。"));
+	return true;
+}
+
+bool UHCIAbilityKitAgentSubsystem::CommitLastPlanFromChat()
+{
+	if (ActiveCommand != nullptr)
+	{
+		EmitStatus(TEXT("状态：忙碌"));
+		EmitAssistantLine(TEXT("已有请求执行中，请等待当前请求完成后再执行计划。"));
+		return false;
+	}
+
+	if (!bHasLastPlan)
+	{
+		EmitAssistantLine(TEXT("暂无可执行计划，请先发送一条请求。"));
+		return false;
+	}
+
+	const FString ConfirmText = FHCIAbilityKitAgentPlanPreviewWindow::BuildCommitConfirmMessage(LastPlan);
+	const EAppReturnType::Type UserDecision = FMessageDialog::Open(EAppMsgType::YesNo, FText::FromString(ConfirmText));
+	if (UserDecision != EAppReturnType::Yes)
+	{
+		EmitAssistantLine(TEXT("Commit 已取消（未触发真实写操作）。"));
+		EmitStatus(TEXT("状态：空闲"));
+		return false;
+	}
+
+	EmitStatus(TEXT("状态：执行中"));
+	FHCIAbilityKitAgentPlanExecutionReport Report;
+	FHCIAbilityKitAgentPlanPreviewWindow::ExecutePlan(LastPlan, false, true, Report);
+	EmitAssistantLine(Report.SummaryText);
+	EmitAssistantLine(Report.SearchPathEvidenceText);
+	EmitStatus(TEXT("状态：空闲"));
+	return Report.bRunOk;
 }
 
 void UHCIAbilityKitAgentSubsystem::ReloadQuickCommands()
@@ -193,6 +299,14 @@ void UHCIAbilityKitAgentSubsystem::EmitStatus(const FString& Text)
 void UHCIAbilityKitAgentSubsystem::HandleCommandCompleted(const FHCIAbilityKitAgentCommandResult& Result)
 {
 	ActiveCommand = nullptr;
+	if (Result.bHasPlanPayload)
+	{
+		bHasLastPlan = true;
+		LastPlan = Result.Plan;
+		LastRouteReason = Result.RouteReason;
+		LastPlannerMetadata = Result.PlannerMetadata;
+		OnPlanReady.Broadcast();
+	}
 
 	if (Result.bSuccess)
 	{

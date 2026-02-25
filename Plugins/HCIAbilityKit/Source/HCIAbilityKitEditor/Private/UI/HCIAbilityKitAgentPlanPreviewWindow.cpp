@@ -223,68 +223,18 @@ public:
 		Rows = InArgs._Rows;
 		Context = InArgs._Context;
 
-			const auto RunPlan = [this](const bool bDryRun, const bool bUserConfirmedWriteSteps)
-			{
-				const FHCIAbilityKitToolRegistry& ToolRegistry = FHCIAbilityKitToolRegistry::GetReadOnly();
-				FHCIAbilityKitAgentExecutorOptions Options;
-				Options.bDryRun = bDryRun;
-				Options.bValidatePlanBeforeExecute = true;
-				Options.TerminationPolicy = EHCIAbilityKitAgentExecutorTerminationPolicy::ContinueOnFailure;
-				Options.bEnablePreflightGates = true;
-				Options.bUserConfirmedWriteSteps = bUserConfirmedWriteSteps;
-				HCIAbilityKitAgentToolActions::BuildStageIDraftActions(Options.ToolActions);
-
-			FHCIAbilityKitAgentExecutorRunResult RunResult;
-			const bool bRunOk = FHCIAbilityKitAgentExecutor::ExecutePlan(
-				Plan,
-				ToolRegistry,
-				FHCIAbilityKitAgentPlanValidationContext(),
-				Options,
-				RunResult);
-
-			int32 ScannedAssets = 0;
-			for (const FHCIAbilityKitAgentExecutorStepResult& Step : RunResult.StepResults)
-			{
-				if (Step.ToolName == TEXT("ScanAssets"))
-				{
-					ScannedAssets += HCI_TryGetIntEvidence(Step.Evidence, TEXT("asset_count"), Step.TargetCountEstimate);
-				}
-			}
-
-				const FString ModeLabel = bDryRun ? TEXT("DryRun") : TEXT("Commit");
-				const FString Summary = FString::Printf(
-					TEXT("%s: ok=%s execution_mode=%s terminal=%s reason=%s succeeded=%d failed=%d scanned_assets=%d"),
-					*ModeLabel,
-					bRunOk ? TEXT("true") : TEXT("false"),
-					*RunResult.ExecutionMode,
-					*RunResult.TerminalStatus,
-					*RunResult.TerminalReason,
-					RunResult.SucceededSteps,
-					RunResult.FailedSteps,
-					ScannedAssets);
+		const auto RunPlan = [this](const bool bDryRun, const bool bUserConfirmedWriteSteps)
+		{
+			FHCIAbilityKitAgentPlanExecutionReport Report;
+			FHCIAbilityKitAgentPlanPreviewWindow::ExecutePlan(Plan, bDryRun, bUserConfirmedWriteSteps, Report);
 			if (RunSummaryText.IsValid())
 			{
-				RunSummaryText->SetText(FText::FromString(Summary));
+				RunSummaryText->SetText(FText::FromString(Report.SummaryText));
 			}
 			if (SearchPathEvidenceText.IsValid())
 			{
-				SearchPathEvidenceText->SetText(FText::FromString(
-					FHCIAbilityKitAgentPlanPreviewWindow::BuildSearchPathEvidenceSummary(RunResult.StepResults)));
+				SearchPathEvidenceText->SetText(FText::FromString(Report.SearchPathEvidenceText));
 			}
-
-				UE_LOG(
-					LogHCIAbilityKitAgentPlanPreview,
-					Display,
-					TEXT("[HCIAbilityKit][AgentPlanPreview] mode=%s execution_mode=%s executed request_id=%s steps=%d terminal=%s terminal_reason=%s succeeded=%d failed=%d scanned_assets=%d"),
-					bDryRun ? TEXT("dry_run") : TEXT("execute"),
-					*RunResult.ExecutionMode,
-					*Plan.RequestId,
-					Plan.Steps.Num(),
-					*RunResult.TerminalStatus,
-					*RunResult.TerminalReason,
-					RunResult.SucceededSteps,
-					RunResult.FailedSteps,
-					ScannedAssets);
 		};
 
 		TSharedRef<SVerticalBox> RowsBox = SNew(SVerticalBox);
@@ -623,6 +573,77 @@ FString FHCIAbilityKitAgentPlanPreviewWindow::BuildSearchPathEvidenceSummary(con
 	}
 
 	return TEXT("SearchPath证据: 本计划不含 SearchPath 步骤");
+}
+
+bool FHCIAbilityKitAgentPlanPreviewWindow::ExecutePlan(
+	const FHCIAbilityKitAgentPlan& Plan,
+	const bool bDryRun,
+	const bool bUserConfirmedWriteSteps,
+	FHCIAbilityKitAgentPlanExecutionReport& OutReport)
+{
+	OutReport = FHCIAbilityKitAgentPlanExecutionReport();
+	OutReport.bDryRun = bDryRun;
+
+	const FHCIAbilityKitToolRegistry& ToolRegistry = FHCIAbilityKitToolRegistry::GetReadOnly();
+	FHCIAbilityKitAgentExecutorOptions Options;
+	Options.bDryRun = bDryRun;
+	Options.bValidatePlanBeforeExecute = true;
+	Options.TerminationPolicy = EHCIAbilityKitAgentExecutorTerminationPolicy::ContinueOnFailure;
+	Options.bEnablePreflightGates = true;
+	Options.bUserConfirmedWriteSteps = bUserConfirmedWriteSteps;
+	HCIAbilityKitAgentToolActions::BuildStageIDraftActions(Options.ToolActions);
+
+	FHCIAbilityKitAgentExecutorRunResult RunResult;
+	OutReport.bRunOk = FHCIAbilityKitAgentExecutor::ExecutePlan(
+		Plan,
+		ToolRegistry,
+		FHCIAbilityKitAgentPlanValidationContext(),
+		Options,
+		RunResult);
+	OutReport.ExecutionMode = RunResult.ExecutionMode;
+	OutReport.TerminalStatus = RunResult.TerminalStatus;
+	OutReport.TerminalReason = RunResult.TerminalReason;
+	OutReport.SucceededSteps = RunResult.SucceededSteps;
+	OutReport.FailedSteps = RunResult.FailedSteps;
+
+	int32 ScannedAssets = 0;
+	for (const FHCIAbilityKitAgentExecutorStepResult& Step : RunResult.StepResults)
+	{
+		if (Step.ToolName == TEXT("ScanAssets"))
+		{
+			ScannedAssets += HCI_TryGetIntEvidence(Step.Evidence, TEXT("asset_count"), Step.TargetCountEstimate);
+		}
+	}
+	OutReport.ScannedAssets = ScannedAssets;
+
+	const FString ModeLabel = bDryRun ? TEXT("DryRun") : TEXT("Commit");
+	OutReport.SummaryText = FString::Printf(
+		TEXT("%s: ok=%s execution_mode=%s terminal=%s reason=%s succeeded=%d failed=%d scanned_assets=%d"),
+		*ModeLabel,
+		OutReport.bRunOk ? TEXT("true") : TEXT("false"),
+		*OutReport.ExecutionMode,
+		*OutReport.TerminalStatus,
+		*OutReport.TerminalReason,
+		OutReport.SucceededSteps,
+		OutReport.FailedSteps,
+		OutReport.ScannedAssets);
+	OutReport.SearchPathEvidenceText = BuildSearchPathEvidenceSummary(RunResult.StepResults);
+
+	UE_LOG(
+		LogHCIAbilityKitAgentPlanPreview,
+		Display,
+		TEXT("[HCIAbilityKit][AgentPlanPreview] mode=%s execution_mode=%s executed request_id=%s steps=%d terminal=%s terminal_reason=%s succeeded=%d failed=%d scanned_assets=%d"),
+		bDryRun ? TEXT("dry_run") : TEXT("execute"),
+		*OutReport.ExecutionMode,
+		*Plan.RequestId,
+		Plan.Steps.Num(),
+		*OutReport.TerminalStatus,
+		*OutReport.TerminalReason,
+		OutReport.SucceededSteps,
+		OutReport.FailedSteps,
+		OutReport.ScannedAssets);
+
+	return OutReport.bRunOk;
 }
 
 void FHCIAbilityKitAgentPlanPreviewWindow::OpenWindow(const FHCIAbilityKitAgentPlan& Plan, const FHCIAbilityKitAgentPlanPreviewContext& Context)

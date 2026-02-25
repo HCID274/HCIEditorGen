@@ -1,0 +1,7 @@
+{
+  "type": "object",
+  "title": "I7_AgentChatSummary_ToolsSchema",
+  "description": "No tool invocation in this summary skill; reserved for bundle placeholder consistency.",
+  "additionalProperties": false,
+  "properties": {}
+}

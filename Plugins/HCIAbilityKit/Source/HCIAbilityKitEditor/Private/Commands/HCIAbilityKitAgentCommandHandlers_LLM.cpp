@@ -20,7 +20,8 @@
 #include "Serialization/JsonWriter.h"
 #include "UObject/SoftObjectPath.h"
 
-DEFINE_LOG_CATEGORY_STATIC(LogHCIAbilityKitAgentDemo, Log, All);
+DEFINE_LOG_CATEGORY_STATIC(LogHCIAbilityKitAgentDemoLlm, Log, All);
+#define LogHCIAbilityKitAgentDemo LogHCIAbilityKitAgentDemoLlm
 
 static FHCIAbilityKitAgentDemoState& HCI_Llm_State()
 {

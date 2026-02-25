@@ -76,13 +76,13 @@ void FHCIAbilityKitAgentDemoConsoleCommands::StartupCoreCommands()
 			FConsoleCommandWithArgsDelegate::CreateStatic(&HCI_RunAbilityKitAgentPlanPreviewUiCommand));
 	}
 
-	if (!AgentChatUiCommand.IsValid())
-	{
-		AgentChatUiCommand = MakeUnique<FAutoConsoleCommand>(
-			TEXT("HCIAbilityKit.AgentChatUI"),
-			TEXT("Stage I6 chat-like NL entry. Usage: HCIAbilityKit.AgentChatUI [optional initial text]"),
-			FConsoleCommandWithArgsDelegate::CreateStatic(&HCI_RunAbilityKitAgentChatUiCommand));
-	}
+		if (!AgentChatUiCommand.IsValid())
+		{
+			AgentChatUiCommand = MakeUnique<FAutoConsoleCommand>(
+				TEXT("HCIAbilityKit.AgentChatUI"),
+				TEXT("Stage I7 chat-like NL entry (history + shortcuts + summary). Usage: HCIAbilityKit.AgentChatUI [optional initial text]"),
+				FConsoleCommandWithArgsDelegate::CreateStatic(&HCI_RunAbilityKitAgentChatUiCommand));
+		}
 
 	if (!AgentPlanValidateDemoCommand.IsValid())
 	{

@@ -40,7 +40,8 @@
 #include "Agent/HCIAbilityKitAgentExecutorStageGExecutionReadinessReportBridge.h"
 #include "Agent/HCIAbilityKitDryRunDiff.h"
 
-DEFINE_LOG_CATEGORY_STATIC(LogHCIAbilityKitAgentDemo, Log, All);
+DEFINE_LOG_CATEGORY_STATIC(LogHCIAbilityKitAgentDemoStageG, Log, All);
+#define LogHCIAbilityKitAgentDemo LogHCIAbilityKitAgentDemoStageG
 
 static FHCIAbilityKitAgentDemoState& HCI_State()
 {

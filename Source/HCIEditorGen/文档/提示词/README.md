@@ -18,12 +18,13 @@
 ## 维护规则
 
 - 任一工具参数边界变化，必须先改对应 `tools_schema.json`，再改代码。
-- `prompt.md` 允许使用占位符 `{{TOOLS_SCHEMA}}` 与 `{{USER_INPUT}}`，运行时注入。
+- `prompt.md` 允许使用占位符 `{{TOOLS_SCHEMA}}`、`{{ENV_CONTEXT}}`、`{{USER_INPUT}}`，运行时注入。
 - 不允许在 `prompt.md` 中写无关实施细节。
 - AI 工具接口唯一总表：`AI可调用接口总表.md`（先更新总表，再改 Skill 与代码）。
 
 ## 当前已收录
 
 - `Skills/H3_AgentPlanner/`
+- `Skills/I7_AgentChatSummary/`
 - `Skills标准_面试谈资.md`
 - `AI可调用接口总表.md`

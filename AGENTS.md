@@ -89,6 +89,7 @@ Scope: whole repo.
   - `Stage I-SliceI4`：已通过 UE 手测（SearchPath 语义关键词归一 + 语义目录回退，`Temp -> /Game/Temp`）。
   - `Stage I-SliceI5`：已通过 UE 手测（PlanPreviewUI 直显 `SearchPath` 语义归一与最优目录证据）。
   - `Stage I-SliceI6`：已通过 UE 手测（AgentChatUI 聊天式入口 + 真实 LLM 异步链路复用）。
+  - `Stage I-SliceI7`：已通过 UE 手测（Prompt 摘要链路 + 快捷指令外置配置）。
 - UE 手测命令（G10，历史通过记录）：
   - `HCIAbilityKit.AgentExecutePlanReviewPrepareStageGExecutionReadiness 1 none`
   - `HCIAbilityKit.AgentExecutePlanReviewPrepareStageGExecutionReadiness 0 none`
@@ -101,7 +102,7 @@ Scope: whole repo.
   - `Phase2-SliceP2-2`：已通过 UE 手测门禁（Commands StageG 处理器拆分，`No Semantic Changes`）。
 - 当前切片：已收口，待你指定下一片。
 - 下一切片（待你选择）：
-  - `Stage I-SliceI7`：聊天 UI 体验增强（先冻结目标与门禁）。
+  - `Stage H-SliceH5`：LLM 契约稳定性专项（聚焦 `E4303 llm_contract_invalid` 高频链路）。
   - 若继续结构解耦：先冻结新增切片目标与门禁，再进入实现。
 
 ## 9. 用户协作习惯（固定）

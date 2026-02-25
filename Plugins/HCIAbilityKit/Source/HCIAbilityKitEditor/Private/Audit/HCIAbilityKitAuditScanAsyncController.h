@@ -18,7 +18,7 @@ struct FHCIAbilityKitAuditScanBatch
 	int32 EndIndex = 0;
 };
 
-class FHCIAbilityKitAuditScanAsyncController
+class HCIABILITYKITEDITOR_API FHCIAbilityKitAuditScanAsyncController
 {
 public:
 	bool Start(TArray<FAssetData>&& InAssetDatas, int32 InBatchSize, int32 InLogTopN, FString& OutError);

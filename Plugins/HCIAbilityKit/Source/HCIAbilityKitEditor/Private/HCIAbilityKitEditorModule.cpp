@@ -2,14 +2,14 @@
 
 #include "AssetRegistry/IAssetRegistry.h"
 #include "AssetRegistry/AssetRegistryModule.h"
-#include "Agent/HCIAbilityKitAgentExecutionGate.h"
-#include "Agent/HCIAbilityKitAgentPlan.h"
-#include "Agent/HCIAbilityKitAgentPlanJsonSerializer.h"
-#include "Agent/HCIAbilityKitAgentPlanner.h"
-#include "Agent/HCIAbilityKitAgentPlanValidator.h"
-#include "Agent/HCIAbilityKitDryRunDiff.h"
-#include "Agent/HCIAbilityKitDryRunDiffJsonSerializer.h"
-#include "Agent/HCIAbilityKitToolRegistry.h"
+#include "Agent/Executor/HCIAbilityKitAgentExecutionGate.h"
+#include "Agent/Planner/HCIAbilityKitAgentPlan.h"
+#include "Agent/Planner/HCIAbilityKitAgentPlanJsonSerializer.h"
+#include "Agent/Planner/HCIAbilityKitAgentPlanner.h"
+#include "Agent/Planner/HCIAbilityKitAgentPlanValidator.h"
+#include "Agent/Executor/HCIAbilityKitDryRunDiff.h"
+#include "Agent/Executor/HCIAbilityKitDryRunDiffJsonSerializer.h"
+#include "Agent/Tools/HCIAbilityKitToolRegistry.h"
 #include "Audit/HCIAbilityKitAuditPerfMetrics.h"
 #include "Audit/HCIAbilityKitAuditScanAsyncController.h"
 #include "Audit/HCIAbilityKitAuditReport.h"
@@ -1966,5 +1966,4 @@ void FHCIAbilityKitEditorModule::ShutdownModule()
 }
 
 IMPLEMENT_MODULE(FHCIAbilityKitEditorModule, HCIAbilityKitEditor)
-
 

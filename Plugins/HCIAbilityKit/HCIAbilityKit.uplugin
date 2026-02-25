@@ -34,6 +34,11 @@
       "Name": "HCIAbilityKitEditor",
       "Type": "Editor",
       "LoadingPhase": "Default"
+    },
+    {
+      "Name": "HCIAbilityKitTests",
+      "Type": "DeveloperTool",
+      "LoadingPhase": "Default"
     }
   ]
 }

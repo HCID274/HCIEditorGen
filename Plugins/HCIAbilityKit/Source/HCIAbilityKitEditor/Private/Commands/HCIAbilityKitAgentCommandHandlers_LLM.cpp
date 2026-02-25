@@ -3,11 +3,11 @@
 #include "Commands/HCIAbilityKitAgentDemoState.h"
 #include "UI/HCIAbilityKitAgentPlanPreviewWindow.h"
 
-#include "Agent/HCIAbilityKitAgentLlmClient.h"
-#include "Agent/HCIAbilityKitAgentPlan.h"
-#include "Agent/HCIAbilityKitAgentPlanValidator.h"
-#include "Agent/HCIAbilityKitAgentPlanner.h"
-#include "Agent/HCIAbilityKitToolRegistry.h"
+#include "Agent/LLM/HCIAbilityKitAgentLlmClient.h"
+#include "Agent/Planner/HCIAbilityKitAgentPlan.h"
+#include "Agent/Planner/HCIAbilityKitAgentPlanValidator.h"
+#include "Agent/Planner/HCIAbilityKitAgentPlanner.h"
+#include "Agent/Tools/HCIAbilityKitToolRegistry.h"
 #include "AssetRegistry/AssetData.h"
 #include "AssetRegistry/AssetRegistryModule.h"
 #include "Dom/JsonObject.h"
@@ -777,4 +777,3 @@ void HCI_RunAbilityKitAgentPlanWithLLMMetricsDumpCommand(const TArray<FString>& 
 }
 
 #undef LogHCIAbilityKitAgentDemo
-

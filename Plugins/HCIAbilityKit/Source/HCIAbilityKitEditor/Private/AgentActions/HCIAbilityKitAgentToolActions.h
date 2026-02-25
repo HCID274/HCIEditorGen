@@ -2,10 +2,9 @@
 
 #include "CoreMinimal.h"
 
-#include "Agent/HCIAbilityKitAgentToolAction.h"
+#include "Agent/Tools/HCIAbilityKitAgentToolAction.h"
 
 namespace HCIAbilityKitAgentToolActions
 {
-void BuildStageIDraftActions(TMap<FName, TSharedPtr<IHCIAbilityKitAgentToolAction>>& OutActions);
+HCIABILITYKITEDITOR_API void BuildStageIDraftActions(TMap<FName, TSharedPtr<IHCIAbilityKitAgentToolAction>>& OutActions);
 }
-

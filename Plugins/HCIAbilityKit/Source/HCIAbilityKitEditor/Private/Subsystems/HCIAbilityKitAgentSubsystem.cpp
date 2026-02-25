@@ -1,6 +1,6 @@
 #include "Subsystems/HCIAbilityKitAgentSubsystem.h"
 
-#include "Agent/HCIAbilityKitAgentPromptBuilder.h"
+#include "Agent/LLM/HCIAbilityKitAgentPromptBuilder.h"
 #include "Async/Async.h"
 #include "Commands/HCIAbilityKitAgentCommand_ChatPlanAndSummary.h"
 #include "Dom/JsonObject.h"

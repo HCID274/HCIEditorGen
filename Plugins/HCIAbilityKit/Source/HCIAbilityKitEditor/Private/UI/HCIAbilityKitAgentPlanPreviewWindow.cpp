@@ -1,7 +1,7 @@
 #include "UI/HCIAbilityKitAgentPlanPreviewWindow.h"
 
-#include "Agent/HCIAbilityKitAgentExecutor.h"
-#include "Agent/HCIAbilityKitToolRegistry.h"
+#include "Agent/Executor/HCIAbilityKitAgentExecutor.h"
+#include "Agent/Tools/HCIAbilityKitToolRegistry.h"
 #include "AgentActions/HCIAbilityKitAgentToolActions.h"
 #include "AssetRegistry/AssetData.h"
 #include "ContentBrowserModule.h"

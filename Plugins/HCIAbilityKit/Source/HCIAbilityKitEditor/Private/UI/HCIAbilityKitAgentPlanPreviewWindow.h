@@ -2,8 +2,8 @@
 
 #include "CoreMinimal.h"
 
-#include "Agent/HCIAbilityKitAgentExecutor.h"
-#include "Agent/HCIAbilityKitAgentPlan.h"
+#include "Agent/Executor/HCIAbilityKitAgentExecutor.h"
+#include "Agent/Planner/HCIAbilityKitAgentPlan.h"
 
 struct FHCIAbilityKitAgentPlanPreviewRow
 {
@@ -38,7 +38,7 @@ struct FHCIAbilityKitAgentPlanCommitRiskSummary
 	bool bRequiresConfirmDialog = false;
 };
 
-class FHCIAbilityKitAgentPlanPreviewWindow
+class HCIABILITYKITEDITOR_API FHCIAbilityKitAgentPlanPreviewWindow
 {
 public:
 	static void OpenWindow(const FHCIAbilityKitAgentPlan& Plan, const FHCIAbilityKitAgentPlanPreviewContext& Context = FHCIAbilityKitAgentPlanPreviewContext());

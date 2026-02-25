@@ -1,7 +1,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "Agent/HCIAbilityKitDryRunDiff.h"
+#include "Agent/Executor/HCIAbilityKitDryRunDiff.h"
 
 struct FHCIAbilityKitAgentExecutorReviewLocateResolvedRow
 {
@@ -13,7 +13,7 @@ struct FHCIAbilityKitAgentExecutorReviewLocateResolvedRow
 	EHCIAbilityKitDryRunLocateStrategy LocateStrategy = EHCIAbilityKitDryRunLocateStrategy::SyncBrowser;
 };
 
-class FHCIAbilityKitAgentExecutorReviewLocateUtils
+class HCIABILITYKITEDITOR_API FHCIAbilityKitAgentExecutorReviewLocateUtils
 {
 public:
 	static bool TryResolveRow(

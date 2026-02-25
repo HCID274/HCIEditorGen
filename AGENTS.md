@@ -88,6 +88,7 @@ Scope: whole repo.
   - `Stage I-SliceI3`：已通过 UE 手测（确认并执行真实写操作闭环）。
   - `Stage I-SliceI4`：已通过 UE 手测（SearchPath 语义关键词归一 + 语义目录回退，`Temp -> /Game/Temp`）。
   - `Stage I-SliceI5`：已通过 UE 手测（PlanPreviewUI 直显 `SearchPath` 语义归一与最优目录证据）。
+  - `Stage I-SliceI6`：已通过 UE 手测（AgentChatUI 聊天式入口 + 真实 LLM 异步链路复用）。
 - UE 手测命令（G10，历史通过记录）：
   - `HCIAbilityKit.AgentExecutePlanReviewPrepareStageGExecutionReadiness 1 none`
   - `HCIAbilityKit.AgentExecutePlanReviewPrepareStageGExecutionReadiness 0 none`
@@ -95,11 +96,12 @@ Scope: whole repo.
   - `HCIAbilityKit.AgentExecutePlanReviewPrepareStageGExecutionReadiness 1 archive`
   - `HCIAbilityKit.AgentExecutePlanReviewPrepareStageGExecutionReadiness 1 mode`
   - `HCIAbilityKit.AgentExecutePlanReviewPrepareStageGExecutionReadinessJson 1 none`
-- 当前切片：
+- 最近完成切片：
   - `Phase2-SliceP2-1`：已通过 UE 手测门禁（Commands LLM 处理器拆分，`No Semantic Changes`）。
   - `Phase2-SliceP2-2`：已通过 UE 手测门禁（Commands StageG 处理器拆分，`No Semantic Changes`）。
+- 当前切片：已收口，待你指定下一片。
 - 下一切片（待你选择）：
-  - `Stage I-SliceI6`：仅在用户确认继续 UI 深化后再冻结目标与门禁。
+  - `Stage I-SliceI7`：聊天 UI 体验增强（先冻结目标与门禁）。
   - 若继续结构解耦：先冻结新增切片目标与门禁，再进入实现。
 
 ## 9. 用户协作习惯（固定）

@@ -152,6 +152,8 @@
 
 ## 6. UE 入口接口（人工触发）
 
+- `HCIAbilityKit.AgentChatUI [optional initial text]`
+  - 作用：打开聊天式自然语言入口窗口（Stage I6），在窗口内发送请求并自动弹出 `PlanPreview`。
 - `HCIAbilityKit.AgentPlanPreviewUI "<自然语言>"`
   - 作用：触发真实 LLM 规划并弹出 Plan Preview UI。
 - `HCIAbilityKit.AgentPlanWithRealLLMDemo "<自然语言>"`

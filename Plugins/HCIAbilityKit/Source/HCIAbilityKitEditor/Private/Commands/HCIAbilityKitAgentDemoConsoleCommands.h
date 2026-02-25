@@ -27,6 +27,7 @@ private:
 	TUniquePtr<FAutoConsoleCommand> AgentPlanDemoCommand;
 	TUniquePtr<FAutoConsoleCommand> AgentPlanDemoJsonCommand;
 	TUniquePtr<FAutoConsoleCommand> AgentPlanPreviewUiCommand;
+	TUniquePtr<FAutoConsoleCommand> AgentChatUiCommand;
 	TUniquePtr<FAutoConsoleCommand> AgentPlanWithLLMDemoCommand;
 	TUniquePtr<FAutoConsoleCommand> AgentPlanWithRealLLMDemoCommand;
 	TUniquePtr<FAutoConsoleCommand> AgentPlanWithRealLLMProbeCommand;

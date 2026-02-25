@@ -1,6 +1,8 @@
 #include "Commands/HCIAbilityKitAgentDemoConsoleCommands.h"
+#include "Commands/HCIAbilityKitAgentCommandHandlers.h"
 #include "Commands/HCIAbilityKitAgentDemoState.h"
 #include "Commands/HCIAbilityKitAgentExecutorReviewLocateUtils.h"
+#include "UI/HCIAbilityKitAgentChatWindow.h"
 #include "UI/HCIAbilityKitAgentPlanPreviewWindow.h"
 
 #include "Agent/HCIAbilityKitAgentExecutionGate.h"
@@ -1649,17 +1651,35 @@ void HCI_RunAbilityKitAgentPlanDemoJsonCommand(const TArray<FString>& Args)
 		*JsonText);
 }
 
-void HCI_RunAbilityKitAgentPlanPreviewUiCommand(const TArray<FString>& Args)
+bool HCI_IsAgentPlanPreviewRequestInFlight()
 {
-	const FString UserText =
-		Args.Num() > 0 ? HCI_JoinConsoleArgsAsText(Args) : FString(TEXT("整理临时目录资产，按规范命名并归档"));
-	if (UserText.IsEmpty())
+	return HCI_State().bRealLlmPlanCommandInFlight.Load();
+}
+
+bool HCI_RequestAgentPlanPreviewFromUi(
+	const FString& UserText,
+	const FString& SourceTag,
+	FHCIAbilityKitAgentPlanPreviewRequestOnComplete&& OnComplete)
+{
+	const FString SafeUserText = UserText.TrimStartAndEnd();
+	const FString SafeSourceTag = SourceTag.TrimStartAndEnd().IsEmpty()
+		? FString(TEXT("AgentPlanPreviewUI"))
+		: SourceTag.TrimStartAndEnd();
+
+	if (SafeUserText.IsEmpty())
 	{
 		UE_LOG(
 			LogHCIAbilityKitAgentDemo,
 			Error,
-			TEXT("[HCIAbilityKit][AgentPlanPreviewUI] invalid_args reason=empty input text"));
-		return;
+			TEXT("[HCIAbilityKit][AgentPlanPreviewUI] invalid_args reason=empty input text source=%s"),
+			*SafeSourceTag);
+		if (OnComplete)
+		{
+			const FHCIAbilityKitAgentPlan EmptyPlan;
+			const FHCIAbilityKitAgentPlannerResultMetadata EmptyMetadata;
+			OnComplete(false, SafeUserText, EmptyPlan, FString(), EmptyMetadata, TEXT("empty_input"));
+		}
+		return false;
 	}
 
 	if (HCI_State().bRealLlmPlanCommandInFlight.Exchange(true))
@@ -1667,25 +1687,38 @@ void HCI_RunAbilityKitAgentPlanPreviewUiCommand(const TArray<FString>& Args)
 		UE_LOG(
 			LogHCIAbilityKitAgentDemo,
 			Warning,
-			TEXT("[HCIAbilityKit][AgentPlanPreviewUI] busy reason=previous_request_in_flight input=%s"),
-			*UserText);
-		return;
+			TEXT("[HCIAbilityKit][AgentPlanPreviewUI] busy reason=previous_request_in_flight input=%s source=%s"),
+			*SafeUserText,
+			*SafeSourceTag);
+		if (OnComplete)
+		{
+			const FHCIAbilityKitAgentPlan EmptyPlan;
+			const FHCIAbilityKitAgentPlannerResultMetadata EmptyMetadata;
+			OnComplete(false, SafeUserText, EmptyPlan, FString(), EmptyMetadata, TEXT("request_busy"));
+		}
+		return false;
 	}
 
 	UE_LOG(
 		LogHCIAbilityKitAgentDemo,
 		Display,
-		TEXT("[HCIAbilityKit][AgentPlanLLM][H3] dispatched mode=normal input=%s source=AgentPlanPreviewUI hint=异步执行中，结果将随后输出"),
-		*UserText);
+		TEXT("[HCIAbilityKit][AgentPlanLLM][H3] dispatched mode=normal input=%s source=%s hint=异步执行中，结果将随后输出"),
+		*SafeUserText,
+		*SafeSourceTag);
 
 	const FHCIAbilityKitToolRegistry& ToolRegistry = FHCIAbilityKitToolRegistry::GetReadOnly();
 	const FHCIAbilityKitAgentPlannerBuildOptions PlannerOptions = HCI_MakeRealHttpPlannerOptions();
 	FHCIAbilityKitAgentPlanner::BuildPlanFromNaturalLanguageWithProviderAsync(
-		UserText,
+		SafeUserText,
 		TEXT("req_cli_i1_preview_ui"),
 		ToolRegistry,
 		PlannerOptions,
-		[UserText, ToolRegistryPtr = &ToolRegistry](bool bBuilt, FHCIAbilityKitAgentPlan Plan, FString RouteReason, FHCIAbilityKitAgentPlannerResultMetadata PlannerMetadata, FString Error)
+		[SafeUserText, SafeSourceTag, ToolRegistryPtr = &ToolRegistry, OnComplete = MoveTemp(OnComplete)](
+			bool bBuilt,
+			FHCIAbilityKitAgentPlan Plan,
+			FString RouteReason,
+			FHCIAbilityKitAgentPlannerResultMetadata PlannerMetadata,
+			FString Error) mutable
 		{
 			HCI_State().bRealLlmPlanCommandInFlight.Store(false);
 			if (!bBuilt)
@@ -1693,38 +1726,51 @@ void HCI_RunAbilityKitAgentPlanPreviewUiCommand(const TArray<FString>& Args)
 				UE_LOG(
 					LogHCIAbilityKitAgentDemo,
 					Error,
-					TEXT("[HCIAbilityKit][AgentPlanPreviewUI] build_failed input=%s provider=%s provider_mode=%s fallback_used=%s fallback_reason=%s error_code=%s reason=%s"),
-					*UserText,
+					TEXT("[HCIAbilityKit][AgentPlanPreviewUI] build_failed input=%s provider=%s provider_mode=%s fallback_used=%s fallback_reason=%s error_code=%s reason=%s source=%s"),
+					*SafeUserText,
 					*PlannerMetadata.PlannerProvider,
 					*PlannerMetadata.ProviderMode,
 					PlannerMetadata.bFallbackUsed ? TEXT("true") : TEXT("false"),
 					*PlannerMetadata.FallbackReason,
 					PlannerMetadata.ErrorCode.IsEmpty() ? TEXT("-") : *PlannerMetadata.ErrorCode,
-					*Error);
+					*Error,
+					*SafeSourceTag);
+				if (OnComplete)
+				{
+					OnComplete(false, SafeUserText, Plan, RouteReason, PlannerMetadata, Error);
+				}
 				return;
 			}
 
 			FHCIAbilityKitAgentPlanValidationResult Validation;
 			if (!FHCIAbilityKitAgentPlanValidator::ValidatePlan(Plan, *ToolRegistryPtr, Validation))
 			{
+				const FString ValidationError = FString::Printf(
+					TEXT("plan_validation_failed code=%s field=%s"),
+					Validation.ErrorCode.IsEmpty() ? TEXT("-") : *Validation.ErrorCode,
+					Validation.Field.IsEmpty() ? TEXT("-") : *Validation.Field);
 				UE_LOG(
 					LogHCIAbilityKitAgentDemo,
 					Error,
-					TEXT("[HCIAbilityKit][AgentPlanPreviewUI] build_failed input=%s provider=%s provider_mode=%s fallback_used=%s fallback_reason=%s error_code=%s reason=plan_validation_failed code=%s field=%s"),
-					*UserText,
+					TEXT("[HCIAbilityKit][AgentPlanPreviewUI] build_failed input=%s provider=%s provider_mode=%s fallback_used=%s fallback_reason=%s error_code=%s reason=%s source=%s"),
+					*SafeUserText,
 					*PlannerMetadata.PlannerProvider,
 					*PlannerMetadata.ProviderMode,
 					PlannerMetadata.bFallbackUsed ? TEXT("true") : TEXT("false"),
 					*PlannerMetadata.FallbackReason,
 					PlannerMetadata.ErrorCode.IsEmpty() ? TEXT("-") : *PlannerMetadata.ErrorCode,
-					Validation.ErrorCode.IsEmpty() ? TEXT("-") : *Validation.ErrorCode,
-					Validation.Field.IsEmpty() ? TEXT("-") : *Validation.Field);
+					*ValidationError,
+					*SafeSourceTag);
+				if (OnComplete)
+				{
+					OnComplete(false, SafeUserText, Plan, RouteReason, PlannerMetadata, ValidationError);
+				}
 				return;
 			}
 
 			HCI_State().AgentPlanPreviewState = Plan;
-			HCI_LogAgentPlanWithProviderSummary(TEXT("preview_ui_real_http"), UserText, RouteReason, Plan, PlannerMetadata, Validation);
-			HCI_LogAgentPlanRows(TEXT("preview_ui_real_http"), UserText, RouteReason, Plan);
+			HCI_LogAgentPlanWithProviderSummary(TEXT("preview_ui_real_http"), SafeUserText, RouteReason, Plan, PlannerMetadata, Validation);
+			HCI_LogAgentPlanRows(TEXT("preview_ui_real_http"), SafeUserText, RouteReason, Plan);
 			const FHCIAbilityKitAgentPlanPreviewContext PreviewContext = HCI_MakePlanPreviewContext(RouteReason, PlannerMetadata);
 			FHCIAbilityKitAgentPlanPreviewWindow::OpenWindow(
 				Plan,
@@ -1733,12 +1779,34 @@ void HCI_RunAbilityKitAgentPlanPreviewUiCommand(const TArray<FString>& Args)
 			UE_LOG(
 				LogHCIAbilityKitAgentDemo,
 				Display,
-				TEXT("[HCIAbilityKit][AgentPlanPreviewUI] opened request_id=%s intent=%s route_reason=%s steps=%d"),
+				TEXT("[HCIAbilityKit][AgentPlanPreviewUI] opened request_id=%s intent=%s route_reason=%s steps=%d source=%s"),
 				*Plan.RequestId,
 				*Plan.Intent,
 				*RouteReason,
-				Plan.Steps.Num());
+				Plan.Steps.Num(),
+				*SafeSourceTag);
+			if (OnComplete)
+			{
+				OnComplete(true, SafeUserText, Plan, RouteReason, PlannerMetadata, FString());
+			}
 		});
+	return true;
+}
+
+void HCI_RunAbilityKitAgentPlanPreviewUiCommand(const TArray<FString>& Args)
+{
+	const FString UserText =
+		Args.Num() > 0 ? HCI_JoinConsoleArgsAsText(Args) : FString(TEXT("整理临时目录资产，按规范命名并归档"));
+	HCI_RequestAgentPlanPreviewFromUi(
+		UserText,
+		TEXT("AgentPlanPreviewUI"),
+		FHCIAbilityKitAgentPlanPreviewRequestOnComplete());
+}
+
+void HCI_RunAbilityKitAgentChatUiCommand(const TArray<FString>& Args)
+{
+	const FString InitialText = Args.Num() > 0 ? HCI_JoinConsoleArgsAsText(Args) : FString();
+	FHCIAbilityKitAgentChatWindow::OpenWindow(InitialText);
 }
 
 static FHCIAbilityKitAgentPlan HCI_MakeAgentPlanValidateTexturePlan(const TCHAR* RequestId)

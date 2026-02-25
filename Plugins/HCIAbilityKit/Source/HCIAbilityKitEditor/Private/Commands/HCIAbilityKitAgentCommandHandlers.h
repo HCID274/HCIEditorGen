@@ -2,6 +2,17 @@
 
 #include "CoreMinimal.h"
 
+struct FHCIAbilityKitAgentPlan;
+struct FHCIAbilityKitAgentPlannerResultMetadata;
+
+using FHCIAbilityKitAgentPlanPreviewRequestOnComplete = TFunction<void(
+	bool /*bSuccess*/,
+	const FString& /*UserText*/,
+	const FHCIAbilityKitAgentPlan& /*Plan*/,
+	const FString& /*RouteReason*/,
+	const FHCIAbilityKitAgentPlannerResultMetadata& /*PlannerMetadata*/,
+	const FString& /*Error*/ )>;
+
 void HCI_RunAbilityKitAgentConfirmGateDemoCommand(const TArray<FString>& Args);
 void HCI_RunAbilityKitAgentBlastRadiusDemoCommand(const TArray<FString>& Args);
 void HCI_RunAbilityKitAgentTransactionDemoCommand(const TArray<FString>& Args);
@@ -11,6 +22,12 @@ void HCI_RunAbilityKitAgentLodSafetyDemoCommand(const TArray<FString>& Args);
 void HCI_RunAbilityKitAgentPlanDemoCommand(const TArray<FString>& Args);
 void HCI_RunAbilityKitAgentPlanDemoJsonCommand(const TArray<FString>& Args);
 void HCI_RunAbilityKitAgentPlanPreviewUiCommand(const TArray<FString>& Args);
+void HCI_RunAbilityKitAgentChatUiCommand(const TArray<FString>& Args);
+bool HCI_IsAgentPlanPreviewRequestInFlight();
+bool HCI_RequestAgentPlanPreviewFromUi(
+	const FString& UserText,
+	const FString& SourceTag,
+	FHCIAbilityKitAgentPlanPreviewRequestOnComplete&& OnComplete);
 void HCI_RunAbilityKitAgentPlanWithLLMDemoCommand(const TArray<FString>& Args);
 void HCI_RunAbilityKitAgentPlanWithRealLLMDemoCommand(const TArray<FString>& Args);
 void HCI_RunAbilityKitAgentPlanWithRealLLMProbeCommand(const TArray<FString>& Args);

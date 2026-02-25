@@ -21,6 +21,9 @@
 #include "UObject/SoftObjectPath.h"
 
 DEFINE_LOG_CATEGORY_STATIC(LogHCIAbilityKitAgentDemoLlm, Log, All);
+#ifdef LogHCIAbilityKitAgentDemo
+#undef LogHCIAbilityKitAgentDemo
+#endif
 #define LogHCIAbilityKitAgentDemo LogHCIAbilityKitAgentDemoLlm
 
 static FHCIAbilityKitAgentDemoState& HCI_Llm_State()
@@ -772,3 +775,6 @@ void HCI_RunAbilityKitAgentPlanWithLLMMetricsDumpCommand(const TArray<FString>& 
 	(void)Args;
 	HCI_Llm_LogAgentPlannerMetrics();
 }
+
+#undef LogHCIAbilityKitAgentDemo
+

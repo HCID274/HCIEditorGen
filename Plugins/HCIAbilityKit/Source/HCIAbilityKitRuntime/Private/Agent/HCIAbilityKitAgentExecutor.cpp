@@ -164,6 +164,26 @@ static bool HCI_TryResolveEvidenceReference(
 	return false;
 }
 
+static void HCI_ParsePipeDelimitedEvidenceList(const FString& InText, TArray<FString>& OutValues)
+{
+	OutValues.Reset();
+	if (!InText.Contains(TEXT("|")))
+	{
+		return;
+	}
+
+	TArray<FString> Tokens;
+	InText.ParseIntoArray(Tokens, TEXT("|"), true);
+	for (FString& Token : Tokens)
+	{
+		Token.TrimStartAndEndInline();
+		if (!Token.IsEmpty())
+		{
+			OutValues.Add(Token);
+		}
+	}
+}
+
 static bool HCI_ResolveJsonValueInternal(
 	const TSharedPtr<FJsonValue>& InValue,
 	const TMap<FString, TMap<FString, FString>>& StepEvidenceContext,
@@ -208,16 +228,33 @@ static bool HCI_ResolveJsonValueInternal(
 		}
 
 		FString ResolvedValue;
-		if (!HCI_TryResolveEvidenceReference(*StepEvidence, EvidenceKey, bHasIndex, Index, ResolvedValue))
-		{
-			OutErrorCode = TEXT("E4311");
-			OutReason = TEXT("variable_reference_unresolved");
-			return false;
-		}
+			if (!HCI_TryResolveEvidenceReference(*StepEvidence, EvidenceKey, bHasIndex, Index, ResolvedValue))
+			{
+				OutErrorCode = TEXT("E4311");
+				OutReason = TEXT("variable_reference_unresolved");
+				return false;
+			}
 
-		OutValue = MakeShared<FJsonValueString>(ResolvedValue);
-		return true;
-	}
+			if (!bHasIndex)
+			{
+				TArray<FString> ExpandedValues;
+				HCI_ParsePipeDelimitedEvidenceList(ResolvedValue, ExpandedValues);
+				if (ExpandedValues.Num() > 0)
+				{
+					TArray<TSharedPtr<FJsonValue>> ExpandedJsonArray;
+					ExpandedJsonArray.Reserve(ExpandedValues.Num());
+					for (const FString& ExpandedValue : ExpandedValues)
+					{
+						ExpandedJsonArray.Add(MakeShared<FJsonValueString>(ExpandedValue));
+					}
+					OutValue = MakeShared<FJsonValueArray>(ExpandedJsonArray);
+					return true;
+				}
+			}
+
+			OutValue = MakeShared<FJsonValueString>(ResolvedValue);
+			return true;
+		}
 
 	case EJson::Array:
 	{
@@ -231,15 +268,25 @@ static bool HCI_ResolveJsonValueInternal(
 			{
 				return false;
 			}
-			if (!ResolvedItem.IsValid())
-			{
-				ResolvedItem = MakeShared<FJsonValueNull>();
+				if (!ResolvedItem.IsValid())
+				{
+					ResolvedItem = MakeShared<FJsonValueNull>();
+				}
+				if (ResolvedItem->Type == EJson::Array)
+				{
+					for (const TSharedPtr<FJsonValue>& ExpandedItem : ResolvedItem->AsArray())
+					{
+						ResolvedArray.Add(ExpandedItem.IsValid() ? ExpandedItem : MakeShared<FJsonValueNull>());
+					}
+				}
+				else
+				{
+					ResolvedArray.Add(ResolvedItem);
+				}
 			}
-			ResolvedArray.Add(ResolvedItem);
+			OutValue = MakeShared<FJsonValueArray>(ResolvedArray);
+			return true;
 		}
-		OutValue = MakeShared<FJsonValueArray>(ResolvedArray);
-		return true;
-	}
 
 	case EJson::Object:
 	{

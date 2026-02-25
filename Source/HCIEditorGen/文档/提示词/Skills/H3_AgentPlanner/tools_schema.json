@@ -3,6 +3,23 @@
   "title": "HCIAbilityKit H3 Agent Planner Tools Schema",
   "type": "object",
   "additionalProperties": false,
+  "definitions": {
+    "variable_template_string": {
+      "type": "string",
+      "pattern": "^\\{\\{\\s*[A-Za-z0-9_]+\\.[A-Za-z0-9_]+(?:\\[\\d+\\])?\\s*\\}\\}$"
+    },
+    "game_or_variable_path": {
+      "anyOf": [
+        {
+          "type": "string",
+          "pattern": "^/Game/.*"
+        },
+        {
+          "$ref": "#/definitions/variable_template_string"
+        }
+      ]
+    }
+  },
   "required": [
     "allowed_tools",
     "tool_args_json_schema",
@@ -47,8 +64,7 @@
           "additionalProperties": false,
           "properties": {
             "directory": {
-              "type": "string",
-              "pattern": "^/Game/.*"
+              "$ref": "#/definitions/game_or_variable_path"
             }
           }
         },
@@ -79,7 +95,7 @@
               "minItems": 1,
               "maxItems": 50,
               "items": {
-                "type": "string"
+                "$ref": "#/definitions/game_or_variable_path"
               }
             },
             "max_size": {
@@ -108,7 +124,7 @@
               "minItems": 1,
               "maxItems": 50,
               "items": {
-                "type": "string"
+                "$ref": "#/definitions/game_or_variable_path"
               }
             },
             "lod_group": {
@@ -174,7 +190,7 @@
               "minItems": 1,
               "maxItems": 50,
               "items": {
-                "type": "string"
+                "$ref": "#/definitions/game_or_variable_path"
               }
             },
             "metadata_source": {
@@ -192,8 +208,7 @@
               ]
             },
             "target_root": {
-              "type": "string",
-              "pattern": "^/Game/.*"
+              "$ref": "#/definitions/game_or_variable_path"
             }
           }
         },
@@ -206,8 +221,7 @@
           ],
           "properties": {
             "asset_path": {
-              "type": "string",
-              "pattern": "^/Game/.*"
+              "$ref": "#/definitions/game_or_variable_path"
             },
             "new_name": {
               "type": "string",
@@ -226,12 +240,10 @@
           ],
           "properties": {
             "asset_path": {
-              "type": "string",
-              "pattern": "^/Game/.*"
+              "$ref": "#/definitions/game_or_variable_path"
             },
             "target_path": {
-              "type": "string",
-              "pattern": "^/Game/.*"
+              "$ref": "#/definitions/game_or_variable_path"
             }
           }
         }

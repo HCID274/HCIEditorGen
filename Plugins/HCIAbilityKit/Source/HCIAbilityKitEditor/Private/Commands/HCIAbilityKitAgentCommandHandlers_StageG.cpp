@@ -41,9 +41,12 @@
 #include "Agent/HCIAbilityKitDryRunDiff.h"
 
 DEFINE_LOG_CATEGORY_STATIC(LogHCIAbilityKitAgentDemoStageG, Log, All);
+#ifdef LogHCIAbilityKitAgentDemo
+#undef LogHCIAbilityKitAgentDemo
+#endif
 #define LogHCIAbilityKitAgentDemo LogHCIAbilityKitAgentDemoStageG
 
-static FHCIAbilityKitAgentDemoState& HCI_State()
+static FHCIAbilityKitAgentDemoState& HCI_StageG_State()
 {
     return HCI_GetAgentDemoState();
 }
@@ -170,56 +173,56 @@ static void HCI_LogAgentExecutorStageGExecuteIntentRows(const FHCIAbilityKitAgen
 
 static bool HCI_TryBuildAgentExecutorStageGExecuteIntentFromLatestPreview(const FString& TamperMode, FHCIAbilityKitAgentStageGExecuteIntent& OutIntent)
 {
-	if (HCI_State().AgentSimulateExecuteHandoffEnvelopePreviewState.Items.Num() <= 0)
+	if (HCI_StageG_State().AgentSimulateExecuteHandoffEnvelopePreviewState.Items.Num() <= 0)
 	{
 		UE_LOG(LogHCIAbilityKitAgentDemo, Warning, TEXT("[HCIAbilityKit][AgentExecutorStageGExecuteIntent] prepare=unavailable reason=no_sim_handoff_envelope_preview_state"));
 		UE_LOG(LogHCIAbilityKitAgentDemo, Display, TEXT("[HCIAbilityKit][AgentExecutorStageGExecuteIntent] suggestion=先运行 HCIAbilityKit.AgentExecutePlanReviewPrepareSimHandoffEnvelope"));
 		return false;
 	}
-	if (HCI_State().AgentSimulateExecuteArchiveBundlePreviewState.Items.Num() <= 0)
+	if (HCI_StageG_State().AgentSimulateExecuteArchiveBundlePreviewState.Items.Num() <= 0)
 	{
 		UE_LOG(LogHCIAbilityKitAgentDemo, Warning, TEXT("[HCIAbilityKit][AgentExecutorStageGExecuteIntent] prepare=unavailable reason=no_sim_archive_bundle_preview_state"));
 		UE_LOG(LogHCIAbilityKitAgentDemo, Display, TEXT("[HCIAbilityKit][AgentExecutorStageGExecuteIntent] suggestion=先运行 HCIAbilityKit.AgentExecutePlanReviewPrepareSimArchiveBundle"));
 		return false;
 	}
-	if (HCI_State().AgentSimulateExecuteFinalReportPreviewState.Items.Num() <= 0)
+	if (HCI_StageG_State().AgentSimulateExecuteFinalReportPreviewState.Items.Num() <= 0)
 	{
 		UE_LOG(LogHCIAbilityKitAgentDemo, Warning, TEXT("[HCIAbilityKit][AgentExecutorStageGExecuteIntent] prepare=unavailable reason=no_sim_final_report_preview_state"));
 		UE_LOG(LogHCIAbilityKitAgentDemo, Display, TEXT("[HCIAbilityKit][AgentExecutorStageGExecuteIntent] suggestion=先运行 HCIAbilityKit.AgentExecutePlanReviewPrepareSimFinalReport"));
 		return false;
 	}
-	if (HCI_State().AgentSimulateExecuteReceiptPreviewState.Items.Num() <= 0)
+	if (HCI_StageG_State().AgentSimulateExecuteReceiptPreviewState.Items.Num() <= 0)
 	{
 		UE_LOG(LogHCIAbilityKitAgentDemo, Warning, TEXT("[HCIAbilityKit][AgentExecutorStageGExecuteIntent] prepare=unavailable reason=no_sim_execute_receipt_preview_state"));
 		UE_LOG(LogHCIAbilityKitAgentDemo, Display, TEXT("[HCIAbilityKit][AgentExecutorStageGExecuteIntent] suggestion=先运行 HCIAbilityKit.AgentExecutePlanReviewPrepareSimExecuteReceipt"));
 		return false;
 	}
-	if (HCI_State().AgentExecuteTicketPreviewState.Items.Num() <= 0)
+	if (HCI_StageG_State().AgentExecuteTicketPreviewState.Items.Num() <= 0)
 	{
 		UE_LOG(LogHCIAbilityKitAgentDemo, Warning, TEXT("[HCIAbilityKit][AgentExecutorStageGExecuteIntent] prepare=unavailable reason=no_execute_ticket_preview_state"));
 		UE_LOG(LogHCIAbilityKitAgentDemo, Display, TEXT("[HCIAbilityKit][AgentExecutorStageGExecuteIntent] suggestion=先运行 HCIAbilityKit.AgentExecutePlanReviewPrepareExecuteTicket"));
 		return false;
 	}
-	if (HCI_State().AgentApplyConfirmRequestPreviewState.Items.Num() <= 0)
+	if (HCI_StageG_State().AgentApplyConfirmRequestPreviewState.Items.Num() <= 0)
 	{
 		UE_LOG(LogHCIAbilityKitAgentDemo, Warning, TEXT("[HCIAbilityKit][AgentExecutorStageGExecuteIntent] prepare=unavailable reason=no_confirm_request_preview_state"));
 		UE_LOG(LogHCIAbilityKitAgentDemo, Display, TEXT("[HCIAbilityKit][AgentExecutorStageGExecuteIntent] suggestion=先运行 HCIAbilityKit.AgentExecutePlanReviewPrepareConfirm"));
 		return false;
 	}
-	if (HCI_State().AgentApplyRequestPreviewState.Items.Num() <= 0)
+	if (HCI_StageG_State().AgentApplyRequestPreviewState.Items.Num() <= 0)
 	{
 		UE_LOG(LogHCIAbilityKitAgentDemo, Warning, TEXT("[HCIAbilityKit][AgentExecutorStageGExecuteIntent] prepare=unavailable reason=no_apply_request_preview_state"));
 		UE_LOG(LogHCIAbilityKitAgentDemo, Display, TEXT("[HCIAbilityKit][AgentExecutorStageGExecuteIntent] suggestion=先运行 HCIAbilityKit.AgentExecutePlanReviewPrepareApply"));
 		return false;
 	}
-	if (HCI_State().AgentExecutorReviewDiffPreviewState.DiffItems.Num() <= 0)
+	if (HCI_StageG_State().AgentExecutorReviewDiffPreviewState.DiffItems.Num() <= 0)
 	{
 		UE_LOG(LogHCIAbilityKitAgentDemo, Warning, TEXT("[HCIAbilityKit][AgentExecutorStageGExecuteIntent] prepare=unavailable reason=no_review_preview_state"));
 		UE_LOG(LogHCIAbilityKitAgentDemo, Display, TEXT("[HCIAbilityKit][AgentExecutorStageGExecuteIntent] suggestion=先运行 HCIAbilityKit.AgentExecutePlanReviewDemo 或 HCIAbilityKit.AgentExecutePlanReviewSelect"));
 		return false;
 	}
 
-	FHCIAbilityKitAgentSimulateExecuteHandoffEnvelope WorkingHandoff = HCI_State().AgentSimulateExecuteHandoffEnvelopePreviewState;
+	FHCIAbilityKitAgentSimulateExecuteHandoffEnvelope WorkingHandoff = HCI_StageG_State().AgentSimulateExecuteHandoffEnvelopePreviewState;
 	if (TamperMode == TEXT("digest")) { WorkingHandoff.SelectionDigest += TEXT("_tampered"); }
 	else if (TamperMode == TEXT("apply")) { WorkingHandoff.ApplyRequestId += TEXT("_stale"); }
 	else if (TamperMode == TEXT("review")) { WorkingHandoff.ReviewRequestId += TEXT("_stale"); }
@@ -232,20 +235,20 @@ static bool HCI_TryBuildAgentExecutorStageGExecuteIntentFromLatestPreview(const 
 
 	if (!FHCIAbilityKitAgentExecutorStageGExecuteIntentBridge::BuildStageGExecuteIntent(
 		WorkingHandoff,
-		HCI_State().AgentSimulateExecuteArchiveBundlePreviewState,
-		HCI_State().AgentSimulateExecuteFinalReportPreviewState,
-		HCI_State().AgentSimulateExecuteReceiptPreviewState,
-		HCI_State().AgentExecuteTicketPreviewState,
-		HCI_State().AgentApplyConfirmRequestPreviewState,
-		HCI_State().AgentApplyRequestPreviewState,
-		HCI_State().AgentExecutorReviewDiffPreviewState,
+		HCI_StageG_State().AgentSimulateExecuteArchiveBundlePreviewState,
+		HCI_StageG_State().AgentSimulateExecuteFinalReportPreviewState,
+		HCI_StageG_State().AgentSimulateExecuteReceiptPreviewState,
+		HCI_StageG_State().AgentExecuteTicketPreviewState,
+		HCI_StageG_State().AgentApplyConfirmRequestPreviewState,
+		HCI_StageG_State().AgentApplyRequestPreviewState,
+		HCI_StageG_State().AgentExecutorReviewDiffPreviewState,
 		OutIntent))
 	{
 		UE_LOG(LogHCIAbilityKitAgentDemo, Error, TEXT("[HCIAbilityKit][AgentExecutorStageGExecuteIntent] prepare_failed reason=bridge_failed"));
 		return false;
 	}
 
-	HCI_State().AgentStageGExecuteIntentPreviewState = OutIntent;
+	HCI_StageG_State().AgentStageGExecuteIntentPreviewState = OutIntent;
 	return true;
 }
 
@@ -393,32 +396,32 @@ static bool HCI_TryBuildAgentExecutorStageGWriteEnableRequestFromLatestPreview(
 	const FString& TamperMode,
 	FHCIAbilityKitAgentStageGWriteEnableRequest& OutRequest)
 {
-	if (HCI_State().AgentStageGExecuteIntentPreviewState.Items.Num() <= 0)
+	if (HCI_StageG_State().AgentStageGExecuteIntentPreviewState.Items.Num() <= 0)
 	{
 		UE_LOG(LogHCIAbilityKitAgentDemo, Warning, TEXT("[HCIAbilityKit][AgentExecutorStageGWriteEnableRequest] prepare=unavailable reason=no_stage_g_execute_intent_preview_state"));
 		UE_LOG(LogHCIAbilityKitAgentDemo, Display, TEXT("[HCIAbilityKit][AgentExecutorStageGWriteEnableRequest] suggestion=先运行 HCIAbilityKit.AgentExecutePlanReviewPrepareStageGExecuteIntent"));
 		return false;
 	}
-	if (HCI_State().AgentSimulateExecuteHandoffEnvelopePreviewState.Items.Num() <= 0)
+	if (HCI_StageG_State().AgentSimulateExecuteHandoffEnvelopePreviewState.Items.Num() <= 0)
 	{
 		UE_LOG(LogHCIAbilityKitAgentDemo, Warning, TEXT("[HCIAbilityKit][AgentExecutorStageGWriteEnableRequest] prepare=unavailable reason=no_sim_handoff_envelope_preview_state"));
 		UE_LOG(LogHCIAbilityKitAgentDemo, Display, TEXT("[HCIAbilityKit][AgentExecutorStageGWriteEnableRequest] suggestion=先运行 HCIAbilityKit.AgentExecutePlanReviewPrepareSimHandoffEnvelope"));
 		return false;
 	}
-	if (HCI_State().AgentSimulateExecuteArchiveBundlePreviewState.Items.Num() <= 0 ||
-		HCI_State().AgentSimulateExecuteFinalReportPreviewState.Items.Num() <= 0 ||
-		HCI_State().AgentSimulateExecuteReceiptPreviewState.Items.Num() <= 0 ||
-		HCI_State().AgentExecuteTicketPreviewState.Items.Num() <= 0 ||
-		HCI_State().AgentApplyConfirmRequestPreviewState.Items.Num() <= 0 ||
-		HCI_State().AgentApplyRequestPreviewState.Items.Num() <= 0 ||
-		HCI_State().AgentExecutorReviewDiffPreviewState.DiffItems.Num() <= 0)
+	if (HCI_StageG_State().AgentSimulateExecuteArchiveBundlePreviewState.Items.Num() <= 0 ||
+		HCI_StageG_State().AgentSimulateExecuteFinalReportPreviewState.Items.Num() <= 0 ||
+		HCI_StageG_State().AgentSimulateExecuteReceiptPreviewState.Items.Num() <= 0 ||
+		HCI_StageG_State().AgentExecuteTicketPreviewState.Items.Num() <= 0 ||
+		HCI_StageG_State().AgentApplyConfirmRequestPreviewState.Items.Num() <= 0 ||
+		HCI_StageG_State().AgentApplyRequestPreviewState.Items.Num() <= 0 ||
+		HCI_StageG_State().AgentExecutorReviewDiffPreviewState.DiffItems.Num() <= 0)
 	{
 		UE_LOG(LogHCIAbilityKitAgentDemo, Warning, TEXT("[HCIAbilityKit][AgentExecutorStageGWriteEnableRequest] prepare=unavailable reason=missing_upstream_preview_state"));
 		UE_LOG(LogHCIAbilityKitAgentDemo, Display, TEXT("[HCIAbilityKit][AgentExecutorStageGWriteEnableRequest] suggestion=先按 F15/G1 链路生成 Review/Apply/Confirm/Ticket/Receipt/Final/Archive/Handoff/StageGIntent 预览"));
 		return false;
 	}
 
-	FHCIAbilityKitAgentStageGExecuteIntent WorkingIntent = HCI_State().AgentStageGExecuteIntentPreviewState;
+	FHCIAbilityKitAgentStageGExecuteIntent WorkingIntent = HCI_StageG_State().AgentStageGExecuteIntentPreviewState;
 	if (TamperMode == TEXT("digest")) { WorkingIntent.SelectionDigest += TEXT("_tampered"); }
 	else if (TamperMode == TEXT("intent")) { WorkingIntent.RequestId += TEXT("_stale"); }
 	else if (TamperMode == TEXT("handoff")) { WorkingIntent.SimHandoffEnvelopeId += TEXT("_stale"); }
@@ -426,15 +429,15 @@ static bool HCI_TryBuildAgentExecutorStageGWriteEnableRequestFromLatestPreview(
 
 	if (!FHCIAbilityKitAgentExecutorStageGWriteEnableRequestBridge::BuildStageGWriteEnableRequest(
 		WorkingIntent,
-		HCI_State().AgentStageGExecuteIntentPreviewState.RequestId,
-		HCI_State().AgentSimulateExecuteHandoffEnvelopePreviewState,
-		HCI_State().AgentSimulateExecuteArchiveBundlePreviewState,
-		HCI_State().AgentSimulateExecuteFinalReportPreviewState,
-		HCI_State().AgentSimulateExecuteReceiptPreviewState,
-		HCI_State().AgentExecuteTicketPreviewState,
-		HCI_State().AgentApplyConfirmRequestPreviewState,
-		HCI_State().AgentApplyRequestPreviewState,
-		HCI_State().AgentExecutorReviewDiffPreviewState,
+		HCI_StageG_State().AgentStageGExecuteIntentPreviewState.RequestId,
+		HCI_StageG_State().AgentSimulateExecuteHandoffEnvelopePreviewState,
+		HCI_StageG_State().AgentSimulateExecuteArchiveBundlePreviewState,
+		HCI_StageG_State().AgentSimulateExecuteFinalReportPreviewState,
+		HCI_StageG_State().AgentSimulateExecuteReceiptPreviewState,
+		HCI_StageG_State().AgentExecuteTicketPreviewState,
+		HCI_StageG_State().AgentApplyConfirmRequestPreviewState,
+		HCI_StageG_State().AgentApplyRequestPreviewState,
+		HCI_StageG_State().AgentExecutorReviewDiffPreviewState,
 		bWriteEnableConfirmed,
 		OutRequest))
 	{
@@ -442,7 +445,7 @@ static bool HCI_TryBuildAgentExecutorStageGWriteEnableRequestFromLatestPreview(
 		return false;
 	}
 
-	HCI_State().AgentStageGWriteEnableRequestPreviewState = OutRequest;
+	HCI_StageG_State().AgentStageGWriteEnableRequestPreviewState = OutRequest;
 	return true;
 }
 
@@ -607,38 +610,38 @@ static bool HCI_TryBuildAgentExecutorStageGExecutePermitTicketFromLatestPreview(
 	const FString& TamperMode,
 	FHCIAbilityKitAgentStageGExecutePermitTicket& OutRequest)
 {
-	if (HCI_State().AgentStageGWriteEnableRequestPreviewState.Items.Num() <= 0)
+	if (HCI_StageG_State().AgentStageGWriteEnableRequestPreviewState.Items.Num() <= 0)
 	{
 		UE_LOG(LogHCIAbilityKitAgentDemo, Warning, TEXT("[HCIAbilityKit][AgentExecutorStageGExecutePermitTicket] prepare=unavailable reason=no_stage_g_write_enable_request_preview_state"));
 		UE_LOG(LogHCIAbilityKitAgentDemo, Display, TEXT("[HCIAbilityKit][AgentExecutorStageGExecutePermitTicket] suggestion=先运行 HCIAbilityKit.AgentExecutePlanReviewPrepareStageGWriteEnableRequest"));
 		return false;
 	}
-	if (HCI_State().AgentStageGExecuteIntentPreviewState.Items.Num() <= 0)
+	if (HCI_StageG_State().AgentStageGExecuteIntentPreviewState.Items.Num() <= 0)
 	{
 		UE_LOG(LogHCIAbilityKitAgentDemo, Warning, TEXT("[HCIAbilityKit][AgentExecutorStageGExecutePermitTicket] prepare=unavailable reason=no_stage_g_execute_intent_preview_state"));
 		UE_LOG(LogHCIAbilityKitAgentDemo, Display, TEXT("[HCIAbilityKit][AgentExecutorStageGExecutePermitTicket] suggestion=先运行 HCIAbilityKit.AgentExecutePlanReviewPrepareStageGExecuteIntent"));
 		return false;
 	}
-	if (HCI_State().AgentSimulateExecuteHandoffEnvelopePreviewState.Items.Num() <= 0)
+	if (HCI_StageG_State().AgentSimulateExecuteHandoffEnvelopePreviewState.Items.Num() <= 0)
 	{
 		UE_LOG(LogHCIAbilityKitAgentDemo, Warning, TEXT("[HCIAbilityKit][AgentExecutorStageGExecutePermitTicket] prepare=unavailable reason=no_sim_handoff_envelope_preview_state"));
 		UE_LOG(LogHCIAbilityKitAgentDemo, Display, TEXT("[HCIAbilityKit][AgentExecutorStageGExecutePermitTicket] suggestion=先运行 HCIAbilityKit.AgentExecutePlanReviewPrepareSimHandoffEnvelope"));
 		return false;
 	}
-	if (HCI_State().AgentSimulateExecuteArchiveBundlePreviewState.Items.Num() <= 0 ||
-		HCI_State().AgentSimulateExecuteFinalReportPreviewState.Items.Num() <= 0 ||
-		HCI_State().AgentSimulateExecuteReceiptPreviewState.Items.Num() <= 0 ||
-		HCI_State().AgentExecuteTicketPreviewState.Items.Num() <= 0 ||
-		HCI_State().AgentApplyConfirmRequestPreviewState.Items.Num() <= 0 ||
-		HCI_State().AgentApplyRequestPreviewState.Items.Num() <= 0 ||
-		HCI_State().AgentExecutorReviewDiffPreviewState.DiffItems.Num() <= 0)
+	if (HCI_StageG_State().AgentSimulateExecuteArchiveBundlePreviewState.Items.Num() <= 0 ||
+		HCI_StageG_State().AgentSimulateExecuteFinalReportPreviewState.Items.Num() <= 0 ||
+		HCI_StageG_State().AgentSimulateExecuteReceiptPreviewState.Items.Num() <= 0 ||
+		HCI_StageG_State().AgentExecuteTicketPreviewState.Items.Num() <= 0 ||
+		HCI_StageG_State().AgentApplyConfirmRequestPreviewState.Items.Num() <= 0 ||
+		HCI_StageG_State().AgentApplyRequestPreviewState.Items.Num() <= 0 ||
+		HCI_StageG_State().AgentExecutorReviewDiffPreviewState.DiffItems.Num() <= 0)
 	{
 		UE_LOG(LogHCIAbilityKitAgentDemo, Warning, TEXT("[HCIAbilityKit][AgentExecutorStageGExecutePermitTicket] prepare=unavailable reason=missing_upstream_preview_state"));
 		UE_LOG(LogHCIAbilityKitAgentDemo, Display, TEXT("[HCIAbilityKit][AgentExecutorStageGExecutePermitTicket] suggestion=先按 F15/G1/G2 链路生成 Review/Apply/Confirm/Ticket/Receipt/Final/Archive/Handoff/StageGIntent/StageGWriteEnableRequest 预览"));
 		return false;
 	}
 
-	FHCIAbilityKitAgentStageGWriteEnableRequest WorkingRequest = HCI_State().AgentStageGWriteEnableRequestPreviewState;
+	FHCIAbilityKitAgentStageGWriteEnableRequest WorkingRequest = HCI_StageG_State().AgentStageGWriteEnableRequestPreviewState;
 	WorkingRequest.bWriteEnableConfirmed = bWriteEnableConfirmed;
 	if (TamperMode == TEXT("digest")) { WorkingRequest.SelectionDigest += TEXT("_tampered"); }
 	else if (TamperMode == TEXT("intent")) { WorkingRequest.StageGExecuteIntentId += TEXT("_stale"); }
@@ -648,23 +651,23 @@ static bool HCI_TryBuildAgentExecutorStageGExecutePermitTicketFromLatestPreview(
 
 	if (!FHCIAbilityKitAgentExecutorStageGExecutePermitTicketBridge::BuildStageGExecutePermitTicket(
 		WorkingRequest,
-		HCI_State().AgentStageGWriteEnableRequestPreviewState.RequestId,
-		HCI_State().AgentStageGExecuteIntentPreviewState,
-		HCI_State().AgentSimulateExecuteHandoffEnvelopePreviewState,
-		HCI_State().AgentSimulateExecuteArchiveBundlePreviewState,
-		HCI_State().AgentSimulateExecuteFinalReportPreviewState,
-		HCI_State().AgentSimulateExecuteReceiptPreviewState,
-		HCI_State().AgentExecuteTicketPreviewState,
-		HCI_State().AgentApplyConfirmRequestPreviewState,
-		HCI_State().AgentApplyRequestPreviewState,
-		HCI_State().AgentExecutorReviewDiffPreviewState,
+		HCI_StageG_State().AgentStageGWriteEnableRequestPreviewState.RequestId,
+		HCI_StageG_State().AgentStageGExecuteIntentPreviewState,
+		HCI_StageG_State().AgentSimulateExecuteHandoffEnvelopePreviewState,
+		HCI_StageG_State().AgentSimulateExecuteArchiveBundlePreviewState,
+		HCI_StageG_State().AgentSimulateExecuteFinalReportPreviewState,
+		HCI_StageG_State().AgentSimulateExecuteReceiptPreviewState,
+		HCI_StageG_State().AgentExecuteTicketPreviewState,
+		HCI_StageG_State().AgentApplyConfirmRequestPreviewState,
+		HCI_StageG_State().AgentApplyRequestPreviewState,
+		HCI_StageG_State().AgentExecutorReviewDiffPreviewState,
 		OutRequest))
 	{
 		UE_LOG(LogHCIAbilityKitAgentDemo, Error, TEXT("[HCIAbilityKit][AgentExecutorStageGExecutePermitTicket] prepare_failed reason=bridge_failed"));
 		return false;
 	}
 
-	HCI_State().AgentStageGExecutePermitTicketPreviewState = OutRequest;
+	HCI_StageG_State().AgentStageGExecutePermitTicketPreviewState = OutRequest;
 	return true;
 }
 
@@ -834,44 +837,44 @@ static bool HCI_TryBuildAgentExecutorStageGExecuteDispatchRequestFromLatestPrevi
 	const FString& TamperMode,
 	FHCIAbilityKitAgentStageGExecuteDispatchRequest& OutRequest)
 {
-	if (HCI_State().AgentStageGExecutePermitTicketPreviewState.Items.Num() <= 0)
+	if (HCI_StageG_State().AgentStageGExecutePermitTicketPreviewState.Items.Num() <= 0)
 	{
 		UE_LOG(LogHCIAbilityKitAgentDemo, Warning, TEXT("[HCIAbilityKit][AgentExecutorStageGExecuteDispatchRequest] prepare=unavailable reason=no_stage_g_execute_permit_ticket_preview_state"));
 		UE_LOG(LogHCIAbilityKitAgentDemo, Display, TEXT("[HCIAbilityKit][AgentExecutorStageGExecuteDispatchRequest] suggestion=先运行 HCIAbilityKit.AgentExecutePlanReviewPrepareStageGExecutePermitTicket"));
 		return false;
 	}
-	if (HCI_State().AgentStageGWriteEnableRequestPreviewState.Items.Num() <= 0)
+	if (HCI_StageG_State().AgentStageGWriteEnableRequestPreviewState.Items.Num() <= 0)
 	{
 		UE_LOG(LogHCIAbilityKitAgentDemo, Warning, TEXT("[HCIAbilityKit][AgentExecutorStageGExecuteDispatchRequest] prepare=unavailable reason=no_stage_g_write_enable_request_preview_state"));
 		UE_LOG(LogHCIAbilityKitAgentDemo, Display, TEXT("[HCIAbilityKit][AgentExecutorStageGExecuteDispatchRequest] suggestion=先运行 HCIAbilityKit.AgentExecutePlanReviewPrepareStageGWriteEnableRequest"));
 		return false;
 	}
-	if (HCI_State().AgentStageGExecuteIntentPreviewState.Items.Num() <= 0)
+	if (HCI_StageG_State().AgentStageGExecuteIntentPreviewState.Items.Num() <= 0)
 	{
 		UE_LOG(LogHCIAbilityKitAgentDemo, Warning, TEXT("[HCIAbilityKit][AgentExecutorStageGExecuteDispatchRequest] prepare=unavailable reason=no_stage_g_execute_intent_preview_state"));
 		UE_LOG(LogHCIAbilityKitAgentDemo, Display, TEXT("[HCIAbilityKit][AgentExecutorStageGExecuteDispatchRequest] suggestion=先运行 HCIAbilityKit.AgentExecutePlanReviewPrepareStageGExecuteIntent"));
 		return false;
 	}
-	if (HCI_State().AgentSimulateExecuteHandoffEnvelopePreviewState.Items.Num() <= 0)
+	if (HCI_StageG_State().AgentSimulateExecuteHandoffEnvelopePreviewState.Items.Num() <= 0)
 	{
 		UE_LOG(LogHCIAbilityKitAgentDemo, Warning, TEXT("[HCIAbilityKit][AgentExecutorStageGExecuteDispatchRequest] prepare=unavailable reason=no_sim_handoff_envelope_preview_state"));
 		UE_LOG(LogHCIAbilityKitAgentDemo, Display, TEXT("[HCIAbilityKit][AgentExecutorStageGExecuteDispatchRequest] suggestion=先运行 HCIAbilityKit.AgentExecutePlanReviewPrepareSimHandoffEnvelope"));
 		return false;
 	}
-	if (HCI_State().AgentSimulateExecuteArchiveBundlePreviewState.Items.Num() <= 0 ||
-		HCI_State().AgentSimulateExecuteFinalReportPreviewState.Items.Num() <= 0 ||
-		HCI_State().AgentSimulateExecuteReceiptPreviewState.Items.Num() <= 0 ||
-		HCI_State().AgentExecuteTicketPreviewState.Items.Num() <= 0 ||
-		HCI_State().AgentApplyConfirmRequestPreviewState.Items.Num() <= 0 ||
-		HCI_State().AgentApplyRequestPreviewState.Items.Num() <= 0 ||
-		HCI_State().AgentExecutorReviewDiffPreviewState.DiffItems.Num() <= 0)
+	if (HCI_StageG_State().AgentSimulateExecuteArchiveBundlePreviewState.Items.Num() <= 0 ||
+		HCI_StageG_State().AgentSimulateExecuteFinalReportPreviewState.Items.Num() <= 0 ||
+		HCI_StageG_State().AgentSimulateExecuteReceiptPreviewState.Items.Num() <= 0 ||
+		HCI_StageG_State().AgentExecuteTicketPreviewState.Items.Num() <= 0 ||
+		HCI_StageG_State().AgentApplyConfirmRequestPreviewState.Items.Num() <= 0 ||
+		HCI_StageG_State().AgentApplyRequestPreviewState.Items.Num() <= 0 ||
+		HCI_StageG_State().AgentExecutorReviewDiffPreviewState.DiffItems.Num() <= 0)
 	{
 		UE_LOG(LogHCIAbilityKitAgentDemo, Warning, TEXT("[HCIAbilityKit][AgentExecutorStageGExecuteDispatchRequest] prepare=unavailable reason=missing_upstream_preview_state"));
 		UE_LOG(LogHCIAbilityKitAgentDemo, Display, TEXT("[HCIAbilityKit][AgentExecutorStageGExecuteDispatchRequest] suggestion=先按 F15/G1/G2/G3 链路生成 ... -> StageGExecutePermitTicket 预览"));
 		return false;
 	}
 
-	FHCIAbilityKitAgentStageGExecutePermitTicket WorkingTicket = HCI_State().AgentStageGExecutePermitTicketPreviewState;
+	FHCIAbilityKitAgentStageGExecutePermitTicket WorkingTicket = HCI_StageG_State().AgentStageGExecutePermitTicketPreviewState;
 	if (TamperMode == TEXT("digest")) { WorkingTicket.SelectionDigest += TEXT("_tampered"); }
 	else if (TamperMode == TEXT("intent")) { WorkingTicket.StageGExecuteIntentId += TEXT("_stale"); }
 	else if (TamperMode == TEXT("handoff")) { WorkingTicket.SimHandoffEnvelopeId += TEXT("_stale"); }
@@ -880,17 +883,17 @@ static bool HCI_TryBuildAgentExecutorStageGExecuteDispatchRequestFromLatestPrevi
 
 	if (!FHCIAbilityKitAgentExecutorStageGExecuteDispatchRequestBridge::BuildStageGExecuteDispatchRequest(
 		WorkingTicket,
-		HCI_State().AgentStageGExecutePermitTicketPreviewState.RequestId,
-		HCI_State().AgentStageGWriteEnableRequestPreviewState,
-		HCI_State().AgentStageGExecuteIntentPreviewState,
-		HCI_State().AgentSimulateExecuteHandoffEnvelopePreviewState,
-		HCI_State().AgentSimulateExecuteArchiveBundlePreviewState,
-		HCI_State().AgentSimulateExecuteFinalReportPreviewState,
-		HCI_State().AgentSimulateExecuteReceiptPreviewState,
-		HCI_State().AgentExecuteTicketPreviewState,
-		HCI_State().AgentApplyConfirmRequestPreviewState,
-		HCI_State().AgentApplyRequestPreviewState,
-		HCI_State().AgentExecutorReviewDiffPreviewState,
+		HCI_StageG_State().AgentStageGExecutePermitTicketPreviewState.RequestId,
+		HCI_StageG_State().AgentStageGWriteEnableRequestPreviewState,
+		HCI_StageG_State().AgentStageGExecuteIntentPreviewState,
+		HCI_StageG_State().AgentSimulateExecuteHandoffEnvelopePreviewState,
+		HCI_StageG_State().AgentSimulateExecuteArchiveBundlePreviewState,
+		HCI_StageG_State().AgentSimulateExecuteFinalReportPreviewState,
+		HCI_StageG_State().AgentSimulateExecuteReceiptPreviewState,
+		HCI_StageG_State().AgentExecuteTicketPreviewState,
+		HCI_StageG_State().AgentApplyConfirmRequestPreviewState,
+		HCI_StageG_State().AgentApplyRequestPreviewState,
+		HCI_StageG_State().AgentExecutorReviewDiffPreviewState,
 		bExecuteDispatchConfirmed,
 		OutRequest))
 	{
@@ -898,7 +901,7 @@ static bool HCI_TryBuildAgentExecutorStageGExecuteDispatchRequestFromLatestPrevi
 		return false;
 	}
 
-	HCI_State().AgentStageGExecuteDispatchRequestPreviewState = OutRequest;
+	HCI_StageG_State().AgentStageGExecuteDispatchRequestPreviewState = OutRequest;
 	return true;
 }
 
@@ -1073,50 +1076,50 @@ static bool HCI_TryBuildAgentExecutorStageGExecuteDispatchReceiptFromLatestPrevi
 	const FString& TamperMode,
 	FHCIAbilityKitAgentStageGExecuteDispatchReceipt& OutRequest)
 {
-	if (HCI_State().AgentStageGExecuteDispatchRequestPreviewState.Items.Num() <= 0)
+	if (HCI_StageG_State().AgentStageGExecuteDispatchRequestPreviewState.Items.Num() <= 0)
 	{
 		UE_LOG(LogHCIAbilityKitAgentDemo, Warning, TEXT("[HCIAbilityKit][AgentExecutorStageGExecuteDispatchReceipt] prepare=unavailable reason=no_stage_g_execute_dispatch_request_preview_state"));
 		UE_LOG(LogHCIAbilityKitAgentDemo, Display, TEXT("[HCIAbilityKit][AgentExecutorStageGExecuteDispatchReceipt] suggestion=先运行 HCIAbilityKit.AgentExecutePlanReviewPrepareStageGExecuteDispatchRequest"));
 		return false;
 	}
-	if (HCI_State().AgentStageGExecutePermitTicketPreviewState.Items.Num() <= 0)
+	if (HCI_StageG_State().AgentStageGExecutePermitTicketPreviewState.Items.Num() <= 0)
 	{
 		UE_LOG(LogHCIAbilityKitAgentDemo, Warning, TEXT("[HCIAbilityKit][AgentExecutorStageGExecuteDispatchReceipt] prepare=unavailable reason=no_stage_g_execute_permit_ticket_preview_state"));
 		UE_LOG(LogHCIAbilityKitAgentDemo, Display, TEXT("[HCIAbilityKit][AgentExecutorStageGExecuteDispatchReceipt] suggestion=先运行 HCIAbilityKit.AgentExecutePlanReviewPrepareStageGExecutePermitTicket"));
 		return false;
 	}
-	if (HCI_State().AgentStageGWriteEnableRequestPreviewState.Items.Num() <= 0)
+	if (HCI_StageG_State().AgentStageGWriteEnableRequestPreviewState.Items.Num() <= 0)
 	{
 		UE_LOG(LogHCIAbilityKitAgentDemo, Warning, TEXT("[HCIAbilityKit][AgentExecutorStageGExecuteDispatchReceipt] prepare=unavailable reason=no_stage_g_write_enable_request_preview_state"));
 		UE_LOG(LogHCIAbilityKitAgentDemo, Display, TEXT("[HCIAbilityKit][AgentExecutorStageGExecuteDispatchReceipt] suggestion=先运行 HCIAbilityKit.AgentExecutePlanReviewPrepareStageGWriteEnableRequest"));
 		return false;
 	}
-	if (HCI_State().AgentStageGExecuteIntentPreviewState.Items.Num() <= 0)
+	if (HCI_StageG_State().AgentStageGExecuteIntentPreviewState.Items.Num() <= 0)
 	{
 		UE_LOG(LogHCIAbilityKitAgentDemo, Warning, TEXT("[HCIAbilityKit][AgentExecutorStageGExecuteDispatchReceipt] prepare=unavailable reason=no_stage_g_execute_intent_preview_state"));
 		UE_LOG(LogHCIAbilityKitAgentDemo, Display, TEXT("[HCIAbilityKit][AgentExecutorStageGExecuteDispatchReceipt] suggestion=先运行 HCIAbilityKit.AgentExecutePlanReviewPrepareStageGExecuteIntent"));
 		return false;
 	}
-	if (HCI_State().AgentSimulateExecuteHandoffEnvelopePreviewState.Items.Num() <= 0)
+	if (HCI_StageG_State().AgentSimulateExecuteHandoffEnvelopePreviewState.Items.Num() <= 0)
 	{
 		UE_LOG(LogHCIAbilityKitAgentDemo, Warning, TEXT("[HCIAbilityKit][AgentExecutorStageGExecuteDispatchReceipt] prepare=unavailable reason=no_sim_handoff_envelope_preview_state"));
 		UE_LOG(LogHCIAbilityKitAgentDemo, Display, TEXT("[HCIAbilityKit][AgentExecutorStageGExecuteDispatchReceipt] suggestion=先运行 HCIAbilityKit.AgentExecutePlanReviewPrepareSimHandoffEnvelope"));
 		return false;
 	}
-	if (HCI_State().AgentSimulateExecuteArchiveBundlePreviewState.Items.Num() <= 0 ||
-		HCI_State().AgentSimulateExecuteFinalReportPreviewState.Items.Num() <= 0 ||
-		HCI_State().AgentSimulateExecuteReceiptPreviewState.Items.Num() <= 0 ||
-		HCI_State().AgentExecuteTicketPreviewState.Items.Num() <= 0 ||
-		HCI_State().AgentApplyConfirmRequestPreviewState.Items.Num() <= 0 ||
-		HCI_State().AgentApplyRequestPreviewState.Items.Num() <= 0 ||
-		HCI_State().AgentExecutorReviewDiffPreviewState.DiffItems.Num() <= 0)
+	if (HCI_StageG_State().AgentSimulateExecuteArchiveBundlePreviewState.Items.Num() <= 0 ||
+		HCI_StageG_State().AgentSimulateExecuteFinalReportPreviewState.Items.Num() <= 0 ||
+		HCI_StageG_State().AgentSimulateExecuteReceiptPreviewState.Items.Num() <= 0 ||
+		HCI_StageG_State().AgentExecuteTicketPreviewState.Items.Num() <= 0 ||
+		HCI_StageG_State().AgentApplyConfirmRequestPreviewState.Items.Num() <= 0 ||
+		HCI_StageG_State().AgentApplyRequestPreviewState.Items.Num() <= 0 ||
+		HCI_StageG_State().AgentExecutorReviewDiffPreviewState.DiffItems.Num() <= 0)
 	{
 		UE_LOG(LogHCIAbilityKitAgentDemo, Warning, TEXT("[HCIAbilityKit][AgentExecutorStageGExecuteDispatchReceipt] prepare=unavailable reason=missing_upstream_preview_state"));
 		UE_LOG(LogHCIAbilityKitAgentDemo, Display, TEXT("[HCIAbilityKit][AgentExecutorStageGExecuteDispatchReceipt] suggestion=先按 F15/G1/G2/G3/G4 链路生成 ... -> StageGExecuteDispatchRequest 预览"));
 		return false;
 	}
 
-	FHCIAbilityKitAgentStageGExecuteDispatchRequest WorkingRequest = HCI_State().AgentStageGExecuteDispatchRequestPreviewState;
+	FHCIAbilityKitAgentStageGExecuteDispatchRequest WorkingRequest = HCI_StageG_State().AgentStageGExecuteDispatchRequestPreviewState;
 	if (TamperMode == TEXT("digest")) { WorkingRequest.SelectionDigest += TEXT("_tampered"); }
 	else if (TamperMode == TEXT("intent")) { WorkingRequest.StageGExecuteIntentId += TEXT("_stale"); }
 	else if (TamperMode == TEXT("handoff")) { WorkingRequest.SimHandoffEnvelopeId += TEXT("_stale"); }
@@ -1125,25 +1128,25 @@ static bool HCI_TryBuildAgentExecutorStageGExecuteDispatchReceiptFromLatestPrevi
 
 	if (!FHCIAbilityKitAgentExecutorStageGExecuteDispatchReceiptBridge::BuildStageGExecuteDispatchReceipt(
 		WorkingRequest,
-		HCI_State().AgentStageGExecuteDispatchRequestPreviewState.RequestId,
-		HCI_State().AgentStageGExecutePermitTicketPreviewState,
-		HCI_State().AgentStageGWriteEnableRequestPreviewState,
-		HCI_State().AgentStageGExecuteIntentPreviewState,
-		HCI_State().AgentSimulateExecuteHandoffEnvelopePreviewState,
-		HCI_State().AgentSimulateExecuteArchiveBundlePreviewState,
-		HCI_State().AgentSimulateExecuteFinalReportPreviewState,
-		HCI_State().AgentSimulateExecuteReceiptPreviewState,
-		HCI_State().AgentExecuteTicketPreviewState,
-		HCI_State().AgentApplyConfirmRequestPreviewState,
-		HCI_State().AgentApplyRequestPreviewState,
-		HCI_State().AgentExecutorReviewDiffPreviewState,
+		HCI_StageG_State().AgentStageGExecuteDispatchRequestPreviewState.RequestId,
+		HCI_StageG_State().AgentStageGExecutePermitTicketPreviewState,
+		HCI_StageG_State().AgentStageGWriteEnableRequestPreviewState,
+		HCI_StageG_State().AgentStageGExecuteIntentPreviewState,
+		HCI_StageG_State().AgentSimulateExecuteHandoffEnvelopePreviewState,
+		HCI_StageG_State().AgentSimulateExecuteArchiveBundlePreviewState,
+		HCI_StageG_State().AgentSimulateExecuteFinalReportPreviewState,
+		HCI_StageG_State().AgentSimulateExecuteReceiptPreviewState,
+		HCI_StageG_State().AgentExecuteTicketPreviewState,
+		HCI_StageG_State().AgentApplyConfirmRequestPreviewState,
+		HCI_StageG_State().AgentApplyRequestPreviewState,
+		HCI_StageG_State().AgentExecutorReviewDiffPreviewState,
 		OutRequest))
 	{
 		UE_LOG(LogHCIAbilityKitAgentDemo, Error, TEXT("[HCIAbilityKit][AgentExecutorStageGExecuteDispatchReceipt] prepare_failed reason=bridge_failed"));
 		return false;
 	}
 
-	HCI_State().AgentStageGExecuteDispatchReceiptPreviewState = OutRequest;
+	HCI_StageG_State().AgentStageGExecuteDispatchReceiptPreviewState = OutRequest;
 	return true;
 }
 
@@ -1314,56 +1317,56 @@ static bool HCI_TryBuildAgentExecutorStageGExecuteCommitRequestFromLatestPreview
 	const FString& TamperMode,
 	FHCIAbilityKitAgentStageGExecuteCommitRequest& OutRequest)
 {
-	if (HCI_State().AgentStageGExecuteDispatchReceiptPreviewState.Items.Num() <= 0)
+	if (HCI_StageG_State().AgentStageGExecuteDispatchReceiptPreviewState.Items.Num() <= 0)
 	{
 		UE_LOG(LogHCIAbilityKitAgentDemo, Warning, TEXT("[HCIAbilityKit][AgentExecutorStageGExecuteCommitRequest] prepare=unavailable reason=no_stage_g_execute_dispatch_receipt_preview_state"));
 		UE_LOG(LogHCIAbilityKitAgentDemo, Display, TEXT("[HCIAbilityKit][AgentExecutorStageGExecuteCommitRequest] suggestion=先运行 HCIAbilityKit.AgentExecutePlanReviewPrepareStageGExecuteDispatchReceipt"));
 		return false;
 	}
-	if (HCI_State().AgentStageGExecuteDispatchRequestPreviewState.Items.Num() <= 0)
+	if (HCI_StageG_State().AgentStageGExecuteDispatchRequestPreviewState.Items.Num() <= 0)
 	{
 		UE_LOG(LogHCIAbilityKitAgentDemo, Warning, TEXT("[HCIAbilityKit][AgentExecutorStageGExecuteCommitRequest] prepare=unavailable reason=no_stage_g_execute_dispatch_request_preview_state"));
 		UE_LOG(LogHCIAbilityKitAgentDemo, Display, TEXT("[HCIAbilityKit][AgentExecutorStageGExecuteCommitRequest] suggestion=先运行 HCIAbilityKit.AgentExecutePlanReviewPrepareStageGExecuteDispatchRequest"));
 		return false;
 	}
-	if (HCI_State().AgentStageGExecutePermitTicketPreviewState.Items.Num() <= 0)
+	if (HCI_StageG_State().AgentStageGExecutePermitTicketPreviewState.Items.Num() <= 0)
 	{
 		UE_LOG(LogHCIAbilityKitAgentDemo, Warning, TEXT("[HCIAbilityKit][AgentExecutorStageGExecuteCommitRequest] prepare=unavailable reason=no_stage_g_execute_permit_ticket_preview_state"));
 		UE_LOG(LogHCIAbilityKitAgentDemo, Display, TEXT("[HCIAbilityKit][AgentExecutorStageGExecuteCommitRequest] suggestion=先运行 HCIAbilityKit.AgentExecutePlanReviewPrepareStageGExecutePermitTicket"));
 		return false;
 	}
-	if (HCI_State().AgentStageGWriteEnableRequestPreviewState.Items.Num() <= 0)
+	if (HCI_StageG_State().AgentStageGWriteEnableRequestPreviewState.Items.Num() <= 0)
 	{
 		UE_LOG(LogHCIAbilityKitAgentDemo, Warning, TEXT("[HCIAbilityKit][AgentExecutorStageGExecuteCommitRequest] prepare=unavailable reason=no_stage_g_write_enable_request_preview_state"));
 		UE_LOG(LogHCIAbilityKitAgentDemo, Display, TEXT("[HCIAbilityKit][AgentExecutorStageGExecuteCommitRequest] suggestion=先运行 HCIAbilityKit.AgentExecutePlanReviewPrepareStageGWriteEnableRequest"));
 		return false;
 	}
-	if (HCI_State().AgentStageGExecuteIntentPreviewState.Items.Num() <= 0)
+	if (HCI_StageG_State().AgentStageGExecuteIntentPreviewState.Items.Num() <= 0)
 	{
 		UE_LOG(LogHCIAbilityKitAgentDemo, Warning, TEXT("[HCIAbilityKit][AgentExecutorStageGExecuteCommitRequest] prepare=unavailable reason=no_stage_g_execute_intent_preview_state"));
 		UE_LOG(LogHCIAbilityKitAgentDemo, Display, TEXT("[HCIAbilityKit][AgentExecutorStageGExecuteCommitRequest] suggestion=先运行 HCIAbilityKit.AgentExecutePlanReviewPrepareStageGExecuteIntent"));
 		return false;
 	}
-	if (HCI_State().AgentSimulateExecuteHandoffEnvelopePreviewState.Items.Num() <= 0)
+	if (HCI_StageG_State().AgentSimulateExecuteHandoffEnvelopePreviewState.Items.Num() <= 0)
 	{
 		UE_LOG(LogHCIAbilityKitAgentDemo, Warning, TEXT("[HCIAbilityKit][AgentExecutorStageGExecuteCommitRequest] prepare=unavailable reason=no_sim_handoff_envelope_preview_state"));
 		UE_LOG(LogHCIAbilityKitAgentDemo, Display, TEXT("[HCIAbilityKit][AgentExecutorStageGExecuteCommitRequest] suggestion=先运行 HCIAbilityKit.AgentExecutePlanReviewPrepareSimHandoffEnvelope"));
 		return false;
 	}
-	if (HCI_State().AgentSimulateExecuteArchiveBundlePreviewState.Items.Num() <= 0 ||
-		HCI_State().AgentSimulateExecuteFinalReportPreviewState.Items.Num() <= 0 ||
-		HCI_State().AgentSimulateExecuteReceiptPreviewState.Items.Num() <= 0 ||
-		HCI_State().AgentExecuteTicketPreviewState.Items.Num() <= 0 ||
-		HCI_State().AgentApplyConfirmRequestPreviewState.Items.Num() <= 0 ||
-		HCI_State().AgentApplyRequestPreviewState.Items.Num() <= 0 ||
-		HCI_State().AgentExecutorReviewDiffPreviewState.DiffItems.Num() <= 0)
+	if (HCI_StageG_State().AgentSimulateExecuteArchiveBundlePreviewState.Items.Num() <= 0 ||
+		HCI_StageG_State().AgentSimulateExecuteFinalReportPreviewState.Items.Num() <= 0 ||
+		HCI_StageG_State().AgentSimulateExecuteReceiptPreviewState.Items.Num() <= 0 ||
+		HCI_StageG_State().AgentExecuteTicketPreviewState.Items.Num() <= 0 ||
+		HCI_StageG_State().AgentApplyConfirmRequestPreviewState.Items.Num() <= 0 ||
+		HCI_StageG_State().AgentApplyRequestPreviewState.Items.Num() <= 0 ||
+		HCI_StageG_State().AgentExecutorReviewDiffPreviewState.DiffItems.Num() <= 0)
 	{
 		UE_LOG(LogHCIAbilityKitAgentDemo, Warning, TEXT("[HCIAbilityKit][AgentExecutorStageGExecuteCommitRequest] prepare=unavailable reason=missing_upstream_preview_state"));
 		UE_LOG(LogHCIAbilityKitAgentDemo, Display, TEXT("[HCIAbilityKit][AgentExecutorStageGExecuteCommitRequest] suggestion=先按 F15/G1/G2/G3/G4/G5 链路生成 ... -> StageGExecuteDispatchReceipt 预览"));
 		return false;
 	}
 
-	FHCIAbilityKitAgentStageGExecuteDispatchReceipt WorkingReceipt = HCI_State().AgentStageGExecuteDispatchReceiptPreviewState;
+	FHCIAbilityKitAgentStageGExecuteDispatchReceipt WorkingReceipt = HCI_StageG_State().AgentStageGExecuteDispatchReceiptPreviewState;
 	if (TamperMode == TEXT("digest")) { WorkingReceipt.SelectionDigest += TEXT("_tampered"); }
 	else if (TamperMode == TEXT("intent")) { WorkingReceipt.StageGExecuteIntentId += TEXT("_stale"); }
 	else if (TamperMode == TEXT("handoff")) { WorkingReceipt.SimHandoffEnvelopeId += TEXT("_stale"); }
@@ -1373,19 +1376,19 @@ static bool HCI_TryBuildAgentExecutorStageGExecuteCommitRequestFromLatestPreview
 
 	if (!FHCIAbilityKitAgentExecutorStageGExecuteCommitRequestBridge::BuildStageGExecuteCommitRequest(
 		WorkingReceipt,
-		HCI_State().AgentStageGExecuteDispatchReceiptPreviewState.RequestId,
-		HCI_State().AgentStageGExecuteDispatchRequestPreviewState,
-		HCI_State().AgentStageGExecutePermitTicketPreviewState,
-		HCI_State().AgentStageGWriteEnableRequestPreviewState,
-		HCI_State().AgentStageGExecuteIntentPreviewState,
-		HCI_State().AgentSimulateExecuteHandoffEnvelopePreviewState,
-		HCI_State().AgentSimulateExecuteArchiveBundlePreviewState,
-		HCI_State().AgentSimulateExecuteFinalReportPreviewState,
-		HCI_State().AgentSimulateExecuteReceiptPreviewState,
-		HCI_State().AgentExecuteTicketPreviewState,
-		HCI_State().AgentApplyConfirmRequestPreviewState,
-		HCI_State().AgentApplyRequestPreviewState,
-		HCI_State().AgentExecutorReviewDiffPreviewState,
+		HCI_StageG_State().AgentStageGExecuteDispatchReceiptPreviewState.RequestId,
+		HCI_StageG_State().AgentStageGExecuteDispatchRequestPreviewState,
+		HCI_StageG_State().AgentStageGExecutePermitTicketPreviewState,
+		HCI_StageG_State().AgentStageGWriteEnableRequestPreviewState,
+		HCI_StageG_State().AgentStageGExecuteIntentPreviewState,
+		HCI_StageG_State().AgentSimulateExecuteHandoffEnvelopePreviewState,
+		HCI_StageG_State().AgentSimulateExecuteArchiveBundlePreviewState,
+		HCI_StageG_State().AgentSimulateExecuteFinalReportPreviewState,
+		HCI_StageG_State().AgentSimulateExecuteReceiptPreviewState,
+		HCI_StageG_State().AgentExecuteTicketPreviewState,
+		HCI_StageG_State().AgentApplyConfirmRequestPreviewState,
+		HCI_StageG_State().AgentApplyRequestPreviewState,
+		HCI_StageG_State().AgentExecutorReviewDiffPreviewState,
 		bExecuteCommitConfirmed,
 		OutRequest))
 	{
@@ -1393,7 +1396,7 @@ static bool HCI_TryBuildAgentExecutorStageGExecuteCommitRequestFromLatestPreview
 		return false;
 	}
 
-	HCI_State().AgentStageGExecuteCommitRequestPreviewState = OutRequest;
+	HCI_StageG_State().AgentStageGExecuteCommitRequestPreviewState = OutRequest;
 	return true;
 }
 
@@ -1541,32 +1544,32 @@ static bool HCI_TryBuildAgentExecutorStageGExecuteCommitReceiptFromLatestPreview
 	const FString& TamperMode,
 	FHCIAbilityKitAgentStageGExecuteCommitReceipt& OutReceipt)
 {
-	if (HCI_State().AgentStageGExecuteCommitRequestPreviewState.RequestId.IsEmpty())
+	if (HCI_StageG_State().AgentStageGExecuteCommitRequestPreviewState.RequestId.IsEmpty())
 	{
 		UE_LOG(LogHCIAbilityKitAgentDemo, Warning, TEXT("[HCIAbilityKit][AgentExecutorStageGExecuteCommitReceipt] prepare=unavailable reason=no_stage_g_execute_commit_request_preview_state"));
 		UE_LOG(LogHCIAbilityKitAgentDemo, Display, TEXT("[HCIAbilityKit][AgentExecutorStageGExecuteCommitReceipt] suggestion=先运行 HCIAbilityKit.AgentExecutePlanReviewPrepareStageGExecuteCommitRequest"));
 		return false;
 	}
-	if (HCI_State().AgentStageGExecuteDispatchReceiptPreviewState.RequestId.IsEmpty())
+	if (HCI_StageG_State().AgentStageGExecuteDispatchReceiptPreviewState.RequestId.IsEmpty())
 	{
 		UE_LOG(LogHCIAbilityKitAgentDemo, Warning, TEXT("[HCIAbilityKit][AgentExecutorStageGExecuteCommitReceipt] prepare=unavailable reason=no_stage_g_execute_dispatch_receipt_preview_state"));
 		return false;
 	}
 
-	FHCIAbilityKitAgentStageGExecuteCommitRequest CommitRequest = HCI_State().AgentStageGExecuteCommitRequestPreviewState;
-	const FHCIAbilityKitAgentStageGExecuteDispatchReceipt DispatchReceipt = HCI_State().AgentStageGExecuteDispatchReceiptPreviewState;
-	const FHCIAbilityKitAgentStageGExecuteDispatchRequest DispatchRequest = HCI_State().AgentStageGExecuteDispatchRequestPreviewState;
-	const FHCIAbilityKitAgentStageGExecutePermitTicket PermitTicket = HCI_State().AgentStageGExecutePermitTicketPreviewState;
-	const FHCIAbilityKitAgentStageGWriteEnableRequest WriteEnableRequest = HCI_State().AgentStageGWriteEnableRequestPreviewState;
-	const FHCIAbilityKitAgentStageGExecuteIntent Intent = HCI_State().AgentStageGExecuteIntentPreviewState;
-	const FHCIAbilityKitAgentSimulateExecuteHandoffEnvelope HandoffEnvelope = HCI_State().AgentSimulateExecuteHandoffEnvelopePreviewState;
-	const FHCIAbilityKitAgentSimulateExecuteArchiveBundle ArchiveBundle = HCI_State().AgentSimulateExecuteArchiveBundlePreviewState;
-	const FHCIAbilityKitAgentSimulateExecuteFinalReport FinalReport = HCI_State().AgentSimulateExecuteFinalReportPreviewState;
-	const FHCIAbilityKitAgentSimulateExecuteReceipt SimReceipt = HCI_State().AgentSimulateExecuteReceiptPreviewState;
-	const FHCIAbilityKitAgentExecuteTicket ExecuteTicket = HCI_State().AgentExecuteTicketPreviewState;
-	const FHCIAbilityKitAgentApplyConfirmRequest ConfirmRequest = HCI_State().AgentApplyConfirmRequestPreviewState;
-	const FHCIAbilityKitAgentApplyRequest ApplyRequest = HCI_State().AgentApplyRequestPreviewState;
-	const FHCIAbilityKitDryRunDiffReport Review = HCI_State().AgentExecutorReviewDiffPreviewState;
+	FHCIAbilityKitAgentStageGExecuteCommitRequest CommitRequest = HCI_StageG_State().AgentStageGExecuteCommitRequestPreviewState;
+	const FHCIAbilityKitAgentStageGExecuteDispatchReceipt DispatchReceipt = HCI_StageG_State().AgentStageGExecuteDispatchReceiptPreviewState;
+	const FHCIAbilityKitAgentStageGExecuteDispatchRequest DispatchRequest = HCI_StageG_State().AgentStageGExecuteDispatchRequestPreviewState;
+	const FHCIAbilityKitAgentStageGExecutePermitTicket PermitTicket = HCI_StageG_State().AgentStageGExecutePermitTicketPreviewState;
+	const FHCIAbilityKitAgentStageGWriteEnableRequest WriteEnableRequest = HCI_StageG_State().AgentStageGWriteEnableRequestPreviewState;
+	const FHCIAbilityKitAgentStageGExecuteIntent Intent = HCI_StageG_State().AgentStageGExecuteIntentPreviewState;
+	const FHCIAbilityKitAgentSimulateExecuteHandoffEnvelope HandoffEnvelope = HCI_StageG_State().AgentSimulateExecuteHandoffEnvelopePreviewState;
+	const FHCIAbilityKitAgentSimulateExecuteArchiveBundle ArchiveBundle = HCI_StageG_State().AgentSimulateExecuteArchiveBundlePreviewState;
+	const FHCIAbilityKitAgentSimulateExecuteFinalReport FinalReport = HCI_StageG_State().AgentSimulateExecuteFinalReportPreviewState;
+	const FHCIAbilityKitAgentSimulateExecuteReceipt SimReceipt = HCI_StageG_State().AgentSimulateExecuteReceiptPreviewState;
+	const FHCIAbilityKitAgentExecuteTicket ExecuteTicket = HCI_StageG_State().AgentExecuteTicketPreviewState;
+	const FHCIAbilityKitAgentApplyConfirmRequest ConfirmRequest = HCI_StageG_State().AgentApplyConfirmRequestPreviewState;
+	const FHCIAbilityKitAgentApplyRequest ApplyRequest = HCI_StageG_State().AgentApplyRequestPreviewState;
+	const FHCIAbilityKitDryRunDiffReport Review = HCI_StageG_State().AgentExecutorReviewDiffPreviewState;
 
 	FString ExpectedCommitRequestId = CommitRequest.RequestId;
 	if (TamperMode == TEXT("digest"))
@@ -1621,7 +1624,7 @@ static bool HCI_TryBuildAgentExecutorStageGExecuteCommitReceiptFromLatestPreview
 		return false;
 	}
 
-	HCI_State().AgentStageGExecuteCommitReceiptPreviewState = OutReceipt;
+	HCI_StageG_State().AgentStageGExecuteCommitReceiptPreviewState = OutReceipt;
 	return true;
 }
 
@@ -1757,33 +1760,33 @@ static bool HCI_TryBuildAgentExecutorStageGExecuteFinalReportFromLatestPreview(
 	const FString& TamperMode,
 	FHCIAbilityKitAgentStageGExecuteFinalReport& OutReceipt)
 {
-	if (HCI_State().AgentStageGExecuteCommitReceiptPreviewState.RequestId.IsEmpty())
+	if (HCI_StageG_State().AgentStageGExecuteCommitReceiptPreviewState.RequestId.IsEmpty())
 	{
 		UE_LOG(LogHCIAbilityKitAgentDemo, Warning, TEXT("[HCIAbilityKit][AgentExecutorStageGExecuteFinalReport] prepare=unavailable reason=no_stage_g_execute_commit_receipt_preview_state"));
 		UE_LOG(LogHCIAbilityKitAgentDemo, Display, TEXT("[HCIAbilityKit][AgentExecutorStageGExecuteFinalReport] suggestion=先运行 HCIAbilityKit.AgentExecutePlanReviewPrepareStageGExecuteCommitReceipt"));
 		return false;
 	}
-	if (HCI_State().AgentStageGExecuteDispatchReceiptPreviewState.RequestId.IsEmpty())
+	if (HCI_StageG_State().AgentStageGExecuteDispatchReceiptPreviewState.RequestId.IsEmpty())
 	{
 		UE_LOG(LogHCIAbilityKitAgentDemo, Warning, TEXT("[HCIAbilityKit][AgentExecutorStageGExecuteFinalReport] prepare=unavailable reason=no_stage_g_execute_dispatch_receipt_preview_state"));
 		return false;
 	}
 
-	FHCIAbilityKitAgentStageGExecuteCommitReceipt CommitReceipt = HCI_State().AgentStageGExecuteCommitReceiptPreviewState;
-	const FHCIAbilityKitAgentStageGExecuteCommitRequest CommitRequest = HCI_State().AgentStageGExecuteCommitRequestPreviewState;
-	const FHCIAbilityKitAgentStageGExecuteDispatchReceipt DispatchReceipt = HCI_State().AgentStageGExecuteDispatchReceiptPreviewState;
-	const FHCIAbilityKitAgentStageGExecuteDispatchRequest DispatchRequest = HCI_State().AgentStageGExecuteDispatchRequestPreviewState;
-	const FHCIAbilityKitAgentStageGExecutePermitTicket PermitTicket = HCI_State().AgentStageGExecutePermitTicketPreviewState;
-	const FHCIAbilityKitAgentStageGWriteEnableRequest WriteEnableRequest = HCI_State().AgentStageGWriteEnableRequestPreviewState;
-	const FHCIAbilityKitAgentStageGExecuteIntent Intent = HCI_State().AgentStageGExecuteIntentPreviewState;
-	const FHCIAbilityKitAgentSimulateExecuteHandoffEnvelope HandoffEnvelope = HCI_State().AgentSimulateExecuteHandoffEnvelopePreviewState;
-	const FHCIAbilityKitAgentSimulateExecuteArchiveBundle ArchiveBundle = HCI_State().AgentSimulateExecuteArchiveBundlePreviewState;
-	const FHCIAbilityKitAgentSimulateExecuteFinalReport FinalReport = HCI_State().AgentSimulateExecuteFinalReportPreviewState;
-	const FHCIAbilityKitAgentSimulateExecuteReceipt SimReceipt = HCI_State().AgentSimulateExecuteReceiptPreviewState;
-	const FHCIAbilityKitAgentExecuteTicket ExecuteTicket = HCI_State().AgentExecuteTicketPreviewState;
-	const FHCIAbilityKitAgentApplyConfirmRequest ConfirmRequest = HCI_State().AgentApplyConfirmRequestPreviewState;
-	const FHCIAbilityKitAgentApplyRequest ApplyRequest = HCI_State().AgentApplyRequestPreviewState;
-	const FHCIAbilityKitDryRunDiffReport Review = HCI_State().AgentExecutorReviewDiffPreviewState;
+	FHCIAbilityKitAgentStageGExecuteCommitReceipt CommitReceipt = HCI_StageG_State().AgentStageGExecuteCommitReceiptPreviewState;
+	const FHCIAbilityKitAgentStageGExecuteCommitRequest CommitRequest = HCI_StageG_State().AgentStageGExecuteCommitRequestPreviewState;
+	const FHCIAbilityKitAgentStageGExecuteDispatchReceipt DispatchReceipt = HCI_StageG_State().AgentStageGExecuteDispatchReceiptPreviewState;
+	const FHCIAbilityKitAgentStageGExecuteDispatchRequest DispatchRequest = HCI_StageG_State().AgentStageGExecuteDispatchRequestPreviewState;
+	const FHCIAbilityKitAgentStageGExecutePermitTicket PermitTicket = HCI_StageG_State().AgentStageGExecutePermitTicketPreviewState;
+	const FHCIAbilityKitAgentStageGWriteEnableRequest WriteEnableRequest = HCI_StageG_State().AgentStageGWriteEnableRequestPreviewState;
+	const FHCIAbilityKitAgentStageGExecuteIntent Intent = HCI_StageG_State().AgentStageGExecuteIntentPreviewState;
+	const FHCIAbilityKitAgentSimulateExecuteHandoffEnvelope HandoffEnvelope = HCI_StageG_State().AgentSimulateExecuteHandoffEnvelopePreviewState;
+	const FHCIAbilityKitAgentSimulateExecuteArchiveBundle ArchiveBundle = HCI_StageG_State().AgentSimulateExecuteArchiveBundlePreviewState;
+	const FHCIAbilityKitAgentSimulateExecuteFinalReport FinalReport = HCI_StageG_State().AgentSimulateExecuteFinalReportPreviewState;
+	const FHCIAbilityKitAgentSimulateExecuteReceipt SimReceipt = HCI_StageG_State().AgentSimulateExecuteReceiptPreviewState;
+	const FHCIAbilityKitAgentExecuteTicket ExecuteTicket = HCI_StageG_State().AgentExecuteTicketPreviewState;
+	const FHCIAbilityKitAgentApplyConfirmRequest ConfirmRequest = HCI_StageG_State().AgentApplyConfirmRequestPreviewState;
+	const FHCIAbilityKitAgentApplyRequest ApplyRequest = HCI_StageG_State().AgentApplyRequestPreviewState;
+	const FHCIAbilityKitDryRunDiffReport Review = HCI_StageG_State().AgentExecutorReviewDiffPreviewState;
 
 	FString ExpectedCommitReceiptId = CommitReceipt.RequestId;
 	FString ExpectedCommitRequestId = CommitRequest.RequestId;
@@ -1847,7 +1850,7 @@ static bool HCI_TryBuildAgentExecutorStageGExecuteFinalReportFromLatestPreview(
 		return false;
 	}
 
-	HCI_State().AgentStageGExecuteFinalReportPreviewState = OutReceipt;
+	HCI_StageG_State().AgentStageGExecuteFinalReportPreviewState = OutReceipt;
 	return true;
 }
 
@@ -1989,34 +1992,34 @@ static bool HCI_TryBuildAgentExecutorStageGExecuteArchiveBundleFromLatestPreview
 	const FString& TamperMode,
 	FHCIAbilityKitAgentStageGExecuteArchiveBundle& OutReceipt)
 {
-	if (HCI_State().AgentStageGExecuteFinalReportPreviewState.RequestId.IsEmpty())
+	if (HCI_StageG_State().AgentStageGExecuteFinalReportPreviewState.RequestId.IsEmpty())
 	{
 		UE_LOG(LogHCIAbilityKitAgentDemo, Warning, TEXT("[HCIAbilityKit][AgentExecutorStageGExecuteArchiveBundle] prepare=unavailable reason=no_stage_g_execute_final_report_preview_state"));
 		UE_LOG(LogHCIAbilityKitAgentDemo, Display, TEXT("[HCIAbilityKit][AgentExecutorStageGExecuteArchiveBundle] suggestion=先运行 HCIAbilityKit.AgentExecutePlanReviewPrepareStageGExecuteFinalReport"));
 		return false;
 	}
-	if (HCI_State().AgentStageGExecuteCommitReceiptPreviewState.RequestId.IsEmpty())
+	if (HCI_StageG_State().AgentStageGExecuteCommitReceiptPreviewState.RequestId.IsEmpty())
 	{
 		UE_LOG(LogHCIAbilityKitAgentDemo, Warning, TEXT("[HCIAbilityKit][AgentExecutorStageGExecuteArchiveBundle] prepare=unavailable reason=no_stage_g_execute_commit_receipt_preview_state"));
 		return false;
 	}
 
-	FHCIAbilityKitAgentStageGExecuteFinalReport FinalReportReceipt = HCI_State().AgentStageGExecuteFinalReportPreviewState;
-	const FHCIAbilityKitAgentStageGExecuteCommitReceipt CommitReceipt = HCI_State().AgentStageGExecuteCommitReceiptPreviewState;
-	const FHCIAbilityKitAgentStageGExecuteCommitRequest CommitRequest = HCI_State().AgentStageGExecuteCommitRequestPreviewState;
-	const FHCIAbilityKitAgentStageGExecuteDispatchReceipt DispatchReceipt = HCI_State().AgentStageGExecuteDispatchReceiptPreviewState;
-	const FHCIAbilityKitAgentStageGExecuteDispatchRequest DispatchRequest = HCI_State().AgentStageGExecuteDispatchRequestPreviewState;
-	const FHCIAbilityKitAgentStageGExecutePermitTicket PermitTicket = HCI_State().AgentStageGExecutePermitTicketPreviewState;
-	const FHCIAbilityKitAgentStageGWriteEnableRequest WriteEnableRequest = HCI_State().AgentStageGWriteEnableRequestPreviewState;
-	const FHCIAbilityKitAgentStageGExecuteIntent Intent = HCI_State().AgentStageGExecuteIntentPreviewState;
-	const FHCIAbilityKitAgentSimulateExecuteHandoffEnvelope HandoffEnvelope = HCI_State().AgentSimulateExecuteHandoffEnvelopePreviewState;
-	const FHCIAbilityKitAgentSimulateExecuteArchiveBundle SimArchiveBundle = HCI_State().AgentSimulateExecuteArchiveBundlePreviewState;
-	const FHCIAbilityKitAgentSimulateExecuteFinalReport SimFinalReport = HCI_State().AgentSimulateExecuteFinalReportPreviewState;
-	const FHCIAbilityKitAgentSimulateExecuteReceipt SimReceipt = HCI_State().AgentSimulateExecuteReceiptPreviewState;
-	const FHCIAbilityKitAgentExecuteTicket ExecuteTicket = HCI_State().AgentExecuteTicketPreviewState;
-	const FHCIAbilityKitAgentApplyConfirmRequest ConfirmRequest = HCI_State().AgentApplyConfirmRequestPreviewState;
-	const FHCIAbilityKitAgentApplyRequest ApplyRequest = HCI_State().AgentApplyRequestPreviewState;
-	const FHCIAbilityKitDryRunDiffReport Review = HCI_State().AgentExecutorReviewDiffPreviewState;
+	FHCIAbilityKitAgentStageGExecuteFinalReport FinalReportReceipt = HCI_StageG_State().AgentStageGExecuteFinalReportPreviewState;
+	const FHCIAbilityKitAgentStageGExecuteCommitReceipt CommitReceipt = HCI_StageG_State().AgentStageGExecuteCommitReceiptPreviewState;
+	const FHCIAbilityKitAgentStageGExecuteCommitRequest CommitRequest = HCI_StageG_State().AgentStageGExecuteCommitRequestPreviewState;
+	const FHCIAbilityKitAgentStageGExecuteDispatchReceipt DispatchReceipt = HCI_StageG_State().AgentStageGExecuteDispatchReceiptPreviewState;
+	const FHCIAbilityKitAgentStageGExecuteDispatchRequest DispatchRequest = HCI_StageG_State().AgentStageGExecuteDispatchRequestPreviewState;
+	const FHCIAbilityKitAgentStageGExecutePermitTicket PermitTicket = HCI_StageG_State().AgentStageGExecutePermitTicketPreviewState;
+	const FHCIAbilityKitAgentStageGWriteEnableRequest WriteEnableRequest = HCI_StageG_State().AgentStageGWriteEnableRequestPreviewState;
+	const FHCIAbilityKitAgentStageGExecuteIntent Intent = HCI_StageG_State().AgentStageGExecuteIntentPreviewState;
+	const FHCIAbilityKitAgentSimulateExecuteHandoffEnvelope HandoffEnvelope = HCI_StageG_State().AgentSimulateExecuteHandoffEnvelopePreviewState;
+	const FHCIAbilityKitAgentSimulateExecuteArchiveBundle SimArchiveBundle = HCI_StageG_State().AgentSimulateExecuteArchiveBundlePreviewState;
+	const FHCIAbilityKitAgentSimulateExecuteFinalReport SimFinalReport = HCI_StageG_State().AgentSimulateExecuteFinalReportPreviewState;
+	const FHCIAbilityKitAgentSimulateExecuteReceipt SimReceipt = HCI_StageG_State().AgentSimulateExecuteReceiptPreviewState;
+	const FHCIAbilityKitAgentExecuteTicket ExecuteTicket = HCI_StageG_State().AgentExecuteTicketPreviewState;
+	const FHCIAbilityKitAgentApplyConfirmRequest ConfirmRequest = HCI_StageG_State().AgentApplyConfirmRequestPreviewState;
+	const FHCIAbilityKitAgentApplyRequest ApplyRequest = HCI_StageG_State().AgentApplyRequestPreviewState;
+	const FHCIAbilityKitDryRunDiffReport Review = HCI_StageG_State().AgentExecutorReviewDiffPreviewState;
 
 	FString ExpectedFinalReportId = FinalReportReceipt.RequestId;
 	FString ExpectedCommitReceiptId = CommitReceipt.RequestId;
@@ -2087,7 +2090,7 @@ static bool HCI_TryBuildAgentExecutorStageGExecuteArchiveBundleFromLatestPreview
 		return false;
 	}
 
-	HCI_State().AgentStageGExecuteArchiveBundlePreviewState = OutReceipt;
+	HCI_StageG_State().AgentStageGExecuteArchiveBundlePreviewState = OutReceipt;
 	return true;
 }
 
@@ -2207,146 +2210,146 @@ static void HCI_LogAgentExecutorStageGExecutionReadinessRows(const FHCIAbilityKi
 
 static bool HCI_TryWarmupPreviewStateForStageGExecutionReadiness()
 {
-	HCI_State().AgentPlanPreviewState = FHCIAbilityKitAgentPlan();
-	HCI_State().AgentExecutorReviewDiffPreviewState = FHCIAbilityKitDryRunDiffReport();
-	HCI_State().AgentApplyRequestPreviewState = FHCIAbilityKitAgentApplyRequest();
-	HCI_State().AgentApplyConfirmRequestPreviewState = FHCIAbilityKitAgentApplyConfirmRequest();
-	HCI_State().AgentExecuteTicketPreviewState = FHCIAbilityKitAgentExecuteTicket();
-	HCI_State().AgentSimulateExecuteReceiptPreviewState = FHCIAbilityKitAgentSimulateExecuteReceipt();
-	HCI_State().AgentSimulateExecuteFinalReportPreviewState = FHCIAbilityKitAgentSimulateExecuteFinalReport();
-	HCI_State().AgentSimulateExecuteArchiveBundlePreviewState = FHCIAbilityKitAgentSimulateExecuteArchiveBundle();
-	HCI_State().AgentSimulateExecuteHandoffEnvelopePreviewState = FHCIAbilityKitAgentSimulateExecuteHandoffEnvelope();
-	HCI_State().AgentStageGExecuteIntentPreviewState = FHCIAbilityKitAgentStageGExecuteIntent();
-	HCI_State().AgentStageGWriteEnableRequestPreviewState = FHCIAbilityKitAgentStageGWriteEnableRequest();
-	HCI_State().AgentStageGExecutePermitTicketPreviewState = FHCIAbilityKitAgentStageGExecutePermitTicket();
-	HCI_State().AgentStageGExecuteDispatchRequestPreviewState = FHCIAbilityKitAgentStageGExecuteDispatchRequest();
-	HCI_State().AgentStageGExecuteDispatchReceiptPreviewState = FHCIAbilityKitAgentStageGExecuteDispatchReceipt();
-	HCI_State().AgentStageGExecuteCommitRequestPreviewState = FHCIAbilityKitAgentStageGExecuteCommitRequest();
-	HCI_State().AgentStageGExecuteCommitReceiptPreviewState = FHCIAbilityKitAgentStageGExecuteCommitReceipt();
-	HCI_State().AgentStageGExecuteFinalReportPreviewState = FHCIAbilityKitAgentStageGExecuteFinalReport();
-	HCI_State().AgentStageGExecuteArchiveBundlePreviewState = FHCIAbilityKitAgentStageGExecuteArchiveBundle();
-	HCI_State().AgentStageGExecutionReadinessReportPreviewState = FHCIAbilityKitAgentStageGExecutionReadinessReport();
+	HCI_StageG_State().AgentPlanPreviewState = FHCIAbilityKitAgentPlan();
+	HCI_StageG_State().AgentExecutorReviewDiffPreviewState = FHCIAbilityKitDryRunDiffReport();
+	HCI_StageG_State().AgentApplyRequestPreviewState = FHCIAbilityKitAgentApplyRequest();
+	HCI_StageG_State().AgentApplyConfirmRequestPreviewState = FHCIAbilityKitAgentApplyConfirmRequest();
+	HCI_StageG_State().AgentExecuteTicketPreviewState = FHCIAbilityKitAgentExecuteTicket();
+	HCI_StageG_State().AgentSimulateExecuteReceiptPreviewState = FHCIAbilityKitAgentSimulateExecuteReceipt();
+	HCI_StageG_State().AgentSimulateExecuteFinalReportPreviewState = FHCIAbilityKitAgentSimulateExecuteFinalReport();
+	HCI_StageG_State().AgentSimulateExecuteArchiveBundlePreviewState = FHCIAbilityKitAgentSimulateExecuteArchiveBundle();
+	HCI_StageG_State().AgentSimulateExecuteHandoffEnvelopePreviewState = FHCIAbilityKitAgentSimulateExecuteHandoffEnvelope();
+	HCI_StageG_State().AgentStageGExecuteIntentPreviewState = FHCIAbilityKitAgentStageGExecuteIntent();
+	HCI_StageG_State().AgentStageGWriteEnableRequestPreviewState = FHCIAbilityKitAgentStageGWriteEnableRequest();
+	HCI_StageG_State().AgentStageGExecutePermitTicketPreviewState = FHCIAbilityKitAgentStageGExecutePermitTicket();
+	HCI_StageG_State().AgentStageGExecuteDispatchRequestPreviewState = FHCIAbilityKitAgentStageGExecuteDispatchRequest();
+	HCI_StageG_State().AgentStageGExecuteDispatchReceiptPreviewState = FHCIAbilityKitAgentStageGExecuteDispatchReceipt();
+	HCI_StageG_State().AgentStageGExecuteCommitRequestPreviewState = FHCIAbilityKitAgentStageGExecuteCommitRequest();
+	HCI_StageG_State().AgentStageGExecuteCommitReceiptPreviewState = FHCIAbilityKitAgentStageGExecuteCommitReceipt();
+	HCI_StageG_State().AgentStageGExecuteFinalReportPreviewState = FHCIAbilityKitAgentStageGExecuteFinalReport();
+	HCI_StageG_State().AgentStageGExecuteArchiveBundlePreviewState = FHCIAbilityKitAgentStageGExecuteArchiveBundle();
+	HCI_StageG_State().AgentStageGExecutionReadinessReportPreviewState = FHCIAbilityKitAgentStageGExecutionReadinessReport();
 
 	const TArray<FString> ReviewSeedArgs = { TEXT("ok_naming") };
 	HCI_RunAbilityKitAgentExecutePlanReviewDemoCommand(ReviewSeedArgs);
-	if (HCI_State().AgentExecutorReviewDiffPreviewState.DiffItems.Num() <= 0)
+	if (HCI_StageG_State().AgentExecutorReviewDiffPreviewState.DiffItems.Num() <= 0)
 	{
 		return false;
 	}
 
 	FHCIAbilityKitAgentApplyRequest ApplyRequest;
-	if (HCI_State().AgentApplyRequestPreviewState.Items.Num() <= 0 &&
+	if (HCI_StageG_State().AgentApplyRequestPreviewState.Items.Num() <= 0 &&
 		!HCI_TryBuildAgentExecutorApplyRequestFromLatestReview(ApplyRequest))
 	{
 		return false;
 	}
 
 	FHCIAbilityKitAgentApplyConfirmRequest ConfirmRequest;
-	if (HCI_State().AgentApplyConfirmRequestPreviewState.Items.Num() <= 0 &&
+	if (HCI_StageG_State().AgentApplyConfirmRequestPreviewState.Items.Num() <= 0 &&
 		!HCI_TryBuildAgentExecutorConfirmRequestFromLatestPreview(true, TEXT("none"), ConfirmRequest))
 	{
 		return false;
 	}
 
 	FHCIAbilityKitAgentExecuteTicket ExecuteTicket;
-	if (HCI_State().AgentExecuteTicketPreviewState.Items.Num() <= 0 &&
+	if (HCI_StageG_State().AgentExecuteTicketPreviewState.Items.Num() <= 0 &&
 		!HCI_TryBuildAgentExecutorExecuteTicketFromLatestPreview(TEXT("none"), ExecuteTicket))
 	{
 		return false;
 	}
 
 	FHCIAbilityKitAgentSimulateExecuteReceipt SimReceipt;
-	if (HCI_State().AgentSimulateExecuteReceiptPreviewState.Items.Num() <= 0 &&
+	if (HCI_StageG_State().AgentSimulateExecuteReceiptPreviewState.Items.Num() <= 0 &&
 		!HCI_TryBuildAgentExecutorSimExecuteReceiptFromLatestPreview(TEXT("none"), SimReceipt))
 	{
 		return false;
 	}
 
 	FHCIAbilityKitAgentSimulateExecuteFinalReport SimFinalReport;
-	if (HCI_State().AgentSimulateExecuteFinalReportPreviewState.Items.Num() <= 0 &&
+	if (HCI_StageG_State().AgentSimulateExecuteFinalReportPreviewState.Items.Num() <= 0 &&
 		!HCI_TryBuildAgentExecutorSimFinalReportFromLatestPreview(TEXT("none"), SimFinalReport))
 	{
 		return false;
 	}
 
 	FHCIAbilityKitAgentSimulateExecuteArchiveBundle SimArchiveBundle;
-	if (HCI_State().AgentSimulateExecuteArchiveBundlePreviewState.Items.Num() <= 0 &&
+	if (HCI_StageG_State().AgentSimulateExecuteArchiveBundlePreviewState.Items.Num() <= 0 &&
 		!HCI_TryBuildAgentExecutorSimArchiveBundleFromLatestPreview(TEXT("none"), SimArchiveBundle))
 	{
 		return false;
 	}
 
 	FHCIAbilityKitAgentSimulateExecuteHandoffEnvelope HandoffEnvelope;
-	if (HCI_State().AgentSimulateExecuteHandoffEnvelopePreviewState.Items.Num() <= 0 &&
+	if (HCI_StageG_State().AgentSimulateExecuteHandoffEnvelopePreviewState.Items.Num() <= 0 &&
 		!HCI_TryBuildAgentExecutorSimHandoffEnvelopeFromLatestPreview(TEXT("none"), HandoffEnvelope))
 	{
 		return false;
 	}
 
 	FHCIAbilityKitAgentStageGExecuteIntent StageGIntent;
-	if (HCI_State().AgentStageGExecuteIntentPreviewState.Items.Num() <= 0 &&
+	if (HCI_StageG_State().AgentStageGExecuteIntentPreviewState.Items.Num() <= 0 &&
 		!HCI_TryBuildAgentExecutorStageGExecuteIntentFromLatestPreview(TEXT("none"), StageGIntent))
 	{
 		return false;
 	}
 
 	FHCIAbilityKitAgentStageGWriteEnableRequest StageGWriteEnableRequest;
-	if (HCI_State().AgentStageGWriteEnableRequestPreviewState.Items.Num() <= 0 &&
+	if (HCI_StageG_State().AgentStageGWriteEnableRequestPreviewState.Items.Num() <= 0 &&
 		!HCI_TryBuildAgentExecutorStageGWriteEnableRequestFromLatestPreview(true, TEXT("none"), StageGWriteEnableRequest))
 	{
 		return false;
 	}
 
 	FHCIAbilityKitAgentStageGExecutePermitTicket StageGPermitTicket;
-	if (HCI_State().AgentStageGExecutePermitTicketPreviewState.Items.Num() <= 0 &&
+	if (HCI_StageG_State().AgentStageGExecutePermitTicketPreviewState.Items.Num() <= 0 &&
 		!HCI_TryBuildAgentExecutorStageGExecutePermitTicketFromLatestPreview(true, TEXT("none"), StageGPermitTicket))
 	{
 		return false;
 	}
 
 	FHCIAbilityKitAgentStageGExecuteDispatchRequest StageGDispatchRequest;
-	if (HCI_State().AgentStageGExecuteDispatchRequestPreviewState.Items.Num() <= 0 &&
+	if (HCI_StageG_State().AgentStageGExecuteDispatchRequestPreviewState.Items.Num() <= 0 &&
 		!HCI_TryBuildAgentExecutorStageGExecuteDispatchRequestFromLatestPreview(true, TEXT("none"), StageGDispatchRequest))
 	{
 		return false;
 	}
 
 	FHCIAbilityKitAgentStageGExecuteDispatchReceipt StageGDispatchReceipt;
-	if (HCI_State().AgentStageGExecuteDispatchReceiptPreviewState.Items.Num() <= 0 &&
+	if (HCI_StageG_State().AgentStageGExecuteDispatchReceiptPreviewState.Items.Num() <= 0 &&
 		!HCI_TryBuildAgentExecutorStageGExecuteDispatchReceiptFromLatestPreview(TEXT("none"), StageGDispatchReceipt))
 	{
 		return false;
 	}
 
 	FHCIAbilityKitAgentStageGExecuteCommitRequest StageGCommitRequest;
-	if (HCI_State().AgentStageGExecuteCommitRequestPreviewState.Items.Num() <= 0 &&
+	if (HCI_StageG_State().AgentStageGExecuteCommitRequestPreviewState.Items.Num() <= 0 &&
 		!HCI_TryBuildAgentExecutorStageGExecuteCommitRequestFromLatestPreview(true, TEXT("none"), StageGCommitRequest))
 	{
 		return false;
 	}
 
 	FHCIAbilityKitAgentStageGExecuteCommitReceipt StageGCommitReceipt;
-	if (HCI_State().AgentStageGExecuteCommitReceiptPreviewState.Items.Num() <= 0 &&
+	if (HCI_StageG_State().AgentStageGExecuteCommitReceiptPreviewState.Items.Num() <= 0 &&
 		!HCI_TryBuildAgentExecutorStageGExecuteCommitReceiptFromLatestPreview(TEXT("none"), StageGCommitReceipt))
 	{
 		return false;
 	}
 
 	FHCIAbilityKitAgentStageGExecuteFinalReport StageGFinalReport;
-	if (HCI_State().AgentStageGExecuteFinalReportPreviewState.Items.Num() <= 0 &&
+	if (HCI_StageG_State().AgentStageGExecuteFinalReportPreviewState.Items.Num() <= 0 &&
 		!HCI_TryBuildAgentExecutorStageGExecuteFinalReportFromLatestPreview(TEXT("none"), StageGFinalReport))
 	{
 		return false;
 	}
 
 	FHCIAbilityKitAgentStageGExecuteArchiveBundle StageGArchiveBundle;
-	if (HCI_State().AgentStageGExecuteArchiveBundlePreviewState.Items.Num() <= 0 &&
+	if (HCI_StageG_State().AgentStageGExecuteArchiveBundlePreviewState.Items.Num() <= 0 &&
 		!HCI_TryBuildAgentExecutorStageGExecuteArchiveBundleFromLatestPreview(TEXT("none"), StageGArchiveBundle))
 	{
 		return false;
 	}
 
-	return HCI_State().AgentStageGExecuteArchiveBundlePreviewState.Items.Num() > 0;
+	return HCI_StageG_State().AgentStageGExecuteArchiveBundlePreviewState.Items.Num() > 0;
 }
 
 static bool HCI_TryBuildAgentExecutorStageGExecutionReadinessFromLatestPreview(
@@ -2354,10 +2357,10 @@ static bool HCI_TryBuildAgentExecutorStageGExecutionReadinessFromLatestPreview(
 	const FString& TamperMode,
 	FHCIAbilityKitAgentStageGExecutionReadinessReport& OutReport)
 {
-	if (HCI_State().AgentStageGExecuteArchiveBundlePreviewState.RequestId.IsEmpty())
+	if (HCI_StageG_State().AgentStageGExecuteArchiveBundlePreviewState.RequestId.IsEmpty())
 	{
 		UE_LOG(LogHCIAbilityKitAgentDemo, Display, TEXT("[HCIAbilityKit][AgentExecutorStageGExecutionReadiness] warmup=start reason=missing_stage_g_execute_archive_bundle_preview_state"));
-		if (!HCI_TryWarmupPreviewStateForStageGExecutionReadiness() || HCI_State().AgentStageGExecuteArchiveBundlePreviewState.RequestId.IsEmpty())
+		if (!HCI_TryWarmupPreviewStateForStageGExecutionReadiness() || HCI_StageG_State().AgentStageGExecuteArchiveBundlePreviewState.RequestId.IsEmpty())
 		{
 			UE_LOG(LogHCIAbilityKitAgentDemo, Warning, TEXT("[HCIAbilityKit][AgentExecutorStageGExecutionReadiness] prepare=unavailable reason=no_stage_g_execute_archive_bundle_preview_state_after_warmup"));
 			UE_LOG(LogHCIAbilityKitAgentDemo, Display, TEXT("[HCIAbilityKit][AgentExecutorStageGExecutionReadiness] suggestion=先运行 HCIAbilityKit.AgentExecutePlanReviewDemo"));
@@ -2366,7 +2369,7 @@ static bool HCI_TryBuildAgentExecutorStageGExecutionReadinessFromLatestPreview(
 		UE_LOG(LogHCIAbilityKitAgentDemo, Display, TEXT("[HCIAbilityKit][AgentExecutorStageGExecutionReadiness] warmup=done source=auto_bootstrap_chain"));
 	}
 
-	FHCIAbilityKitAgentStageGExecuteArchiveBundle WorkingArchive = HCI_State().AgentStageGExecuteArchiveBundlePreviewState;
+	FHCIAbilityKitAgentStageGExecuteArchiveBundle WorkingArchive = HCI_StageG_State().AgentStageGExecuteArchiveBundlePreviewState;
 	FString ExpectedArchiveBundleId = WorkingArchive.RequestId;
 
 	if (TamperMode == TEXT("digest"))
@@ -2387,7 +2390,7 @@ static bool HCI_TryBuildAgentExecutorStageGExecutionReadinessFromLatestPreview(
 	if (!FHCIAbilityKitAgentExecutorStageGExecutionReadinessReportBridge::BuildStageGExecutionReadinessReport(
 		WorkingArchive,
 		ExpectedArchiveBundleId,
-		HCI_State().AgentExecutorReviewDiffPreviewState,
+		HCI_StageG_State().AgentExecutorReviewDiffPreviewState,
 		bUserConfirmed,
 		OutReport))
 	{
@@ -2395,7 +2398,7 @@ static bool HCI_TryBuildAgentExecutorStageGExecutionReadinessFromLatestPreview(
 		return false;
 	}
 
-	HCI_State().AgentStageGExecutionReadinessReportPreviewState = OutReport;
+	HCI_StageG_State().AgentStageGExecutionReadinessReportPreviewState = OutReport;
 	return true;
 }
 
@@ -2472,3 +2475,6 @@ void HCI_RunAbilityKitAgentExecutePlanReviewPrepareStageGExecutionReadinessJsonC
 	UE_LOG(LogHCIAbilityKitAgentDemo, Display, TEXT("[HCIAbilityKit][AgentExecutorStageGExecutionReadiness] json request_id=%s bytes=%d"), Report.RequestId.IsEmpty() ? TEXT("-") : *Report.RequestId, JsonText.Len());
 	UE_LOG(LogHCIAbilityKitAgentDemo, Display, TEXT("%s"), *JsonText);
 }
+
+#undef LogHCIAbilityKitAgentDemo
+

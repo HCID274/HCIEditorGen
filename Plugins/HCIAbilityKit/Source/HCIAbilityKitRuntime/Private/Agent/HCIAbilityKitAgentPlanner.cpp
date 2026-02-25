@@ -14,6 +14,8 @@
 #include "Templates/Atomic.h"
 #include "Internationalization/Regex.h"
 
+DEFINE_LOG_CATEGORY_STATIC(LogHCIAbilityKitAgentPlanner, Log, All);
+
 namespace
 {
 static const TCHAR* const HCI_LlmProviderName = TEXT("llm");
@@ -97,6 +99,127 @@ static bool HCI_TextContainsAny(const FString& Text, std::initializer_list<const
 		}
 	}
 	return false;
+}
+
+static bool HCI_IsVariableTemplateString(const FString& InText)
+{
+	const FRegexPattern Pattern(TEXT("^\\{\\{\\s*[A-Za-z0-9_]+\\.[A-Za-z0-9_]+(?:\\[\\d+\\])?\\s*\\}\\}$"));
+	FRegexMatcher Matcher(Pattern, InText.TrimStartAndEnd());
+	return Matcher.FindNext();
+}
+
+static bool HCI_TryParseJsonStringArrayLiteral(const FString& InText, TArray<FString>& OutValues)
+{
+	OutValues.Reset();
+	TArray<TSharedPtr<FJsonValue>> JsonArray;
+	const TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(InText);
+	if (!FJsonSerializer::Deserialize(Reader, JsonArray))
+	{
+		return false;
+	}
+
+	for (const TSharedPtr<FJsonValue>& Value : JsonArray)
+	{
+		if (!Value.IsValid() || Value->Type != EJson::String)
+		{
+			OutValues.Reset();
+			return false;
+		}
+
+		FString Parsed = Value->AsString();
+		Parsed.TrimStartAndEndInline();
+		if (!Parsed.IsEmpty())
+		{
+			OutValues.Add(Parsed);
+		}
+	}
+	return OutValues.Num() > 0;
+}
+
+static void HCI_ParseLooseStringList(const FString& InText, TArray<FString>& OutValues)
+{
+	OutValues.Reset();
+
+	FString Trimmed = InText;
+	Trimmed.TrimStartAndEndInline();
+	if (Trimmed.IsEmpty())
+	{
+		return;
+	}
+
+	if (HCI_IsVariableTemplateString(Trimmed))
+	{
+		OutValues.Add(Trimmed);
+		return;
+	}
+
+	if (HCI_TryParseJsonStringArrayLiteral(Trimmed, OutValues))
+	{
+		return;
+	}
+
+	FString Delimiter;
+	if (Trimmed.Contains(TEXT("|")))
+	{
+		Delimiter = TEXT("|");
+	}
+	else if (Trimmed.Contains(TEXT(",")))
+	{
+		Delimiter = TEXT(",");
+	}
+
+	if (Delimiter.IsEmpty())
+	{
+		OutValues.Add(Trimmed);
+		return;
+	}
+
+	TArray<FString> Tokens;
+	Trimmed.ParseIntoArray(Tokens, *Delimiter, true);
+	for (FString& Token : Tokens)
+	{
+		Token.TrimStartAndEndInline();
+		if (!Token.IsEmpty())
+		{
+			OutValues.Add(Token);
+		}
+	}
+}
+
+static TSharedPtr<FJsonValue> HCI_NormalizeJsonValueForArgSchema(
+	const FHCIAbilityKitToolArgSchema& ArgSchema,
+	const TSharedPtr<FJsonValue>& InValue)
+{
+	if (!InValue.IsValid())
+	{
+		return InValue;
+	}
+
+	if (ArgSchema.ValueType == EHCIAbilityKitToolArgValueType::StringArray && InValue->Type == EJson::String)
+	{
+		FString RawString;
+		if (!InValue->TryGetString(RawString))
+		{
+			return InValue;
+		}
+
+		TArray<FString> ParsedValues;
+		HCI_ParseLooseStringList(RawString, ParsedValues);
+		if (ParsedValues.Num() <= 0)
+		{
+			return InValue;
+		}
+
+		TArray<TSharedPtr<FJsonValue>> JsonValues;
+		JsonValues.Reserve(ParsedValues.Num());
+		for (const FString& ParsedValue : ParsedValues)
+		{
+			JsonValues.Add(MakeShared<FJsonValueString>(ParsedValue));
+		}
+		return MakeShared<FJsonValueArray>(JsonValues);
+	}
+
+	return InValue;
 }
 
 static bool HCI_IsDirectoryStyleRequest(const FString& UserText)
@@ -384,13 +507,25 @@ static bool HCI_TryGetStringArrayField(const TSharedPtr<FJsonObject>& Object, co
 		return true;
 	}
 
-	const TArray<TSharedPtr<FJsonValue>>* Values = nullptr;
-	if (!Object->TryGetArrayField(FieldName, Values) || Values == nullptr)
+	const TSharedPtr<FJsonValue>* FieldValue = Object->Values.Find(FieldName);
+	if (FieldValue == nullptr || !FieldValue->IsValid())
+	{
+		return true;
+	}
+
+	if ((*FieldValue)->Type == EJson::String)
+	{
+		HCI_ParseLooseStringList((*FieldValue)->AsString(), OutValues);
+		return OutValues.Num() > 0;
+	}
+
+	if ((*FieldValue)->Type != EJson::Array)
 	{
 		return false;
 	}
 
-	for (const TSharedPtr<FJsonValue>& Value : *Values)
+	const TArray<TSharedPtr<FJsonValue>>& Values = (*FieldValue)->AsArray();
+	for (const TSharedPtr<FJsonValue>& Value : Values)
 	{
 		FString StringValue;
 		if (!Value.IsValid() || !Value->TryGetString(StringValue))
@@ -478,7 +613,9 @@ static TSharedPtr<FJsonObject> HCI_NormalizeStepArgsBySchema(
 		const TSharedPtr<FJsonValue>* ExistingValue = SafeRawArgs->Values.Find(Key);
 		if (ExistingValue != nullptr && ExistingValue->IsValid())
 		{
-			NormalizedArgs->SetField(Key, *ExistingValue);
+			const TSharedPtr<FJsonValue> NormalizedExistingValue =
+				HCI_NormalizeJsonValueForArgSchema(ArgSchema, *ExistingValue);
+			NormalizedArgs->SetField(Key, NormalizedExistingValue.IsValid() ? NormalizedExistingValue : *ExistingValue);
 			continue;
 		}
 
@@ -1233,6 +1370,21 @@ static void HCI_CompleteAsyncPlanBuild(
 
 static void HCI_FinishAsyncWithKeywordFallback(const TSharedRef<FHCIAbilityKitAsyncPlanBuildState, ESPMode::ThreadSafe>& State)
 {
+	if (State->LastFallbackReason == HCI_FallbackReasonContractInvalid)
+	{
+		UE_LOG(
+			LogHCIAbilityKitAgentPlanner,
+			Warning,
+			TEXT("[HCIAbilityKit][AgentPlanLLM][E4303] request_id=%s provider_mode=%s attempts=%d error_code=%s fallback_reason=%s detail=%s input=%s"),
+			*State->RequestId,
+			*State->ProviderMode,
+			State->AttemptsUsed,
+			State->LastErrorCode.IsEmpty() ? TEXT("E4303") : *State->LastErrorCode,
+			*State->LastFallbackReason,
+			State->LastError.IsEmpty() ? TEXT("-") : *State->LastError,
+			*State->UserText);
+	}
+
 	const bool bCircuitBreakerEnabled =
 		State->Options.bEnableCircuitBreaker &&
 		State->Options.CircuitBreakerFailureThreshold > 0 &&

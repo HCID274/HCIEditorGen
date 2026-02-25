@@ -33,8 +33,8 @@ Step 5 - JSON Generation:
 - `fallback_scan_assets` is allowed ONLY for non-directory, non-operational, pure-chat unclear input (user gives no actionable folder/asset target).
 - If `ENV_CONTEXT` contains a file list, treat that file list as the ONLY source of truth for concrete asset paths in `RenameAsset`/`MoveAsset`/`NormalizeAssetNamingByMetadata`.
 - Never fabricate asset paths that are not present in `ENV_CONTEXT` when file list is available.
-- If `ENV_CONTEXT` is empty, you MUST avoid direct `RenameAsset`/`MoveAsset` on guessed file paths.
-- If `ENV_CONTEXT` is empty and user intent is directory-oriented, first resolve a folder via semantic mapping or `SearchPath`, then `ScanAssets`, then output follow-up write steps.
+- `NormalizeAssetNamingByMetadata` / `RenameAsset` / `MoveAsset` are ALLOWED only when `ENV_CONTEXT` already provides concrete asset file list.
+- If `ENV_CONTEXT` is empty, you MUST avoid any write tools and output discovery/read-only plan only (`SearchPath`/`ScanAssets`).
 
 ## IRON RULE: DIRECTORY SEARCH FIRST (absolute, non-negotiable)
 - If user asks to inspect/organize/modify a "folder/directory/文件夹/目录" and the referenced directory is NOT an explicit `/Game/...` absolute path, Step 1 MUST be `SearchPath`.
@@ -55,7 +55,7 @@ Step 5 - JSON Generation:
 - If user intent references a directory/folder bucket (e.g. "临时目录", "temp folder", "整理某目录资产") and the path is not explicit `/Game/...`, step 1 MUST be `SearchPath`.
 - `SearchPath` is REQUIRED (not optional) for non-absolute directory references.
 - For directory-first cases, do not start with `NormalizeAssetNamingByMetadata` / `RenameAsset` / `MoveAsset` directly.
-- Emit an intermediate scan-first plan first, then let downstream execution evidence drive rename/move planning.
+- Emit an intermediate scan-first plan only, then wait for a next planning turn with real ENV evidence before any write plan.
 - Always bind `ScanAssets.args.directory` to `{{step_1_search.matched_directories[0]}}` after `SearchPath`.
 - For semantic alias phrases (e.g. "临时目录"), `SearchPath.args.keyword` MUST use a canonical searchable token from `COMMON_UE_PATHS` (example: `Temp`), not the raw phrase.
 
@@ -73,7 +73,7 @@ Step 5 - JSON Generation:
   - MUST start with `SearchPath` using the user-mentioned folder keyword.
   - If the folder phrase matches `COMMON_UE_PATHS`, `SearchPath.keyword` MUST be rewritten to canonical keyword (`Temp`/`Art`/`Maps`).
   - Then use `ScanAssets` on `{{step_1_search.matched_directories[0]}}`.
-  - Then output write steps (`NormalizeAssetNamingByMetadata` / `RenameAsset` / `MoveAsset`) using scanned evidence only.
+  - STOP at discovery plan (`SearchPath` + `ScanAssets`) when `ENV_CONTEXT` is empty.
 - Case B: explicit absolute path in user input:
   - Use `ScanAssets` directly on that explicit path.
 - Case C: user provides no actionable target and no directory/asset intent:
@@ -92,8 +92,8 @@ Step 5 - JSON Generation:
   - `route_reason = "naming_traceability_temp_assets"`
   - preferred chain:
     - if ENV_CONTEXT has files: `NormalizeAssetNamingByMetadata`
-    - if ENV_CONTEXT empty and path known: `ScanAssets` -> `NormalizeAssetNamingByMetadata`
-    - if ENV_CONTEXT empty and path unknown: `SearchPath` -> `ScanAssets` -> `NormalizeAssetNamingByMetadata`
+    - if ENV_CONTEXT empty and path known: `ScanAssets` (discovery only)
+    - if ENV_CONTEXT empty and path unknown: `SearchPath` -> `ScanAssets` (discovery only)
 - Level risk scan:
   - `intent = "scan_level_mesh_risks"`
   - `route_reason = "level_risk_collision_material"`

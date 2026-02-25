@@ -36,6 +36,14 @@ MODEL_EXPIRIES: Tuple[Tuple[str, str], ...] = (
     ("qwen3.5-plus-2026-02-15", "2026-05-16"),
     ("qwen3.5-397b-a17b", "2026-05-16"),
     ("qwen3.5-plus", "2026-05-16"),
+    
+    # ================= 新增接口标注 =================
+    ("qwen3.5-122b-a10b", "2026-05-23"),
+    ("qwen3.5-flash", "2026-05-24"),
+    ("qwen3.5-flash-2026-02-23", "2026-05-24"),
+    ("qwen3.5-35b-a3b", "2026-05-24"),
+    ("qwen3.5-27b", "2026-05-24"),
+    ("MiniMax-M2.5", "2026-05-25"),
 )
 
 
@@ -78,7 +86,14 @@ def build_router_weight(config: ModelConfig, today: Optional[date] = None) -> fl
     days_remaining = compute_days_remaining(config.expires_on, today=today)
     if days_remaining < 0:
         return 0.0
-    return max(1.0, 100.0 / float(days_remaining + 1))
+    
+    base_weight = 100.0 / float(days_remaining + 1)
+    
+    # 给最近到期的（比如30天内）额外提升30%的权重
+    if days_remaining <= 30:
+        base_weight *= 1.30
+        
+    return max(1.0, base_weight)
 
 
 def _blocking_chat_completion_request(
@@ -358,7 +373,7 @@ async def _run_cli_async(args: argparse.Namespace) -> None:
 
 def _build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Aliyun Bailian API test and smart routing helper")
-    parser.add_argument("--api-key", required=True, help="Bailian API key")
+    parser.add_argument("--api-key", required=False, help="Bailian API key (optional, will read from config if not provided)")
     parser.add_argument("--attempts", type=int, default=3, help="Attempts per model")
     parser.add_argument("--timeout", type=float, default=30.0, help="HTTP timeout in seconds")
     parser.add_argument("--endpoint", default=DEFAULT_ENDPOINT, help="Bailian endpoint URL")
@@ -392,6 +407,21 @@ def _build_arg_parser() -> argparse.ArgumentParser:
 def main() -> None:
     parser = _build_arg_parser()
     args = parser.parse_args()
+    
+    if not args.api_key:
+        provider_config_path = Path("Saved/HCIAbilityKit/Config/llm_provider.local.json")
+        if provider_config_path.exists():
+            try:
+                import json
+                with provider_config_path.open("r", encoding="utf-8") as f:
+                    config = json.load(f)
+                    args.api_key = config.get("api_key", "")
+            except Exception as e:
+                print(f"Warning: Failed to read api_key from {provider_config_path}: {e}")
+        
+    if not args.api_key:
+        parser.error("--api-key is required or must be present in Saved/HCIAbilityKit/Config/llm_provider.local.json")
+
     asyncio.run(_run_cli_async(args))
 
 

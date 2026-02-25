@@ -95,8 +95,10 @@ Scope: whole repo.
   - `HCIAbilityKit.AgentExecutePlanReviewPrepareStageGExecutionReadiness 1 archive`
   - `HCIAbilityKit.AgentExecutePlanReviewPrepareStageGExecutionReadiness 1 mode`
   - `HCIAbilityKit.AgentExecutePlanReviewPrepareStageGExecutionReadinessJson 1 none`
-- 下一切片：
-  - `Phase2`：结构解耦与技术债清理（按需切入）；
+- 当前切片：
+  - `Phase2-SliceP2-1`：已通过 UE 手测门禁（Commands LLM 处理器拆分，`No Semantic Changes`）。
+- 下一切片（待你选择）：
+  - `Phase2-SliceP2-2`：继续拆 StageG 命令处理实现；
   - `Stage I-SliceI6`：仅在用户确认继续 UI 深化后再冻结目标与门禁。
 
 ## 9. 用户协作习惯（固定）
@@ -139,4 +141,11 @@ Scope: whole repo.
 - AI 接口总表（单一入口）：
   - `Source/HCIEditorGen/文档/提示词/AI可调用接口总表.md`。
   - 任一工具新增/删除/参数变更/执行接线变更时，必须先更新该总表，再改 Skill 与代码。
+
+## 13. API 测试与路由权重更新备忘
+
+- **新增模型/更新测试**：修改 `SourceData/AbilityKits/Python/hci_bailian_model_router.py` 中的 `MODEL_EXPIRIES` 元组。
+- **执行测试命令**：直接运行上述 Python 脚本。脚本会自动读取本地配置中的 `api_key` 并发起多线程网络测试。
+  - `python SourceData/AbilityKits/Python/hci_bailian_model_router.py`
+- **生效机制**：脚本执行成功后，会自动无感覆写 `Saved/HCIAbilityKit/Config/llm_router.local.json`，C++ Runtime 将在下一次 LLM 请求时自动采用新权重。
 

@@ -122,3 +122,21 @@ Scope: whole repo.
 - Prompt 以 SOP 结构组织，强调“Intent -> Tool -> Args -> JSON”顺序，不得只写松散规则列表。
 - 任何后续新增字段，必须遵循同一标准：先 Schema，后 Prompt，再代码实现与测试门禁。
 
+## 12. 防跑偏强制校准（冻结，2026-02-25）
+
+- 跑偏复盘结论（固定口径）：
+  - 曾出现“能力总结漏项”，根因是只按当前 UI 已接线能力口头归纳，未同时核对“规划白名单 + 运行时白名单 + 执行接线状态”三层事实源。
+  - 结果导致对最终能力上限的描述偏窄（遗漏资产合规主线：`SetTextureMaxSize/SetMeshLODGroup`）。
+- 以后每次回答“当前开发到哪/最终上限是什么/下一步做什么”前，必须按以下顺序强制核对：
+  1. 产品与范围上限：`AGENTS.md` 第 1 节 + `Source/HCIEditorGen/文档/05_开发执行总方案_资产审计.md`。
+  2. Planner 可规划工具面：`Source/HCIEditorGen/文档/提示词/Skills/H3_AgentPlanner/tools_schema.json`。
+  3. Runtime 工具白名单：`Plugins/HCIAbilityKit/Source/HCIAbilityKitRuntime/Private/Agent/HCIAbilityKitToolRegistry.cpp`。
+  4. 实际 ToolAction 接线：`Plugins/HCIAbilityKit/Source/HCIAbilityKitEditor/Private/AgentActions/HCIAbilityKitAgentToolActions.cpp`（`BuildStageIDraftActions`）。
+  5. 未接线时的执行收敛：`Plugins/HCIAbilityKit/Source/HCIAbilityKitRuntime/Private/Agent/HCIAbilityKitAgentExecutor.cpp`（`HCI_TryRunToolAction` 与 simulated 分支）。
+- 输出要求（强制）：
+  - 必须分开描述：`可规划（Planner）`、`白名单（Registry）`、`已实接可执行（ToolAction）`、`未接线将模拟（Executor）`。
+  - 禁止将“可规划”直接表述为“已真实执行”。
+- AI 接口总表（单一入口）：
+  - `Source/HCIEditorGen/文档/提示词/AI可调用接口总表.md`。
+  - 任一工具新增/删除/参数变更/执行接线变更时，必须先更新该总表，再改 Skill 与代码。
+

@@ -94,7 +94,7 @@ static bool HCI_TryGetIntExact(const TSharedPtr<FJsonValue>& Value, int32& OutIn
 	return true;
 }
 
-static bool HCI_IsVariableTemplateString(const FString& Value)
+static bool HCI_IsVariableTemplateStringForValidation(const FString& Value)
 {
 	const FRegexPattern Pattern(TEXT("^\\{\\{\\s*[A-Za-z0-9_]+\\.[A-Za-z0-9_]+(?:\\[\\d+\\])?\\s*\\}\\}$"));
 	FRegexMatcher Matcher(Pattern, Value.TrimStartAndEnd());
@@ -138,7 +138,7 @@ static bool HCI_ValidateStringValue(
 	FHCIAbilityKitAgentPlanValidationResult& OutResult)
 {
 	const FString FieldPath = HCI_MakeArgFieldPath(StepIndex, Schema.ArgName.ToString());
-	const bool bIsVariableTemplate = HCI_IsVariableTemplateString(Parsed);
+	const bool bIsVariableTemplate = HCI_IsVariableTemplateStringForValidation(Parsed);
 	if (bIsVariableTemplate)
 	{
 		// Variable piping placeholders are only allowed on /Game path-like args.

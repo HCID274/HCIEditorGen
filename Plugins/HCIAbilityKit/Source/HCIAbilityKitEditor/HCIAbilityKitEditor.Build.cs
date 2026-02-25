@@ -28,6 +28,7 @@ public class HCIAbilityKitEditor : ModuleRules
 				"UnrealEd",         // 编辑器核心逻辑
 				"Slate",            // UI 系统
 				"SlateCore",        // UI 核心
+				"EditorSubsystem",  // UEditorSubsystem
 				"ToolMenus",        // 动态菜单系统
 				"ContentBrowser",   // 内容浏览器扩展
 				"AssetRegistry",    // 资产路径与类型校验

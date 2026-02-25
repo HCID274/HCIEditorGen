@@ -97,9 +97,10 @@ Scope: whole repo.
   - `HCIAbilityKit.AgentExecutePlanReviewPrepareStageGExecutionReadinessJson 1 none`
 - 当前切片：
   - `Phase2-SliceP2-1`：已通过 UE 手测门禁（Commands LLM 处理器拆分，`No Semantic Changes`）。
+  - `Phase2-SliceP2-2`：已通过 UE 手测门禁（Commands StageG 处理器拆分，`No Semantic Changes`）。
 - 下一切片（待你选择）：
-  - `Phase2-SliceP2-2`：继续拆 StageG 命令处理实现；
   - `Stage I-SliceI6`：仅在用户确认继续 UI 深化后再冻结目标与门禁。
+  - 若继续结构解耦：先冻结新增切片目标与门禁，再进入实现。
 
 ## 9. 用户协作习惯（固定）
 

@@ -628,10 +628,14 @@ private:
 			return false;
 		}
 
-		UWorld* World = GWorld;
-		if (!World && GEditor)
+		UWorld* World = nullptr;
+		if (GEditor)
 		{
 			World = GEditor->GetEditorWorldContext().World();
+		}
+		if (!World)
+		{
+			World = GWorld;
 		}
 		if (!World)
 		{

@@ -672,10 +672,12 @@ private:
 		const bool bCheckMissingCollision = Checks.Contains(TEXT("missing_collision"));
 		const bool bCheckDefaultMaterial = Checks.Contains(TEXT("default_material"));
 
-		TArray<FString> RiskyActorNames;
-		TArray<FString> MissingCollisionActors;
-		TArray<FString> DefaultMaterialActors;
-		int32 ScannedCount = 0;
+			TArray<FString> RiskyActorNames;
+			TArray<FString> RiskyActorPaths;
+			TArray<FString> RiskIssueDetails;
+			TArray<FString> MissingCollisionActors;
+			TArray<FString> DefaultMaterialActors;
+			int32 ScannedCount = 0;
 
 		for (AActor* Actor : ActorsToScan)
 		{
@@ -711,11 +713,24 @@ private:
 			if (bCheckMissingCollision)
 			{
 				UBodySetup* BodySetup = SM->GetBodySetup();
-				if (!BodySetup || (BodySetup->AggGeom.GetElementCount() == 0 && !BodySetup->bMeshCollideAll))
+				if (!BodySetup)
 				{
 					bHasRisk = true;
-					RiskReason += TEXT("[MissingCollision]");
+					RiskReason += TEXT("[MissingBodySetup]");
 					MissingCollisionActors.Add(Actor->GetActorLabel());
+				}
+				else
+				{
+					const bool bHasPrimitives = BodySetup->AggGeom.GetElementCount() > 0;
+					const bool bIsComplexAsSimple = BodySetup->CollisionTraceFlag == ECollisionTraceFlag::CTF_UseComplexAsSimple;
+					const bool bCollideAll = BodySetup->bMeshCollideAll;
+					
+					if (!bHasPrimitives && !bIsComplexAsSimple && !bCollideAll)
+					{
+						bHasRisk = true;
+						RiskReason += TEXT("[NoCollisionPrimitives]");
+						MissingCollisionActors.Add(Actor->GetActorLabel());
+					}
 				}
 			}
 
@@ -733,9 +748,9 @@ private:
 					{
 						UMaterialInterface* Mat = SMC->GetMaterial(i);
 						if (!Mat || 
-							Mat->GetName().Contains(TEXT("DefaultMaterial")) || 
-							Mat->GetName().Contains(TEXT("WorldGridMaterial")) ||
-							Mat->GetName().Contains(TEXT("BasicShapeMaterial")) ||
+							Mat->GetName().Contains(TEXT("Default")) || 
+							Mat->GetName().Contains(TEXT("WorldGrid")) ||
+							Mat->GetName().Contains(TEXT("BasicShape")) ||
 							Mat->GetPathName().StartsWith(TEXT("/Engine/")))
 						{
 							bHasDefaultMat = true;
@@ -752,11 +767,13 @@ private:
 				}
 			}
 
-			if (bHasRisk)
-			{
-				RiskyActorNames.Add(FString::Printf(TEXT("%s %s"), *Actor->GetActorLabel(), *RiskReason));
+				if (bHasRisk)
+				{
+					RiskyActorNames.Add(FString::Printf(TEXT("%s %s"), *Actor->GetActorLabel(), *RiskReason));
+					RiskyActorPaths.Add(Actor->GetPathName());
+					RiskIssueDetails.Add(RiskReason.IsEmpty() ? TEXT("-") : RiskReason);
+				}
 			}
-		}
 
 		OutResult = FHCIAbilityKitAgentToolActionResult();
 		OutResult.bSucceeded = true;
@@ -766,12 +783,20 @@ private:
 		OutResult.Evidence.Add(TEXT("scope"), Scope);
 		OutResult.Evidence.Add(TEXT("scanned_count"), FString::FromInt(ScannedCount));
 		OutResult.Evidence.Add(TEXT("risky_count"), FString::FromInt(RiskyActorNames.Num()));
-		OutResult.Evidence.Add(TEXT("risk_summary"), FString::Printf(TEXT("Scanned %d actors, found %d with risks."), ScannedCount, RiskyActorNames.Num()));
 		
-		if (RiskyActorNames.Num() > 0)
-		{
-			OutResult.Evidence.Add(TEXT("risky_actors"), FString::Join(RiskyActorNames, TEXT(" | ")));
-		}
+		FString ReportSummary = FString::Printf(TEXT("Scanned %d actors in world '%s', found %d with risks."), ScannedCount, *World->GetName(), RiskyActorNames.Num());
+		OutResult.Evidence.Add(TEXT("risk_summary"), ReportSummary);
+		
+			FString AffectedActorsStr = RiskyActorNames.Num() > 0 ? FString::Join(RiskyActorNames, TEXT(" | ")) : TEXT("none");
+			OutResult.Evidence.Add(TEXT("risky_actors"), AffectedActorsStr);
+			OutResult.Evidence.Add(TEXT("actor_path"), RiskyActorPaths.Num() > 0 ? RiskyActorPaths[0] : TEXT("-"));
+			OutResult.Evidence.Add(TEXT("issue"), RiskIssueDetails.Num() > 0 ? RiskIssueDetails[0] : TEXT("none"));
+			OutResult.Evidence.Add(
+				TEXT("evidence"),
+				RiskIssueDetails.Num() > 0
+					? FString::Printf(TEXT("risk_issues=%s"), *FString::Join(RiskIssueDetails, TEXT(" | ")))
+					: TEXT("risk_issues=none"));
+		
 		if (MissingCollisionActors.Num() > 0)
 		{
 			OutResult.Evidence.Add(TEXT("missing_collision_actors"), FString::Join(MissingCollisionActors, TEXT(" | ")));

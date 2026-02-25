@@ -65,6 +65,11 @@ bool FHCIAbilityKitAgentPlanContract::ValidateMinimalContract(const FHCIAbilityK
 			OutError = FString::Printf(TEXT("steps[%d].rollback_strategy is required"), Index);
 			return false;
 		}
+		if (Step.ExpectedEvidence.Num() <= 0)
+		{
+			OutError = FString::Printf(TEXT("steps[%d].expected_evidence must not be empty"), Index);
+			return false;
+		}
 	}
 
 	return true;

@@ -61,7 +61,14 @@ static FHCIAbilityKitAgentPlan MakeExecutorTexturePlan()
 	Step.RiskLevel = EHCIAbilityKitAgentPlanRiskLevel::Write;
 	Step.bRequiresConfirm = true;
 	Step.RollbackStrategy = TEXT("all_or_nothing");
-	Step.ExpectedEvidence = {TEXT("asset_path"), TEXT("before"), TEXT("after")};
+	Step.ExpectedEvidence = {
+		TEXT("target_max_size"),
+		TEXT("scanned_count"),
+		TEXT("modified_count"),
+		TEXT("failed_count"),
+		TEXT("modified_assets"),
+		TEXT("failed_assets"),
+		TEXT("result")};
 	Step.Args = MakeShared<FJsonObject>();
 	TArray<TSharedPtr<FJsonValue>> AssetPaths;
 	AssetPaths.Add(MakeShared<FJsonValueString>(TEXT("/Game/Art/T_Test.T_Test")));
@@ -84,7 +91,14 @@ static FHCIAbilityKitAgentPlan MakeExecutorTwoStepPlan()
 		Step.RiskLevel = EHCIAbilityKitAgentPlanRiskLevel::Write;
 		Step.bRequiresConfirm = true;
 		Step.RollbackStrategy = TEXT("all_or_nothing");
-		Step.ExpectedEvidence = {TEXT("asset_path"), TEXT("before"), TEXT("after")};
+			Step.ExpectedEvidence = {
+				TEXT("target_max_size"),
+				TEXT("scanned_count"),
+				TEXT("modified_count"),
+				TEXT("failed_count"),
+				TEXT("modified_assets"),
+				TEXT("failed_assets"),
+				TEXT("result")};
 		Step.Args = MakeShared<FJsonObject>();
 		TArray<TSharedPtr<FJsonValue>> AssetPaths;
 		AssetPaths.Add(MakeShared<FJsonValueString>(TEXT("/Game/Art/T_Test_A.T_Test_A")));
@@ -100,7 +114,14 @@ static FHCIAbilityKitAgentPlan MakeExecutorTwoStepPlan()
 		Step.RiskLevel = EHCIAbilityKitAgentPlanRiskLevel::Write;
 		Step.bRequiresConfirm = true;
 		Step.RollbackStrategy = TEXT("all_or_nothing");
-		Step.ExpectedEvidence = {TEXT("asset_path"), TEXT("before"), TEXT("after")};
+			Step.ExpectedEvidence = {
+				TEXT("target_lod_group"),
+				TEXT("scanned_count"),
+				TEXT("modified_count"),
+				TEXT("failed_count"),
+				TEXT("modified_assets"),
+				TEXT("failed_assets"),
+				TEXT("result")};
 		Step.Args = MakeShared<FJsonObject>();
 		TArray<TSharedPtr<FJsonValue>> AssetPaths;
 		AssetPaths.Add(MakeShared<FJsonValueString>(TEXT("/Game/Art/SM_Test.SM_Test")));
@@ -147,6 +168,35 @@ static FHCIAbilityKitAgentPlan MakeExecutorRenamePlan()
 	Step.Args->SetStringField(TEXT("new_name"), TEXT("SM_TestCommit_Renamed"));
 	return Plan;
 }
+
+static FHCIAbilityKitAgentPlan MakeExecutorPipelineBypassPlan()
+{
+	FHCIAbilityKitAgentPlan Plan;
+	Plan.PlanVersion = 1;
+	Plan.RequestId = TEXT("req_i2_pipeline_bypass");
+	Plan.Intent = TEXT("scan_assets");
+
+	FHCIAbilityKitAgentPlanStep& SearchStep = Plan.Steps.AddDefaulted_GetRef();
+	SearchStep.StepId = TEXT("step_1_search");
+	SearchStep.ToolName = TEXT("SearchPath");
+	SearchStep.RiskLevel = EHCIAbilityKitAgentPlanRiskLevel::ReadOnly;
+	SearchStep.bRequiresConfirm = false;
+	SearchStep.RollbackStrategy = TEXT("all_or_nothing");
+	SearchStep.ExpectedEvidence = {TEXT("matched_directories"), TEXT("best_directory"), TEXT("result")};
+	SearchStep.Args = MakeShared<FJsonObject>();
+	SearchStep.Args->SetStringField(TEXT("keyword"), TEXT("MNew"));
+
+	FHCIAbilityKitAgentPlanStep& ScanStep = Plan.Steps.AddDefaulted_GetRef();
+	ScanStep.StepId = TEXT("step_2_scan");
+	ScanStep.ToolName = TEXT("ScanAssets");
+	ScanStep.RiskLevel = EHCIAbilityKitAgentPlanRiskLevel::ReadOnly;
+	ScanStep.bRequiresConfirm = false;
+	ScanStep.RollbackStrategy = TEXT("all_or_nothing");
+	ScanStep.ExpectedEvidence = {TEXT("scan_root"), TEXT("asset_count"), TEXT("asset_paths"), TEXT("result")};
+	ScanStep.Args = MakeShared<FJsonObject>();
+	ScanStep.Args->SetStringField(TEXT("directory"), TEXT("/Game/Temp"));
+	return Plan;
+}
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
@@ -188,7 +238,7 @@ bool FHCIAbilityKitAgentExecutorValidPlanExecutesTest::RunTest(const FString& Pa
 		const FHCIAbilityKitAgentExecutorStepResult& StepResult = RunResult.StepResults[0];
 		TestTrue(TEXT("Step should succeed"), StepResult.bSucceeded);
 		TestEqual(TEXT("Step status"), StepResult.Status, FString(TEXT("succeeded")));
-		TestTrue(TEXT("Evidence should contain asset_path"), StepResult.Evidence.Contains(TEXT("asset_path")));
+		TestTrue(TEXT("Evidence should contain target_max_size"), StepResult.Evidence.Contains(TEXT("target_max_size")));
 	}
 
 	return true;
@@ -574,6 +624,37 @@ bool FHCIAbilityKitAgentExecutorCommitModeSemanticTest::RunTest(const FString& P
 		TestEqual(TEXT("Row reason should come from action execute"), RunResult.StepResults[0].Reason, FString(TEXT("test_execute_ok")));
 	}
 
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FHCIAbilityKitAgentExecutorPipelineBypassBlockedTest,
+	"HCIAbilityKit.Editor.AgentExecutor.PipelineBypassAfterSearchBlockedWithE4009",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FHCIAbilityKitAgentExecutorPipelineBypassBlockedTest::RunTest(const FString& Parameters)
+{
+	FHCIAbilityKitToolRegistry& Registry = FHCIAbilityKitToolRegistry::Get();
+	Registry.ResetToDefaults();
+
+	FHCIAbilityKitAgentExecutorOptions Options;
+	Options.bDryRun = true;
+	Options.bValidatePlanBeforeExecute = true;
+	Options.TerminationPolicy = EHCIAbilityKitAgentExecutorTerminationPolicy::StopOnFirstFailure;
+
+	FHCIAbilityKitAgentExecutorRunResult RunResult;
+	TestFalse(
+		TEXT("Pipeline bypass should be blocked"),
+		FHCIAbilityKitAgentExecutor::ExecutePlan(
+			MakeExecutorPipelineBypassPlan(),
+			Registry,
+			FHCIAbilityKitAgentPlanValidationContext(),
+			Options,
+			RunResult));
+
+	TestEqual(TEXT("Top-level error code"), RunResult.ErrorCode, FString(TEXT("E4009")));
+	TestEqual(TEXT("Top-level reason"), RunResult.Reason, FString(TEXT("planner_pipeline_variable_not_used_after_search")));
+	TestEqual(TEXT("Failed step index should be scan step"), RunResult.FailedStepIndex, 1);
 	return true;
 }
 

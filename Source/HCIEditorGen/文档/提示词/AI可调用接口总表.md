@@ -17,9 +17,9 @@
 ## 2. 事实源与优先级
 
 1. Planner 可规划工具源：`Source/HCIEditorGen/文档/提示词/Skills/H3_AgentPlanner/tools_schema.json`
-2. Runtime 白名单源：`Plugins/HCIAbilityKit/Source/HCIAbilityKitRuntime/Private/Agent/HCIAbilityKitToolRegistry.cpp`
+2. Runtime 白名单源：`Plugins/HCIAbilityKit/Source/HCIAbilityKitRuntime/Private/Agent/Tools/HCIAbilityKitToolRegistry.cpp`
 3. ToolAction 实接源：`Plugins/HCIAbilityKit/Source/HCIAbilityKitEditor/Private/AgentActions/HCIAbilityKitAgentToolActions.cpp` (`BuildStageIDraftActions`)
-4. 模拟回退源：`Plugins/HCIAbilityKit/Source/HCIAbilityKitRuntime/Private/Agent/HCIAbilityKitAgentExecutor.cpp` (`HCI_TryRunToolAction` fallback 分支)
+4. 模拟回退源：`Plugins/HCIAbilityKit/Source/HCIAbilityKitRuntime/Private/Agent/Executor/HCIAbilityKitAgentExecutor.cpp` (`HCI_TryRunToolAction` fallback 分支)
 
 ## 3. Plan JSON 调用契约（给 LLM 的输出目标）
 
@@ -75,8 +75,16 @@
 - `args`:
   - `asset_paths: string[]`（1~50）
   - `max_size: int`（`256|512|1024|2048|4096|8192`）
-- `执行接线状态`: `未实接（当前走 Executor simulated）`
-- `说明`: 允许规划与校验；在 Stage I 当前接线里未绑定 ToolAction 实现。
+- `执行接线状态`: `已实接可执行`
+- `DryRun/Execute`: 已接线真实实现（Texture2D 校验、`MaxTextureSize` 写入与资产保存）。
+- `关键 evidence`:
+  - `target_max_size`
+  - `scanned_count`
+  - `modified_count`
+  - `failed_count`
+  - `modified_assets`
+  - `failed_assets`
+  - `result`
 
 ### 4.4 SetMeshLODGroup
 
@@ -85,8 +93,16 @@
 - `args`:
   - `asset_paths: string[]`（1~50）
   - `lod_group: string`（`LevelArchitecture|SmallProp|LargeProp|Foliage|Character`）
-- `执行接线状态`: `未实接（当前走 Executor simulated）`
-- `说明`: 允许规划与校验；LOD 安全门禁仍在 Executor Preflight 生效。
+- `执行接线状态`: `已实接可执行`
+- `DryRun/Execute`: 已接线真实实现（StaticMesh 校验、`LODGroup` 写入与资产保存）。
+- `关键 evidence`:
+  - `target_lod_group`
+  - `scanned_count`
+  - `modified_count`
+  - `failed_count`
+  - `modified_assets`
+  - `failed_assets`
+  - `result`
 
 ### 4.5 ScanLevelMeshRisks
 
@@ -96,8 +112,20 @@
   - `scope: string`（`selected|all`）
   - `checks: string[]`（`missing_collision|default_material` 子集，1~2）
   - `max_actor_count: int`（1~5000）
-- `执行接线状态`: `未实接（当前走 Executor simulated）`
-- `说明`: 允许规划与校验；当前 Stage I ToolAction 未绑定真实执行器。
+- `执行接线状态`: `已实接可执行`
+- `DryRun/Execute`: 均为真实关卡扫描（Actor 遍历 + 碰撞/默认材质风险检测）。
+- `关键 evidence`:
+  - `actor_path`
+  - `issue`
+  - `evidence`
+  - `scope`
+  - `scanned_count`
+  - `risky_count`
+  - `risk_summary`
+  - `risky_actors`
+  - `missing_collision_actors`
+  - `default_material_actors`
+  - `result`
 
 ### 4.6 NormalizeAssetNamingByMetadata
 
@@ -144,16 +172,16 @@
 ## 5. 当前接线结论（给提示词维护者）
 
 - 当前可规划：8/8（由 `tools_schema.json` 与 ToolRegistry 支持）
-- 当前已实接可执行：4/8（`ScanAssets/SearchPath/RenameAsset/MoveAsset`）
-- 当前未实接会模拟：4/8（`SetTextureMaxSize/SetMeshLODGroup/ScanLevelMeshRisks/NormalizeAssetNamingByMetadata`）
+- 当前已实接可执行：7/8（除 `NormalizeAssetNamingByMetadata` 外均已接线）
+- 当前未实接会模拟：1/8（`NormalizeAssetNamingByMetadata`）
 - 因此提示词写法要求：
   - 可以规划全部 8 个工具；
-  - 但在“真实执行承诺”描述中，必须按实接状态区分，不得把 8 个都表述为已真实执行。
+  - 但在“真实执行承诺”描述中，必须按实接状态区分，不得把 `NormalizeAssetNamingByMetadata` 表述为已真实执行。
 
 ## 6. UE 入口接口（人工触发）
 
 - `HCIAbilityKit.AgentChatUI [optional initial text]`
-  - 作用：打开聊天式自然语言入口窗口（Stage I6），在窗口内发送请求并自动弹出 `PlanPreview`。
+  - 作用：打开聊天式自然语言入口窗口（Stage I6/I8）；默认只渲染计划卡片，由用户点击按钮后才打开 `PlanPreview`。
 - `HCIAbilityKit.AgentPlanPreviewUI "<自然语言>"`
   - 作用：触发真实 LLM 规划并弹出 Plan Preview UI。
 - `HCIAbilityKit.AgentPlanWithRealLLMDemo "<自然语言>"`

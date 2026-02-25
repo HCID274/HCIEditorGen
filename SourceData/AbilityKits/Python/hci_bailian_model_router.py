@@ -36,14 +36,6 @@ MODEL_EXPIRIES: Tuple[Tuple[str, str], ...] = (
     ("qwen3.5-plus-2026-02-15", "2026-05-16"),
     ("qwen3.5-397b-a17b", "2026-05-16"),
     ("qwen3.5-plus", "2026-05-16"),
-    
-    # ================= 新增接口标注 =================
-    ("qwen3.5-122b-a10b", "2026-05-23"),
-    ("qwen3.5-flash", "2026-05-24"),
-    ("qwen3.5-flash-2026-02-23", "2026-05-24"),
-    ("qwen3.5-35b-a3b", "2026-05-24"),
-    ("qwen3.5-27b", "2026-05-24"),
-    ("MiniMax-M2.5", "2026-05-25"),
 )
 
 
@@ -86,13 +78,8 @@ def build_router_weight(config: ModelConfig, today: Optional[date] = None) -> fl
     days_remaining = compute_days_remaining(config.expires_on, today=today)
     if days_remaining < 0:
         return 0.0
-    
+
     base_weight = 100.0 / float(days_remaining + 1)
-    
-    # 给最近到期的（比如30天内）额外提升30%的权重
-    if days_remaining <= 30:
-        base_weight *= 1.30
-        
     return max(1.0, base_weight)
 
 

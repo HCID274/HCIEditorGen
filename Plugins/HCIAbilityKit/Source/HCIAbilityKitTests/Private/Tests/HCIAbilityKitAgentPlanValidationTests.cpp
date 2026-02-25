@@ -27,12 +27,19 @@ static FHCIAbilityKitAgentPlan MakeValidTexturePlan()
 	Plan.Intent = TEXT("batch_fix_asset_compliance");
 
 	FHCIAbilityKitAgentPlanStep& Step = Plan.Steps.AddDefaulted_GetRef();
-	Step.StepId = TEXT("s1");
-	Step.ToolName = TEXT("SetTextureMaxSize");
-	Step.RiskLevel = EHCIAbilityKitAgentPlanRiskLevel::Write;
-	Step.bRequiresConfirm = true;
-	Step.RollbackStrategy = TEXT("all_or_nothing");
-	Step.ExpectedEvidence = {TEXT("asset_path"), TEXT("before"), TEXT("after")};
+		Step.StepId = TEXT("s1");
+		Step.ToolName = TEXT("SetTextureMaxSize");
+		Step.RiskLevel = EHCIAbilityKitAgentPlanRiskLevel::Write;
+		Step.bRequiresConfirm = true;
+		Step.RollbackStrategy = TEXT("all_or_nothing");
+		Step.ExpectedEvidence = {
+			TEXT("target_max_size"),
+			TEXT("scanned_count"),
+			TEXT("modified_count"),
+			TEXT("failed_count"),
+			TEXT("modified_assets"),
+			TEXT("failed_assets"),
+			TEXT("result")};
 	Step.Args = MakeShared<FJsonObject>();
 	Step.Args->SetArrayField(TEXT("asset_paths"), HCI_MakeStringArray({TEXT("/Game/Art/T_Test.T_Test")}));
 	Step.Args->SetNumberField(TEXT("max_size"), 1024);
@@ -146,11 +153,18 @@ bool FHCIAbilityKitAgentPlanValidatorOverLimitReturnsE4004Test::RunTest(const FS
 
 	FHCIAbilityKitAgentPlanStep& Step2 = Plan.Steps.AddDefaulted_GetRef();
 	Step2.StepId = TEXT("s2");
-	Step2.ToolName = TEXT("SetTextureMaxSize");
-	Step2.RiskLevel = EHCIAbilityKitAgentPlanRiskLevel::Write;
-	Step2.bRequiresConfirm = true;
-	Step2.RollbackStrategy = TEXT("all_or_nothing");
-	Step2.ExpectedEvidence = {TEXT("asset_path"), TEXT("before"), TEXT("after")};
+		Step2.ToolName = TEXT("SetTextureMaxSize");
+		Step2.RiskLevel = EHCIAbilityKitAgentPlanRiskLevel::Write;
+		Step2.bRequiresConfirm = true;
+		Step2.RollbackStrategy = TEXT("all_or_nothing");
+		Step2.ExpectedEvidence = {
+			TEXT("target_max_size"),
+			TEXT("scanned_count"),
+			TEXT("modified_count"),
+			TEXT("failed_count"),
+			TEXT("modified_assets"),
+			TEXT("failed_assets"),
+			TEXT("result")};
 	Step2.Args = MakeShared<FJsonObject>();
 	Step2.Args->SetArrayField(TEXT("asset_paths"), AssetPathsB);
 	Step2.Args->SetNumberField(TEXT("max_size"), 1024);
@@ -305,6 +319,46 @@ bool FHCIAbilityKitAgentPlanValidatorVariableSourceMustPrecedeConsumerTest::RunT
 	TestEqual(TEXT("Error code"), Result.ErrorCode, FString(TEXT("E4009")));
 	TestEqual(TEXT("Reason"), Result.Reason, FString(TEXT("variable_source_step_must_precede_consumer")));
 	TestTrue(TEXT("Field should point to directory"), Result.Field.Contains(TEXT("steps[0].args.directory")));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FHCIAbilityKitAgentPlanValidatorMissingExpectedEvidenceReturnsE4001Test,
+	"HCIAbilityKit.Editor.AgentPlanValidation.MissingExpectedEvidenceReturnsE4001",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FHCIAbilityKitAgentPlanValidatorMissingExpectedEvidenceReturnsE4001Test::RunTest(const FString& Parameters)
+{
+	FHCIAbilityKitToolRegistry& Registry = FHCIAbilityKitToolRegistry::Get();
+	Registry.ResetToDefaults();
+
+	FHCIAbilityKitAgentPlan Plan = MakeValidTexturePlan();
+	Plan.Steps[0].ExpectedEvidence.Reset();
+
+	FHCIAbilityKitAgentPlanValidationResult Result;
+	TestFalse(TEXT("Missing expected_evidence should fail"), FHCIAbilityKitAgentPlanValidator::ValidatePlan(Plan, Registry, Result));
+	TestEqual(TEXT("Error code"), Result.ErrorCode, FString(TEXT("E4001")));
+	TestTrue(TEXT("Reason should mention expected_evidence"), Result.Reason.Contains(TEXT("expected_evidence")));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FHCIAbilityKitAgentPlanValidatorExpectedEvidenceNotAllowedReturnsE4009Test,
+	"HCIAbilityKit.Editor.AgentPlanValidation.ExpectedEvidenceNotAllowedReturnsE4009",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FHCIAbilityKitAgentPlanValidatorExpectedEvidenceNotAllowedReturnsE4009Test::RunTest(const FString& Parameters)
+{
+	FHCIAbilityKitToolRegistry& Registry = FHCIAbilityKitToolRegistry::Get();
+	Registry.ResetToDefaults();
+
+	FHCIAbilityKitAgentPlan Plan = MakeValidTexturePlan();
+	Plan.Steps[0].ExpectedEvidence = {TEXT("asset_path")};
+
+	FHCIAbilityKitAgentPlanValidationResult Result;
+	TestFalse(TEXT("Unexpected expected_evidence value should fail"), FHCIAbilityKitAgentPlanValidator::ValidatePlan(Plan, Registry, Result));
+	TestEqual(TEXT("Error code"), Result.ErrorCode, FString(TEXT("E4009")));
+	TestEqual(TEXT("Reason"), Result.Reason, FString(TEXT("expected_evidence_not_allowed_for_tool")));
 	return true;
 }
 

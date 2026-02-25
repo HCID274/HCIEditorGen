@@ -129,6 +129,173 @@ static FString HCI_MakeArgFieldPath(const int32 StepIndex, const FString& ArgNam
 	return FString::Printf(TEXT("steps[%d].args.%s"), StepIndex, *ArgName);
 }
 
+static void HCI_AddEvidenceKeys(TSet<FString>& OutSet, std::initializer_list<const TCHAR*> Keys)
+{
+	for (const TCHAR* Key : Keys)
+	{
+		OutSet.Add(FString(Key));
+	}
+}
+
+static bool HCI_GetAllowedExpectedEvidenceSet(
+	const FName ToolName,
+	TSet<FString>& OutAllowedSet)
+{
+	OutAllowedSet.Reset();
+
+	if (ToolName == TEXT("SearchPath"))
+	{
+		HCI_AddEvidenceKeys(OutAllowedSet, {
+			TEXT("keyword"),
+			TEXT("keyword_expanded"),
+			TEXT("keyword_expanded_count"),
+			TEXT("matched_count"),
+			TEXT("matched_directories"),
+			TEXT("best_directory"),
+			TEXT("semantic_fallback_used"),
+			TEXT("semantic_fallback_directory"),
+			TEXT("keyword_normalized"),
+			TEXT("scanned_game_paths"),
+			TEXT("result")});
+		return true;
+	}
+	if (ToolName == TEXT("ScanAssets"))
+	{
+		HCI_AddEvidenceKeys(OutAllowedSet, {
+			TEXT("scan_root"),
+			TEXT("asset_count"),
+			TEXT("result"),
+			TEXT("asset_path"),
+			TEXT("asset_paths")});
+		return true;
+	}
+	if (ToolName == TEXT("SetTextureMaxSize"))
+	{
+		HCI_AddEvidenceKeys(OutAllowedSet, {
+			TEXT("target_max_size"),
+			TEXT("scanned_count"),
+			TEXT("modified_count"),
+			TEXT("failed_count"),
+			TEXT("modified_assets"),
+			TEXT("failed_assets"),
+			TEXT("result")});
+		return true;
+	}
+	if (ToolName == TEXT("SetMeshLODGroup"))
+	{
+		HCI_AddEvidenceKeys(OutAllowedSet, {
+			TEXT("target_lod_group"),
+			TEXT("scanned_count"),
+			TEXT("modified_count"),
+			TEXT("failed_count"),
+			TEXT("modified_assets"),
+			TEXT("failed_assets"),
+			TEXT("result")});
+		return true;
+	}
+	if (ToolName == TEXT("ScanLevelMeshRisks"))
+	{
+		HCI_AddEvidenceKeys(OutAllowedSet, {
+			TEXT("actor_path"),
+			TEXT("issue"),
+			TEXT("evidence"),
+			TEXT("scope"),
+			TEXT("scanned_count"),
+			TEXT("risky_count"),
+			TEXT("risk_summary"),
+			TEXT("risky_actors"),
+			TEXT("missing_collision_actors"),
+			TEXT("default_material_actors"),
+			TEXT("result")});
+		return true;
+	}
+	if (ToolName == TEXT("NormalizeAssetNamingByMetadata"))
+	{
+		HCI_AddEvidenceKeys(OutAllowedSet, {
+			TEXT("result"),
+			TEXT("proposed_renames"),
+			TEXT("proposed_moves"),
+			TEXT("affected_count")});
+		return true;
+	}
+	if (ToolName == TEXT("RenameAsset") || ToolName == TEXT("MoveAsset"))
+	{
+		HCI_AddEvidenceKeys(OutAllowedSet, {
+			TEXT("asset_path"),
+			TEXT("before"),
+			TEXT("after"),
+			TEXT("result"),
+			TEXT("redirector_fixup"),
+			TEXT("redirector_count")});
+		return true;
+	}
+
+	return false;
+}
+
+static bool HCI_ValidateExpectedEvidence(
+	const FHCIAbilityKitAgentPlanStep& Step,
+	const int32 StepIndex,
+	FHCIAbilityKitAgentPlanValidationResult& OutResult)
+{
+	if (Step.ExpectedEvidence.Num() <= 0)
+	{
+		return HCI_Fail(
+			OutResult,
+			TEXT("E4001"),
+			FString::Printf(TEXT("steps[%d].expected_evidence"), StepIndex),
+			TEXT("expected_evidence_missing"),
+			StepIndex,
+			&Step);
+	}
+
+	TSet<FString> AllowedEvidence;
+	if (!HCI_GetAllowedExpectedEvidenceSet(Step.ToolName, AllowedEvidence))
+	{
+		return true;
+	}
+
+	TSet<FString> SeenEvidence;
+	for (int32 EvidenceIndex = 0; EvidenceIndex < Step.ExpectedEvidence.Num(); ++EvidenceIndex)
+	{
+		const FString EvidenceKey = Step.ExpectedEvidence[EvidenceIndex].TrimStartAndEnd();
+		if (EvidenceKey.IsEmpty())
+		{
+			return HCI_Fail(
+				OutResult,
+				TEXT("E4009"),
+				FString::Printf(TEXT("steps[%d].expected_evidence[%d]"), StepIndex, EvidenceIndex),
+				TEXT("expected_evidence_empty"),
+				StepIndex,
+				&Step);
+		}
+		if (SeenEvidence.Contains(EvidenceKey))
+		{
+			return HCI_Fail(
+				OutResult,
+				TEXT("E4009"),
+				FString::Printf(TEXT("steps[%d].expected_evidence[%d]"), StepIndex, EvidenceIndex),
+				TEXT("expected_evidence_duplicate"),
+				StepIndex,
+				&Step);
+		}
+		SeenEvidence.Add(EvidenceKey);
+
+		if (!AllowedEvidence.Contains(EvidenceKey))
+		{
+			return HCI_Fail(
+				OutResult,
+				TEXT("E4009"),
+				FString::Printf(TEXT("steps[%d].expected_evidence[%d]"), StepIndex, EvidenceIndex),
+				TEXT("expected_evidence_not_allowed_for_tool"),
+				StepIndex,
+				&Step);
+		}
+	}
+
+	return true;
+}
+
 static bool HCI_ValidateStringValue(
 	const FHCIAbilityKitToolArgSchema& Schema,
 	const FString& Parsed,
@@ -656,17 +823,21 @@ bool FHCIAbilityKitAgentPlanValidator::ValidatePlan(
 		}
 
 		const bool bExpectedRequiresConfirm = FHCIAbilityKitAgentExecutionGate::IsWriteLikeCapability(Tool->Capability);
-		if (Step.bRequiresConfirm != bExpectedRequiresConfirm)
-		{
-			return HCI_Fail(
-				OutResult,
-				TEXT("E4003"),
+			if (Step.bRequiresConfirm != bExpectedRequiresConfirm)
+			{
+				return HCI_Fail(
+					OutResult,
+					TEXT("E4003"),
 				FString::Printf(TEXT("steps[%d].requires_confirm"), StepIndex),
 				TEXT("requires_confirm_mismatch_with_tool_capability"),
-				StepIndex,
-				&Step);
-		}
+					StepIndex,
+					&Step);
+			}
 
+			if (!HCI_ValidateExpectedEvidence(Step, StepIndex, OutResult))
+			{
+				return false;
+			}
 			if (!HCI_ValidateArgsAgainstSchema(*Tool, Step, StepIndex, OutResult))
 			{
 				return false;

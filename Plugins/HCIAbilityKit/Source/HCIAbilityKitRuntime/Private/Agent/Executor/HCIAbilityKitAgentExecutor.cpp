@@ -928,10 +928,18 @@ bool FHCIAbilityKitAgentExecutor::ExecutePlan(
 				StepResult.Evidence.Add(
 					TEXT("planning_warning_detail"),
 					PipelineBypassWarningDetail.IsEmpty() ? TEXT("规划器未正确使用管道变量") : PipelineBypassWarningDetail);
+				if (StepResult.bSucceeded)
+				{
+					StepResult.bSucceeded = false;
+					StepResult.Status = TEXT("failed");
+					StepResult.ErrorCode = TEXT("E4009");
+					StepResult.Reason = TEXT("planner_pipeline_variable_not_used_after_search");
+					StepResult.FailurePhase = TEXT("precheck");
+				}
 				UE_LOG(
 					LogHCIAbilityKitAgentExecutor,
 					Warning,
-					TEXT("[HCIAbilityKit][AgentExecutor] warning_code=W5101 step_id=%s tool=%s reason=planner_pipeline_variable_not_used_after_search detail=%s"),
+					TEXT("[HCIAbilityKit][AgentExecutor] error_code=E4009 warning_code=W5101 step_id=%s tool=%s reason=planner_pipeline_variable_not_used_after_search detail=%s"),
 					*StepResult.StepId,
 					*StepResult.ToolName,
 					PipelineBypassWarningDetail.IsEmpty() ? TEXT("规划器未正确使用管道变量") : *PipelineBypassWarningDetail);

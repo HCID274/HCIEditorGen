@@ -504,13 +504,13 @@ static bool HCI_TryGetStringArrayField(const TSharedPtr<FJsonObject>& Object, co
 	OutValues.Reset();
 	if (!Object.IsValid() || !Object->HasField(FieldName))
 	{
-		return true;
+		return false;
 	}
 
 	const TSharedPtr<FJsonValue>* FieldValue = Object->Values.Find(FieldName);
 	if (FieldValue == nullptr || !FieldValue->IsValid())
 	{
-		return true;
+		return false;
 	}
 
 	if ((*FieldValue)->Type == EJson::String)
@@ -567,31 +567,6 @@ static bool HCI_TryExtractJsonObjectString(const FString& InText, FString& OutJs
 	return true;
 }
 
-static TSharedPtr<FJsonObject> HCI_MakeDefaultArgsForToolName(const FName ToolName)
-{
-	if (ToolName == TEXT("NormalizeAssetNamingByMetadata"))
-	{
-		return HCI_MakeNamingArgs();
-	}
-	if (ToolName == TEXT("ScanLevelMeshRisks"))
-	{
-		return HCI_MakeLevelRiskArgs();
-	}
-	if (ToolName == TEXT("SetTextureMaxSize"))
-	{
-		return HCI_MakeTextureComplianceArgs();
-	}
-	if (ToolName == TEXT("SetMeshLODGroup"))
-	{
-		return HCI_MakeLodComplianceArgs();
-	}
-	if (ToolName == TEXT("ScanAssets"))
-	{
-		return HCI_MakeScanAssetsArgs();
-	}
-	return nullptr;
-}
-
 static TSharedPtr<FJsonObject> HCI_NormalizeStepArgsBySchema(
 	const FHCIAbilityKitToolRegistry& ToolRegistry,
 	const FName ToolName,
@@ -603,7 +578,6 @@ static TSharedPtr<FJsonObject> HCI_NormalizeStepArgsBySchema(
 		return RawArgsObject.IsValid() ? RawArgsObject : MakeShared<FJsonObject>();
 	}
 
-	const TSharedPtr<FJsonObject> DefaultArgs = HCI_MakeDefaultArgsForToolName(ToolName);
 	const TSharedPtr<FJsonObject> SafeRawArgs = RawArgsObject.IsValid() ? RawArgsObject : MakeShared<FJsonObject>();
 	const TSharedPtr<FJsonObject> NormalizedArgs = MakeShared<FJsonObject>();
 
@@ -617,15 +591,6 @@ static TSharedPtr<FJsonObject> HCI_NormalizeStepArgsBySchema(
 				HCI_NormalizeJsonValueForArgSchema(ArgSchema, *ExistingValue);
 			NormalizedArgs->SetField(Key, NormalizedExistingValue.IsValid() ? NormalizedExistingValue : *ExistingValue);
 			continue;
-		}
-
-		if (DefaultArgs.IsValid())
-		{
-			const TSharedPtr<FJsonValue>* DefaultValue = DefaultArgs->Values.Find(Key);
-			if (DefaultValue != nullptr && DefaultValue->IsValid())
-			{
-				NormalizedArgs->SetField(Key, *DefaultValue);
-			}
 		}
 	}
 
@@ -907,7 +872,7 @@ static bool HCI_EnsureScanAssetsFirstForDirectoryIntent(
 				TEXT("s_scan_assets_preflight"),
 				TEXT("ScanAssets"),
 				HCI_MakeScanAssetsArgs(),
-				{TEXT("asset_path"), TEXT("result")},
+				{TEXT("scan_root"), TEXT("asset_count"), TEXT("asset_paths"), TEXT("result")},
 				ScanStep,
 				OutError))
 		{
@@ -999,10 +964,15 @@ static bool HCI_TryBuildPlanFromLlmPlanJson(
 
 			TArray<FString> ExpectedEvidence;
 			if (!HCI_TryGetStringArrayField(StepObject, TEXT("expected_evidence"), ExpectedEvidence))
-		{
-			OutError = FString::Printf(TEXT("llm_plan.steps[%d].expected_evidence invalid"), Index);
-			return false;
-		}
+			{
+				OutError = FString::Printf(TEXT("llm_plan.steps[%d].expected_evidence invalid"), Index);
+				return false;
+			}
+			if (ExpectedEvidence.Num() <= 0)
+			{
+				OutError = FString::Printf(TEXT("llm_plan.steps[%d].expected_evidence empty"), Index);
+				return false;
+			}
 
 		FHCIAbilityKitAgentPlanStep& Step = OutPlan.Steps.AddDefaulted_GetRef();
 		if (!HCI_StepFromTool(
@@ -1071,26 +1041,26 @@ static bool HCI_BuildKeywordPlan(
 		if (!HCI_StepFromTool(
 				ToolRegistry,
 				TEXT("s1"),
-				TEXT("ScanAssets"),
-				HCI_MakeScanAssetsArgs(),
-				{TEXT("asset_path"), TEXT("result")},
-				ScanStep,
-				OutError))
-		{
-			return false;
+					TEXT("ScanAssets"),
+					HCI_MakeScanAssetsArgs(),
+					{TEXT("scan_root"), TEXT("asset_count"), TEXT("asset_paths"), TEXT("result")},
+					ScanStep,
+					OutError))
+			{
+				return false;
 		}
 
 		FHCIAbilityKitAgentPlanStep& Step = OutPlan.Steps.AddDefaulted_GetRef();
 		if (!HCI_StepFromTool(
 				ToolRegistry,
 				TEXT("s2"),
-				TEXT("NormalizeAssetNamingByMetadata"),
-				HCI_MakeNamingArgs(),
-				{TEXT("asset_path"), TEXT("before"), TEXT("after")},
-				Step,
-				OutError))
-		{
-			return false;
+					TEXT("NormalizeAssetNamingByMetadata"),
+					HCI_MakeNamingArgs(),
+					{TEXT("result"), TEXT("proposed_renames"), TEXT("proposed_moves"), TEXT("affected_count")},
+					Step,
+					OutError))
+			{
+				return false;
 		}
 		}
 		else if (bDirectoryNamingIntent)
@@ -1104,26 +1074,26 @@ static bool HCI_BuildKeywordPlan(
 				if (!HCI_StepFromTool(
 						ToolRegistry,
 						TEXT("step_1_search"),
-						TEXT("SearchPath"),
-						HCI_MakeSearchPathArgs(SearchKeyword),
-						{TEXT("matched_directories"), TEXT("best_directory"), TEXT("result")},
-						SearchStep,
-						OutError))
-			{
-				return false;
+							TEXT("SearchPath"),
+							HCI_MakeSearchPathArgs(SearchKeyword),
+							{TEXT("matched_directories"), TEXT("best_directory"), TEXT("keyword_normalized"), TEXT("result")},
+							SearchStep,
+							OutError))
+				{
+					return false;
 			}
 
 				FHCIAbilityKitAgentPlanStep& ScanStep = OutPlan.Steps.AddDefaulted_GetRef();
 				if (!HCI_StepFromTool(
 						ToolRegistry,
 						TEXT("step_2_scan"),
-						TEXT("ScanAssets"),
-						HCI_MakeScanAssetsArgsWithDirectory(TEXT("{{step_1_search.matched_directories[0]}}")),
-						{TEXT("asset_paths"), TEXT("asset_count"), TEXT("result")},
-						ScanStep,
-						OutError))
-			{
-				return false;
+							TEXT("ScanAssets"),
+							HCI_MakeScanAssetsArgsWithDirectory(TEXT("{{step_1_search.matched_directories[0]}}")),
+							{TEXT("scan_root"), TEXT("asset_count"), TEXT("asset_paths"), TEXT("result")},
+							ScanStep,
+							OutError))
+				{
+					return false;
 			}
 		}
 		else if (bLevelRiskIntent)
@@ -1140,8 +1110,8 @@ static bool HCI_BuildKeywordPlan(
 					{TEXT("actor_path"), TEXT("issue"), TEXT("evidence")},
 					Step,
 					OutError))
-			{
-				return false;
+				{
+					return false;
 			}
 		}
 	else if (bAssetComplianceIntent)
@@ -1156,13 +1126,13 @@ static bool HCI_BuildKeywordPlan(
 			if (!HCI_StepFromTool(
 					ToolRegistry,
 					TEXT("s1"),
-					TEXT("SetTextureMaxSize"),
-					HCI_MakeTextureComplianceArgs(),
-					{TEXT("asset_path"), TEXT("before"), TEXT("after")},
-					*TextureStep,
-					OutError))
-			{
-				return false;
+						TEXT("SetTextureMaxSize"),
+						HCI_MakeTextureComplianceArgs(),
+						{TEXT("target_max_size"), TEXT("scanned_count"), TEXT("modified_count"), TEXT("failed_count"), TEXT("modified_assets"), TEXT("failed_assets"), TEXT("result")},
+						*TextureStep,
+						OutError))
+				{
+					return false;
 			}
 		}
 
@@ -1173,13 +1143,13 @@ static bool HCI_BuildKeywordPlan(
 			if (!HCI_StepFromTool(
 					ToolRegistry,
 					StepId,
-					TEXT("SetMeshLODGroup"),
-					HCI_MakeLodComplianceArgs(),
-					{TEXT("asset_path"), TEXT("before"), TEXT("after")},
-					LodStep,
-					OutError))
-			{
-				return false;
+						TEXT("SetMeshLODGroup"),
+						HCI_MakeLodComplianceArgs(),
+						{TEXT("target_lod_group"), TEXT("scanned_count"), TEXT("modified_count"), TEXT("failed_count"), TEXT("modified_assets"), TEXT("failed_assets"), TEXT("result")},
+						LodStep,
+						OutError))
+				{
+					return false;
 			}
 		}
 
@@ -1198,13 +1168,13 @@ static bool HCI_BuildKeywordPlan(
 		if (!HCI_StepFromTool(
 				ToolRegistry,
 				TEXT("s1"),
-				TEXT("ScanAssets"),
-				HCI_MakeScanAssetsArgs(),
-				{TEXT("asset_path"), TEXT("result")},
-				Step,
-				OutError))
-		{
-			return false;
+					TEXT("ScanAssets"),
+					HCI_MakeScanAssetsArgs(),
+					{TEXT("scan_root"), TEXT("asset_count"), TEXT("asset_paths"), TEXT("result")},
+					Step,
+					OutError))
+			{
+				return false;
 		}
 	}
 

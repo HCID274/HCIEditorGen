@@ -24,7 +24,14 @@ static FHCIAbilityKitAgentPlan MakeF6TexturePlan()
 	Step.RiskLevel = EHCIAbilityKitAgentPlanRiskLevel::Write;
 	Step.bRequiresConfirm = true;
 	Step.RollbackStrategy = TEXT("all_or_nothing");
-	Step.ExpectedEvidence = {TEXT("asset_path"), TEXT("before"), TEXT("after")};
+	Step.ExpectedEvidence = {
+		TEXT("target_max_size"),
+		TEXT("scanned_count"),
+		TEXT("modified_count"),
+		TEXT("failed_count"),
+		TEXT("modified_assets"),
+		TEXT("failed_assets"),
+		TEXT("result")};
 	Step.Args = MakeShared<FJsonObject>();
 
 	TArray<TSharedPtr<FJsonValue>> AssetPaths;

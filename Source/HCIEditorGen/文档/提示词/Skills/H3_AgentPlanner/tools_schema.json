@@ -321,6 +321,15 @@
                   "properties": {
                     "args": {
                       "$ref": "#/properties/tool_args_json_schema/properties/SearchPath"
+                    },
+                    "expected_evidence": {
+                      "items": {
+                        "enum": [
+                          "keyword", "keyword_expanded", "keyword_expanded_count", "matched_count", "matched_directories",
+                          "best_directory", "semantic_fallback_used", "semantic_fallback_directory", "keyword_normalized",
+                          "scanned_game_paths", "result"
+                        ]
+                      }
                     }
                   }
                 }
@@ -337,6 +346,13 @@
                   "properties": {
                     "args": {
                       "$ref": "#/properties/tool_args_json_schema/properties/ScanAssets"
+                    },
+                    "expected_evidence": {
+                      "items": {
+                        "enum": [
+                          "scan_root", "asset_count", "result", "asset_path", "asset_paths"
+                        ]
+                      }
                     }
                   }
                 }
@@ -353,6 +369,13 @@
                   "properties": {
                     "args": {
                       "$ref": "#/properties/tool_args_json_schema/properties/SetTextureMaxSize"
+                    },
+                    "expected_evidence": {
+                      "items": {
+                        "enum": [
+                          "target_max_size", "scanned_count", "modified_count", "failed_count", "modified_assets", "failed_assets", "result"
+                        ]
+                      }
                     }
                   }
                 }
@@ -369,6 +392,13 @@
                   "properties": {
                     "args": {
                       "$ref": "#/properties/tool_args_json_schema/properties/SetMeshLODGroup"
+                    },
+                    "expected_evidence": {
+                      "items": {
+                        "enum": [
+                          "target_lod_group", "scanned_count", "modified_count", "failed_count", "modified_assets", "failed_assets", "result"
+                        ]
+                      }
                     }
                   }
                 }
@@ -385,6 +415,14 @@
                   "properties": {
                     "args": {
                       "$ref": "#/properties/tool_args_json_schema/properties/ScanLevelMeshRisks"
+                    },
+                    "expected_evidence": {
+                      "items": {
+                        "enum": [
+                          "actor_path", "issue", "evidence",
+                          "scope", "scanned_count", "risky_count", "risk_summary", "risky_actors", "missing_collision_actors", "default_material_actors", "result"
+                        ]
+                      }
                     }
                   }
                 }
@@ -401,6 +439,13 @@
                   "properties": {
                     "args": {
                       "$ref": "#/properties/tool_args_json_schema/properties/NormalizeAssetNamingByMetadata"
+                    },
+                    "expected_evidence": {
+                      "items": {
+                        "enum": [
+                          "result", "proposed_renames", "proposed_moves", "affected_count"
+                        ]
+                      }
                     }
                   }
                 }
@@ -417,6 +462,13 @@
                   "properties": {
                     "args": {
                       "$ref": "#/properties/tool_args_json_schema/properties/RenameAsset"
+                    },
+                    "expected_evidence": {
+                      "items": {
+                        "enum": [
+                          "asset_path", "before", "after", "result", "redirector_fixup", "redirector_count"
+                        ]
+                      }
                     }
                   }
                 }
@@ -433,6 +485,13 @@
                   "properties": {
                     "args": {
                       "$ref": "#/properties/tool_args_json_schema/properties/MoveAsset"
+                    },
+                    "expected_evidence": {
+                      "items": {
+                        "enum": [
+                          "asset_path", "before", "after", "result", "redirector_fixup", "redirector_count"
+                        ]
+                      }
                     }
                   }
                 }

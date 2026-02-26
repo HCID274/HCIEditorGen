@@ -119,6 +119,44 @@ bool FHCIAbilityKitAgentPlannerLlmInvalidJsonFallbackTest::RunTest(const FString
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FHCIAbilityKitAgentPlannerLlmContractInvalidFallbackTest,
+	"HCIAbilityKit.Editor.AgentPlanLLM.ContractInvalidFallsBackToKeywordWithMissingExpectedEvidenceDetail",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FHCIAbilityKitAgentPlannerLlmContractInvalidFallbackTest::RunTest(const FString& Parameters)
+{
+	FHCIAbilityKitToolRegistry& Registry = FHCIAbilityKitToolRegistry::Get();
+	Registry.ResetToDefaults();
+
+	FHCIAbilityKitAgentPlannerBuildOptions Options;
+	Options.bPreferLlm = true;
+	Options.LlmMockMode = EHCIAbilityKitAgentPlannerLlmMockMode::ContractInvalid;
+
+	FHCIAbilityKitAgentPlan Plan;
+	FString RouteReason;
+	FHCIAbilityKitAgentPlannerResultMetadata Metadata;
+	FString Error;
+	const bool bBuilt = FHCIAbilityKitAgentPlanner::BuildPlanFromNaturalLanguageWithProvider(
+		TEXT("扫描关卡缺碰撞和默认材质"),
+		TEXT("req_h5_llm_contract_01"),
+		Registry,
+		Options,
+		Plan,
+		RouteReason,
+		Metadata,
+		Error);
+	TestTrue(TEXT("Contract invalid should fallback to keyword plan"), bBuilt);
+	TestEqual(TEXT("Planner provider should be keyword_fallback"), Metadata.PlannerProvider, FString(TEXT("keyword_fallback")));
+	TestTrue(TEXT("Fallback should be used"), Metadata.bFallbackUsed);
+	TestEqual(TEXT("Fallback reason should be llm_contract_invalid"), Metadata.FallbackReason, FString(TEXT("llm_contract_invalid")));
+	TestEqual(TEXT("Error code should be E4303"), Metadata.ErrorCode, FString(TEXT("E4303")));
+	TestTrue(TEXT("Error detail should mention missing expected_evidence"), Error.Contains(TEXT("Missing required field: expected_evidence")));
+	TestEqual(TEXT("Fallback plan intent should be level risk"), Plan.Intent, FString(TEXT("scan_level_mesh_risks")));
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FHCIAbilityKitAgentPlannerLlmRetrySuccessTest,
 	"HCIAbilityKit.Editor.AgentPlanLLM.RetryTimeoutThenLlmSuccess",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)

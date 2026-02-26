@@ -970,14 +970,25 @@ static bool HCI_TryBuildPlanFromLlmPlanJson(
 			ArgsObject = HCI_NormalizeStepArgsBySchema(ToolRegistry, FName(*ToolName), ArgsObject);
 
 			TArray<FString> ExpectedEvidence;
+			if (!StepObject->HasField(TEXT("expected_evidence")))
+			{
+				OutError = FString::Printf(
+					TEXT("Missing required field: expected_evidence (llm_plan.steps[%d])"),
+					Index);
+				return false;
+			}
 			if (!HCI_TryGetStringArrayField(StepObject, TEXT("expected_evidence"), ExpectedEvidence))
 			{
-				OutError = FString::Printf(TEXT("llm_plan.steps[%d].expected_evidence invalid"), Index);
+				OutError = FString::Printf(
+					TEXT("Invalid field type: expected_evidence (llm_plan.steps[%d])"),
+					Index);
 				return false;
 			}
 			if (ExpectedEvidence.Num() <= 0)
 			{
-				OutError = FString::Printf(TEXT("llm_plan.steps[%d].expected_evidence empty"), Index);
+				OutError = FString::Printf(
+					TEXT("Invalid field value: expected_evidence must not be empty (llm_plan.steps[%d])"),
+					Index);
 				return false;
 			}
 
@@ -1273,23 +1284,12 @@ static bool HCI_TryBuildMockLlmPlan(
 	case EHCIAbilityKitAgentPlannerLlmMockMode::ContractInvalid:
 		OutFallbackReason = HCI_FallbackReasonContractInvalid;
 		OutErrorCode = TEXT("E4303");
-		OutPlan = FHCIAbilityKitAgentPlan();
-		OutPlan.RequestId = RequestId;
-		OutPlan.Intent = TEXT("invalid_plan_for_contract_check");
-		OutRouteReason = TEXT("llm_mock_contract_invalid");
-		break;
+		OutError = TEXT("Missing required field: expected_evidence");
+		return false;
 	case EHCIAbilityKitAgentPlannerLlmMockMode::None:
 	default:
 		return HCI_BuildKeywordPlan(UserText, RequestId, ToolRegistry, OutPlan, OutRouteReason, OutError);
 	}
-
-	FString ContractError;
-	if (!FHCIAbilityKitAgentPlanContract::ValidateMinimalContract(OutPlan, ContractError))
-	{
-		OutError = ContractError;
-		return false;
-	}
-	return true;
 }
 
 static bool HCI_IsRetryableLlmFailure(const FString& FallbackReason)
@@ -1873,12 +1873,27 @@ bool FHCIAbilityKitAgentPlanner::BuildPlanFromNaturalLanguageWithProvider(
 	OutMetadata.ErrorCode = LastErrorCode;
 	OutMetadata.ConsecutiveLlmFailures = GHCIAbilityKitAgentPlannerRuntimeState.ConsecutiveLlmFailures;
 	OutError = LastError;
+	if (LastFallbackReason == HCI_FallbackReasonContractInvalid)
+	{
+		UE_LOG(
+			LogHCIAbilityKitAgentPlanner,
+			Display,
+			TEXT("[HCIAbilityKit][AgentPlanLLM][E4303] request_id=%s provider_mode=%s attempts=%d error_code=%s fallback_reason=%s detail=%s input=%s"),
+			*RequestId,
+			*ProviderMode,
+			AttemptsUsed,
+			LastErrorCode.IsEmpty() ? TEXT("E4303") : *LastErrorCode,
+			*LastFallbackReason,
+			LastError.IsEmpty() ? TEXT("-") : *LastError,
+			*UserText);
+	}
 
+	const FString FallbackDetail = OutError;
 	if (!HCI_BuildKeywordPlan(UserText, RequestId, ToolRegistry, OutPlan, OutRouteReason, OutError))
 	{
 		return false;
 	}
-	OutError.Reset();
+	OutError = FallbackDetail;
 	return true;
 }
 

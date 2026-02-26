@@ -37,7 +37,8 @@ Step 5 - JSON Generation:
 - `ui_presentation.risk_warning` should be filled for write/destructive steps; omit for ordinary read-only steps.
 - For `SetTextureMaxSize.asset_paths` / `SetMeshLODGroup.asset_paths`, you MUST use pipeline input from `ScanAssets` evidence (`{{step_x.asset_paths}}`).
 - For `intent = "batch_fix_asset_compliance"`, plan MUST contain at least one write step (`SetTextureMaxSize` or `SetMeshLODGroup`).
-- `fallback_scan_assets` is allowed ONLY for non-directory, non-operational, pure-chat unclear input (user gives no actionable folder/asset target).
+- For pure chat / identity / capability / greeting / unclear non-operational input, DO NOT output any tool steps; return `steps: []` with `assistant_message`.
+- `fallback_scan_assets` is NOT allowed for pure chat.
 - If `ENV_CONTEXT` contains a file list, treat that file list as the ONLY source of truth for concrete asset paths in `RenameAsset`/`MoveAsset`/`NormalizeAssetNamingByMetadata`.
 - Never fabricate asset paths that are not present in `ENV_CONTEXT` when file list is available.
 - `NormalizeAssetNamingByMetadata` / `RenameAsset` / `MoveAsset` are ALLOWED only when `ENV_CONTEXT` already provides concrete asset file list.
@@ -89,7 +90,11 @@ Step 5 - JSON Generation:
 - Case B: explicit absolute path in user input:
   - Use `ScanAssets` directly on that explicit path.
 - Case C: user provides no actionable target and no directory/asset intent:
-  - Fallback to read-only `ScanAssets` with `route_reason = "fallback_scan_assets"`.
+  - Treat as pure chat / clarification.
+  - Return `steps: []`.
+  - Set `intent = "chat_response"`.
+  - Set `route_reason = "pure_chat"` (or a more specific pure-chat route reason).
+  - Provide a short helpful `assistant_message` that answers the question or asks the user to clarify the asset/folder target.
 
 ## FEW-SHOT (placeholder only, no hardcoded path examples)
 - Example: user says "整理那个角色文件夹"
@@ -127,11 +132,18 @@ Step 5 - JSON Generation:
   - preferred tool: `ScanMeshTriangleCount`
   - if user provides explicit `/Game/...` path, set `ScanMeshTriangleCount.args.directory` to that path
   - this is read-only analysis; do NOT map to write tools (`SetMeshLODGroup`) unless user explicitly asks to modify/repair
+- Chitchat / Identity / Capabilities / Greeting:
+  - `intent = "chat_response"`
+  - `route_reason = "pure_chat"`
+  - `steps = []`
+  - `assistant_message` = concise natural-language reply (identity / capabilities / greeting / clarification)
+  - DO NOT output any tool steps
 - Generic fallback:
   - only when input is pure unclear chat with no actionable folder/asset target:
-    - `intent = "scan_assets"`
-    - `route_reason = "fallback_scan_assets"`
-    - tool: `ScanAssets`
+    - `intent = "chat_response"`
+    - `route_reason = "pure_chat_clarify"`
+    - `steps = []`
+    - `assistant_message` asks user to provide a concrete `/Game/...` path or a folder keyword
 
 ## TOOLS_SCHEMA
 {{TOOLS_SCHEMA}}

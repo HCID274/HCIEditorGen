@@ -811,6 +811,10 @@ bool FHCIAbilityKitAgentExecutor::ExecutePlan(
 	for (int32 StepIndex = 0; StepIndex < Plan.Steps.Num(); ++StepIndex)
 	{
 		const FHCIAbilityKitAgentPlanStep& Step = Plan.Steps[StepIndex];
+		if (Options.OnStepBegin)
+		{
+			Options.OnStepBegin(StepIndex, Step);
+		}
 		FHCIAbilityKitAgentPlanStep ResolvedStep;
 		FString ResolveErrorCode;
 		FString ResolveReason;

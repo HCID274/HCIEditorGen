@@ -12,17 +12,15 @@
 #include "Serialization/JsonWriter.h"
 #include "Subsystems/HCIAbilityKitAgentSubsystem.h"
 #include "Styling/AppStyle.h"
+#include "Widgets/Images/SThrobber.h"
 #include "Widgets/Input/SButton.h"
 #include "Widgets/Input/SEditableTextBox.h"
-#include "Widgets/Input/SMultiLineEditableTextBox.h"
-#include "Widgets/Images/SThrobber.h"
 #include "Widgets/Layout/SBorder.h"
 #include "Widgets/Layout/SBox.h"
 #include "Widgets/Layout/SScrollBox.h"
 #include "Widgets/SBoxPanel.h"
 #include "Widgets/SCompoundWidget.h"
 #include "Widgets/SWindow.h"
-#include "Widgets/Notifications/SProgressBar.h"
 #include "Widgets/Text/STextBlock.h"
 
 namespace
@@ -113,6 +111,89 @@ static bool HCI_SaveAgentChatHistory(const TArray<FString>& InLines, FString& Ou
 	return true;
 }
 
+enum class EHCIAbilityKitChatBubbleRole : uint8
+{
+	User,
+	Assistant
+};
+
+enum class EHCIAbilityKitChatBubbleKind : uint8
+{
+	Text,
+	Thinking,
+	ReviewCard,
+	LocateTargets
+};
+
+struct FHCIAbilityKitChatBubbleMessage
+{
+	EHCIAbilityKitChatBubbleRole Role = EHCIAbilityKitChatBubbleRole::Assistant;
+	EHCIAbilityKitChatBubbleKind Kind = EHCIAbilityKitChatBubbleKind::Text;
+	FString Text;
+	FString SubText;
+	bool bShowThrobber = false;
+	bool bShowReviewActions = false;
+	bool bShowPreviewButton = false;
+	TArray<FString> ReviewLines;
+	TArray<FHCIAbilityKitAgentUiLocateTarget> LocateTargets;
+};
+
+static bool HCI_ParseChatHistoryLine(const FString& Line, EHCIAbilityKitChatBubbleRole& OutRole, FString& OutText)
+{
+	if (Line.StartsWith(TEXT("你：")))
+	{
+		OutRole = EHCIAbilityKitChatBubbleRole::User;
+		OutText = Line.RightChop(2);
+		return true;
+	}
+	if (Line.StartsWith(TEXT("系统：")))
+	{
+		OutRole = EHCIAbilityKitChatBubbleRole::Assistant;
+		OutText = Line.RightChop(3);
+		return true;
+	}
+
+	OutRole = EHCIAbilityKitChatBubbleRole::Assistant;
+	OutText = Line;
+	return true;
+}
+
+static FString HCI_FormatHistoryLine(const EHCIAbilityKitChatBubbleRole Role, const FString& Text)
+{
+	return (Role == EHCIAbilityKitChatBubbleRole::User)
+		? FString::Printf(TEXT("你：%s"), *Text)
+		: FString::Printf(TEXT("系统：%s"), *Text);
+}
+
+static bool HCI_ShouldSuppressSystemChatLine(const FString& Text)
+{
+	const FString Trimmed = Text.TrimStartAndEnd();
+	if (Trimmed.IsEmpty())
+	{
+		return true;
+	}
+
+	if (Trimmed.StartsWith(TEXT("已发送，等待规划结果")) ||
+		Trimmed.StartsWith(TEXT("计划卡片已更新")) ||
+		Trimmed.StartsWith(TEXT("检测到只读计划")) ||
+		Trimmed.StartsWith(TEXT("计划包含写操作")))
+	{
+		return true;
+	}
+
+	if (Trimmed.StartsWith(TEXT("DryRun:")) || Trimmed.StartsWith(TEXT("Commit:")))
+	{
+		return true;
+	}
+
+	if (Trimmed.Contains(TEXT("可定位结果项，可在结果面板点击定位")))
+	{
+		return true;
+	}
+
+	return false;
+}
+
 class SHCIAbilityKitAgentChatWindow final : public SCompoundWidget
 {
 public:
@@ -143,144 +224,20 @@ public:
 				SNew(SVerticalBox)
 				+ SVerticalBox::Slot()
 				.AutoHeight()
-				[
-					SAssignNew(StatusTextBlock, STextBlock)
-					.Text(FText::FromString(TEXT("状态：空闲")))
-				]
-				+ SVerticalBox::Slot()
-				.AutoHeight()
-				.Padding(0.0f, 6.0f, 0.0f, 0.0f)
-				[
-					SNew(SHorizontalBox)
-					+ SHorizontalBox::Slot()
-					.AutoWidth()
-					.VAlign(VAlign_Center)
-					[
-						SAssignNew(ProgressThrobber, SThrobber)
-						.Visibility(EVisibility::Collapsed)
-					]
-					+ SHorizontalBox::Slot()
-					.FillWidth(1.0f)
-					.Padding(8.0f, 0.0f, 0.0f, 0.0f)
-					.VAlign(VAlign_Center)
-					[
-						SNew(SVerticalBox)
-						+ SVerticalBox::Slot()
-						.AutoHeight()
-						[
-							SAssignNew(ProgressTextBlock, STextBlock)
-							.Text(FText::FromString(TEXT("进度：未开始")))
-						]
-						+ SVerticalBox::Slot()
-						.AutoHeight()
-						.Padding(0.0f, 4.0f, 0.0f, 0.0f)
-						[
-							SAssignNew(ProgressBar, SProgressBar)
-							.Visibility(EVisibility::Collapsed)
-						]
-					]
-				]
+				[ SNew(STextBlock).Text(FText::FromString(TEXT("HCIAbilityKit Agent Chat"))) ]
 				+ SVerticalBox::Slot()
 				.FillHeight(1.0f)
 				.Padding(0.0f, 8.0f, 0.0f, 8.0f)
 				[
-					SAssignNew(HistoryTextBox, SMultiLineEditableTextBox)
-					.IsReadOnly(true)
-					.AlwaysShowScrollbars(true)
-				]
-				+ SVerticalBox::Slot()
-				.AutoHeight()
-				.Padding(0.0f, 0.0f, 0.0f, 8.0f)
-				[
-					SNew(SBorder)
-					.BorderImage(FAppStyle::GetBrush("ToolPanel.GroupBorder"))
-					.Padding(8.0f)
+					SAssignNew(ChatScrollBox, SScrollBox)
+					+ SScrollBox::Slot()
 					[
-						SNew(SVerticalBox)
-						+ SVerticalBox::Slot()
-						.AutoHeight()
-						[
-							SNew(STextBlock)
-							.Text(FText::FromString(TEXT("计划 / 审查卡")))
-						]
-						+ SVerticalBox::Slot()
-						.AutoHeight()
-						.Padding(0.0f, 4.0f, 0.0f, 4.0f)
-						[
-							SAssignNew(PlanCardTextBox, SMultiLineEditableTextBox)
-							.IsReadOnly(true)
-							.AutoWrapText(true)
-						]
-						+ SVerticalBox::Slot()
-						.AutoHeight()
-						[
-							SNew(SHorizontalBox)
-							+ SHorizontalBox::Slot()
-							.AutoWidth()
-							[
-								SAssignNew(OpenPreviewButton, SButton)
-								.Text(FText::FromString(TEXT("调试预览")))
-								.IsEnabled(false)
-								.OnClicked(this, &SHCIAbilityKitAgentChatWindow::HandleOpenPreviewClicked)
-							]
-							+ SHorizontalBox::Slot()
-							.AutoWidth()
-							.Padding(8.0f, 0.0f, 0.0f, 0.0f)
-							[
-								SAssignNew(CancelPlanButton, SButton)
-								.Text(FText::FromString(TEXT("取消")))
-								.IsEnabled(false)
-								.OnClicked(this, &SHCIAbilityKitAgentChatWindow::HandleCancelPendingPlanClicked)
-							]
-							+ SHorizontalBox::Slot()
-							.AutoWidth()
-							.Padding(8.0f, 0.0f, 0.0f, 0.0f)
-							[
-								SAssignNew(CommitPlanButton, SButton)
-								.Text(FText::FromString(TEXT("确认执行")))
-								.IsEnabled(false)
-								.OnClicked(this, &SHCIAbilityKitAgentChatWindow::HandleCommitLastPlanClicked)
-							]
-						]
+						SAssignNew(ChatMessagesBox, SVerticalBox)
 					]
 				]
 				+ SVerticalBox::Slot()
 				.AutoHeight()
 				.Padding(0.0f, 0.0f, 0.0f, 8.0f)
-				[
-					SNew(SBorder)
-					.BorderImage(FAppStyle::GetBrush("ToolPanel.GroupBorder"))
-					.Padding(8.0f)
-					[
-						SNew(SVerticalBox)
-						+ SVerticalBox::Slot()
-						.AutoHeight()
-						[
-							SNew(STextBlock)
-							.Text(FText::FromString(TEXT("结果定位（点击跳转）")))
-						]
-						+ SVerticalBox::Slot()
-						.AutoHeight()
-						.Padding(0.0f, 4.0f, 0.0f, 0.0f)
-						[
-							SAssignNew(ResultTargetsHintText, STextBlock)
-							.Text(FText::FromString(TEXT("暂无可定位结果。执行扫描后会在这里显示 Actor/Asset。")))
-						]
-						+ SVerticalBox::Slot()
-						.MaxHeight(140.0f)
-						.Padding(0.0f, 4.0f, 0.0f, 0.0f)
-						[
-							SNew(SScrollBox)
-							+ SScrollBox::Slot()
-							[
-								SAssignNew(ResultTargetsBox, SVerticalBox)
-							]
-						]
-					]
-				]
-				+ SVerticalBox::Slot()
-				.AutoHeight()
-				.Padding(0.0f, 8.0f, 0.0f, 0.0f)
 				[
 					SNew(SHorizontalBox)
 					+ SHorizontalBox::Slot()
@@ -305,7 +262,7 @@ public:
 					.FillWidth(1.0f)
 					[
 						SAssignNew(InputTextBox, SEditableTextBox)
-						.HintText(FText::FromString(TEXT("输入自然语言指令，例如：整理临时目录资产并归档")))
+						.HintText(FText::FromString(TEXT("输入自然语言指令，例如：检查一下 /Game/HCI 目录下的模型面数")))
 						.OnTextCommitted(this, &SHCIAbilityKitAgentChatWindow::HandleInputCommitted)
 					]
 					+ SHorizontalBox::Slot()
@@ -333,34 +290,19 @@ public:
 		const int32 RestoredCount = LoadHistoryFromDisk();
 		if (RestoredCount <= 0)
 		{
-			AppendAssistantLine(TEXT("聊天入口已就绪。发送后将走真实 LLM 规划链路，由状态机自动分支执行。"));
+			AppendPersistentTextBubble(EHCIAbilityKitChatBubbleRole::Assistant, TEXT("聊天入口已就绪。你可以直接问问题、扫描目录、检查风险；只读操作会在后台自动完成。"));
 		}
-		else
+		else if (!QuickCommandsLoadError.IsEmpty())
 		{
-			RefreshHistoryText();
-			AppendAssistantLine(FString::Printf(TEXT("已恢复历史消息 %d 条。"), RestoredCount));
+			AppendPersistentTextBubble(EHCIAbilityKitChatBubbleRole::Assistant, FString::Printf(TEXT("快捷指令加载失败：%s"), *QuickCommandsLoadError));
 		}
-
-		if (!QuickCommandsLoadError.IsEmpty())
-		{
-			AppendAssistantLine(FString::Printf(TEXT("快捷指令加载失败：%s"), *QuickCommandsLoadError));
-		}
-
-		if (UHCIAbilityKitAgentSubsystem* AgentSubsystem = GetAgentSubsystem())
-		{
-			if (AgentSubsystem->IsBusy())
-			{
-				SetStatus(TEXT("状态：忙碌（已有请求执行中）"));
-			}
-		}
-		RefreshPlanCardFromSubsystem();
-		RefreshProgressFromSubsystem();
-		RefreshLocateTargetsFromSubsystem();
 
 		if (!InitialInput.TrimStartAndEnd().IsEmpty() && InputTextBox.IsValid())
 		{
 			InputTextBox->SetText(FText::FromString(InitialInput));
 		}
+
+		RebuildChatListWidgets();
 	}
 
 private:
@@ -375,10 +317,12 @@ private:
 		{
 			ChatLineHandle = AgentSubsystem->OnChatLine.AddSP(this, &SHCIAbilityKitAgentChatWindow::HandleSubsystemChatLine);
 			StatusChangedHandle = AgentSubsystem->OnStatusChanged.AddSP(this, &SHCIAbilityKitAgentChatWindow::HandleSubsystemStatusChanged);
+			SummaryHandle = AgentSubsystem->OnSummaryReceived.AddSP(this, &SHCIAbilityKitAgentChatWindow::HandleSubsystemSummaryReceived);
 			PlanReadyHandle = AgentSubsystem->OnPlanReady.AddSP(this, &SHCIAbilityKitAgentChatWindow::HandleSubsystemPlanReady);
 			SessionStateHandle = AgentSubsystem->OnSessionStateChanged.AddSP(this, &SHCIAbilityKitAgentChatWindow::HandleSubsystemSessionStateChanged);
 			ProgressStateHandle = AgentSubsystem->OnProgressStateChanged.AddSP(this, &SHCIAbilityKitAgentChatWindow::HandleSubsystemProgressStateChanged);
 			LocateTargetsChangedHandle = AgentSubsystem->OnLocateTargetsChanged.AddSP(this, &SHCIAbilityKitAgentChatWindow::HandleSubsystemLocateTargetsChanged);
+			ActivityHintHandle = AgentSubsystem->OnActivityHintChanged.AddSP(this, &SHCIAbilityKitAgentChatWindow::HandleSubsystemActivityHintChanged);
 		}
 	}
 
@@ -386,36 +330,14 @@ private:
 	{
 		if (UHCIAbilityKitAgentSubsystem* AgentSubsystem = GetAgentSubsystem())
 		{
-			if (ChatLineHandle.IsValid())
-			{
-				AgentSubsystem->OnChatLine.Remove(ChatLineHandle);
-				ChatLineHandle.Reset();
-			}
-			if (StatusChangedHandle.IsValid())
-			{
-				AgentSubsystem->OnStatusChanged.Remove(StatusChangedHandle);
-				StatusChangedHandle.Reset();
-			}
-			if (PlanReadyHandle.IsValid())
-			{
-				AgentSubsystem->OnPlanReady.Remove(PlanReadyHandle);
-				PlanReadyHandle.Reset();
-			}
-			if (SessionStateHandle.IsValid())
-			{
-				AgentSubsystem->OnSessionStateChanged.Remove(SessionStateHandle);
-				SessionStateHandle.Reset();
-			}
-			if (ProgressStateHandle.IsValid())
-			{
-				AgentSubsystem->OnProgressStateChanged.Remove(ProgressStateHandle);
-				ProgressStateHandle.Reset();
-			}
-			if (LocateTargetsChangedHandle.IsValid())
-			{
-				AgentSubsystem->OnLocateTargetsChanged.Remove(LocateTargetsChangedHandle);
-				LocateTargetsChangedHandle.Reset();
-			}
+			if (ChatLineHandle.IsValid()) { AgentSubsystem->OnChatLine.Remove(ChatLineHandle); ChatLineHandle.Reset(); }
+			if (StatusChangedHandle.IsValid()) { AgentSubsystem->OnStatusChanged.Remove(StatusChangedHandle); StatusChangedHandle.Reset(); }
+			if (SummaryHandle.IsValid()) { AgentSubsystem->OnSummaryReceived.Remove(SummaryHandle); SummaryHandle.Reset(); }
+			if (PlanReadyHandle.IsValid()) { AgentSubsystem->OnPlanReady.Remove(PlanReadyHandle); PlanReadyHandle.Reset(); }
+			if (SessionStateHandle.IsValid()) { AgentSubsystem->OnSessionStateChanged.Remove(SessionStateHandle); SessionStateHandle.Reset(); }
+			if (ProgressStateHandle.IsValid()) { AgentSubsystem->OnProgressStateChanged.Remove(ProgressStateHandle); ProgressStateHandle.Reset(); }
+			if (LocateTargetsChangedHandle.IsValid()) { AgentSubsystem->OnLocateTargetsChanged.Remove(LocateTargetsChangedHandle); LocateTargetsChangedHandle.Reset(); }
+			if (ActivityHintHandle.IsValid()) { AgentSubsystem->OnActivityHintChanged.Remove(ActivityHintHandle); ActivityHintHandle.Reset(); }
 		}
 	}
 
@@ -423,7 +345,6 @@ private:
 	{
 		QuickCommands.Reset();
 		QuickCommandsLoadError.Reset();
-
 		if (UHCIAbilityKitAgentSubsystem* AgentSubsystem = GetAgentSubsystem())
 		{
 			AgentSubsystem->ReloadQuickCommands();
@@ -431,7 +352,6 @@ private:
 			QuickCommandsLoadError = AgentSubsystem->GetQuickCommandsLoadError();
 			return;
 		}
-
 		QuickCommandsLoadError = TEXT("agent_subsystem_unavailable");
 	}
 
@@ -441,26 +361,33 @@ private:
 		{
 			return FReply::Handled();
 		}
-
-		const FString UserInput = InputTextBox->GetText().ToString().TrimStartAndEnd();
-		return SubmitUserInput(UserInput);
+		return SubmitUserInput(InputTextBox->GetText().ToString().TrimStartAndEnd());
 	}
 
 	FReply SubmitUserInput(const FString& UserInput)
 	{
+		const FString Trimmed = UserInput.TrimStartAndEnd();
 		if (InputTextBox.IsValid())
 		{
 			InputTextBox->SetText(FText::GetEmpty());
 		}
+		if (Trimmed.IsEmpty())
+		{
+			return FReply::Handled();
+		}
 
+		BeginNewRequestUiSession();
+		AppendPersistentTextBubble(EHCIAbilityKitChatBubbleRole::User, Trimmed);
+		ActiveThinkingBubbleIndex = AppendThinkingBubble(TEXT("思考中..."), TEXT(""));
+
+		bool bSubmitted = false;
 		if (UHCIAbilityKitAgentSubsystem* AgentSubsystem = GetAgentSubsystem())
 		{
-			AgentSubsystem->SubmitChatInput(UserInput, TEXT("AgentChatUI"));
+			bSubmitted = AgentSubsystem->SubmitChatInput(Trimmed, TEXT("AgentChatUI"));
 		}
-		else
+		if (!bSubmitted)
 		{
-			AppendAssistantLine(TEXT("AgentSubsystem 不可用，无法发送请求。"));
-			SetStatus(TEXT("状态：空闲（上次失败）"));
+			FinalizeThinkingBubbleWithText(TEXT("发送失败：AgentSubsystem 不可用或当前忙碌。"));
 		}
 
 		return FReply::Handled();
@@ -469,12 +396,14 @@ private:
 	FReply HandleClearClicked()
 	{
 		HistoryLines.Reset();
-		if (HistoryTextBox.IsValid())
-		{
-			HistoryTextBox->SetText(FText::GetEmpty());
-		}
+		ChatMessages.Reset();
+		ActiveThinkingBubbleIndex = INDEX_NONE;
+		CurrentRequestReviewBubbleIndex = INDEX_NONE;
+		CurrentRequestLocateBubbleIndex = INDEX_NONE;
+		CachedSummaryText.Reset();
+		CachedStatusText.Reset();
 		SaveHistoryToDisk();
-		AppendAssistantLine(TEXT("历史已清空。"));
+		AppendPersistentTextBubble(EHCIAbilityKitChatBubbleRole::Assistant, TEXT("聊天历史已清空。"));
 		return FReply::Handled();
 	}
 
@@ -486,196 +415,588 @@ private:
 		}
 	}
 
-	void HandleSubsystemChatLine(const FString& Line)
+	void HandleSubsystemChatLine(const FString& RawLine)
 	{
-		AppendHistoryLine(Line);
+		EHCIAbilityKitChatBubbleRole Role = EHCIAbilityKitChatBubbleRole::Assistant;
+		FString Text;
+		if (!HCI_ParseChatHistoryLine(RawLine, Role, Text))
+		{
+			return;
+		}
+
+		Text.TrimStartAndEndInline();
+		if (Role == EHCIAbilityKitChatBubbleRole::User)
+		{
+			return; // UI 已自行插入用户气泡
+		}
+
+		if (HCI_ShouldSuppressSystemChatLine(Text))
+		{
+			return;
+		}
+
+		if (CachedSummaryText == Text)
+		{
+			return; // 避免和 OnSummaryReceived 重复展示
+		}
+
+		if (ChatMessages.IsValidIndex(ActiveThinkingBubbleIndex))
+		{
+			BufferedAssistantLineForActiveRequest = Text;
+			return;
+		}
+
+		AppendPersistentTextBubble(EHCIAbilityKitChatBubbleRole::Assistant, Text);
 	}
 
 	void HandleSubsystemStatusChanged(const FString& StatusText)
 	{
-		SetStatus(StatusText);
+		CachedStatusText = StatusText;
+		RefreshThinkingBubbleFromSubsystem();
 	}
 
-	void HandleSubsystemSessionStateChanged(EHCIAbilityKitAgentSessionState)
+	void HandleSubsystemSummaryReceived(const FString& SummaryText)
 	{
-		RefreshPlanCardFromSubsystem();
-	}
-
-	void HandleSubsystemProgressStateChanged(const FHCIAbilityKitAgentUiProgressState&)
-	{
-		RefreshProgressFromSubsystem();
-	}
-
-	void HandleSubsystemLocateTargetsChanged()
-	{
-		RefreshLocateTargetsFromSubsystem();
+		CachedSummaryText = SummaryText.TrimStartAndEnd();
+		TryFinalizeThinkingBubbleIfReady();
 	}
 
 	void HandleSubsystemPlanReady()
 	{
-		RefreshPlanCardFromSubsystem();
-		AppendAssistantLine(TEXT("计划卡片已更新。只读计划自动执行；写计划会在聊天内显示审查卡并等待确认。"));
+		RefreshThinkingBubbleFromSubsystem();
 	}
 
-	void RefreshProgressFromSubsystem()
+	void HandleSubsystemSessionStateChanged(EHCIAbilityKitAgentSessionState)
 	{
-		FHCIAbilityKitAgentUiProgressState ProgressState;
+		RefreshThinkingBubbleFromSubsystem();
+		RefreshReviewCardBubbleFromSubsystem();
+		TryFinalizeThinkingBubbleIfReady();
+	}
+
+	void HandleSubsystemProgressStateChanged(const FHCIAbilityKitAgentUiProgressState&)
+	{
+		RefreshThinkingBubbleFromSubsystem();
+	}
+
+	void HandleSubsystemLocateTargetsChanged()
+	{
+		RefreshLocateTargetsBubbleFromSubsystem();
+	}
+
+	void HandleSubsystemActivityHintChanged(const FString&)
+	{
+		RefreshThinkingBubbleFromSubsystem();
+	}
+
+	void BeginNewRequestUiSession()
+	{
+		ActiveThinkingBubbleIndex = INDEX_NONE;
+		CurrentRequestReviewBubbleIndex = INDEX_NONE;
+		CurrentRequestLocateBubbleIndex = INDEX_NONE;
+		CachedSummaryText.Reset();
+		CachedStatusText.Reset();
+		BufferedAssistantLineForActiveRequest.Reset();
+	}
+
+	int32 AppendThinkingBubble(const FString& Text, const FString& SubText)
+	{
+		FHCIAbilityKitChatBubbleMessage Msg;
+		Msg.Role = EHCIAbilityKitChatBubbleRole::Assistant;
+		Msg.Kind = EHCIAbilityKitChatBubbleKind::Thinking;
+		Msg.Text = Text;
+		Msg.SubText = SubText;
+		Msg.bShowThrobber = true;
+		ChatMessages.Add(MoveTemp(Msg));
+		RebuildChatListWidgets();
+		return ChatMessages.Num() - 1;
+	}
+
+	int32 AppendPersistentTextBubble(const EHCIAbilityKitChatBubbleRole Role, const FString& Text)
+	{
+		FHCIAbilityKitChatBubbleMessage Msg;
+		Msg.Role = Role;
+		Msg.Kind = EHCIAbilityKitChatBubbleKind::Text;
+		Msg.Text = Text;
+		ChatMessages.Add(MoveTemp(Msg));
+
+		HistoryLines.Add(HCI_FormatHistoryLine(Role, Text));
+		const int32 MaxLines = 120;
+		if (HistoryLines.Num() > MaxLines)
+		{
+			HistoryLines.RemoveAt(0, HistoryLines.Num() - MaxLines);
+		}
+		SaveHistoryToDisk();
+		RebuildChatListWidgets();
+		return ChatMessages.Num() - 1;
+	}
+
+	void FinalizeThinkingBubbleWithText(const FString& Text)
+	{
+		if (!ChatMessages.IsValidIndex(ActiveThinkingBubbleIndex))
+		{
+			AppendPersistentTextBubble(EHCIAbilityKitChatBubbleRole::Assistant, Text);
+			return;
+		}
+
+		FHCIAbilityKitChatBubbleMessage& Msg = ChatMessages[ActiveThinkingBubbleIndex];
+		Msg.Kind = EHCIAbilityKitChatBubbleKind::Text;
+		Msg.Role = EHCIAbilityKitChatBubbleRole::Assistant;
+		Msg.Text = Text;
+		Msg.SubText.Reset();
+		Msg.bShowThrobber = false;
+		Msg.bShowReviewActions = false;
+		Msg.bShowPreviewButton = false;
+		Msg.ReviewLines.Reset();
+		Msg.LocateTargets.Reset();
+		ActiveThinkingBubbleIndex = INDEX_NONE;
+
+		HistoryLines.Add(HCI_FormatHistoryLine(EHCIAbilityKitChatBubbleRole::Assistant, Text));
+		const int32 MaxLines = 120;
+		if (HistoryLines.Num() > MaxLines)
+		{
+			HistoryLines.RemoveAt(0, HistoryLines.Num() - MaxLines);
+		}
+		SaveHistoryToDisk();
+		RebuildChatListWidgets();
+	}
+
+	void RefreshThinkingBubbleFromSubsystem()
+	{
+		if (!ChatMessages.IsValidIndex(ActiveThinkingBubbleIndex))
+		{
+			return;
+		}
+
+		FString ActivityHint;
+		FString ProgressLabel;
+		EHCIAbilityKitAgentSessionState State = EHCIAbilityKitAgentSessionState::Idle;
+		bool bHasSubsystem = false;
 		if (UHCIAbilityKitAgentSubsystem* AgentSubsystem = GetAgentSubsystem())
 		{
+			bHasSubsystem = true;
+			AgentSubsystem->GetCurrentActivityHint(ActivityHint);
+			FHCIAbilityKitAgentUiProgressState ProgressState;
 			AgentSubsystem->GetCurrentProgressState(ProgressState);
+			ProgressLabel = ProgressState.Label;
+			State = AgentSubsystem->GetCurrentState();
 		}
 
-		if (ProgressTextBlock.IsValid())
-		{
-			ProgressTextBlock->SetText(FText::FromString(
-				ProgressState.Label.IsEmpty() ? TEXT("进度：未开始") : ProgressState.Label));
-		}
-
-		if (ProgressBar.IsValid())
-		{
-			ProgressBar->SetVisibility(ProgressState.bVisible ? EVisibility::Visible : EVisibility::Collapsed);
-			if (ProgressState.bIndeterminate)
-			{
-				ProgressBar->SetPercent(TOptional<float>());
-			}
-			else
-			{
-				ProgressBar->SetPercent(ProgressState.Percent01);
-			}
-		}
-
-		if (ProgressThrobber.IsValid())
-		{
-			ProgressThrobber->SetVisibility(
-				(ProgressState.bVisible && ProgressState.bIndeterminate) ? EVisibility::Visible : EVisibility::Collapsed);
-		}
-	}
-
-	void RefreshLocateTargetsFromSubsystem()
-	{
-		ResultLocateTargets.Reset();
-		if (UHCIAbilityKitAgentSubsystem* AgentSubsystem = GetAgentSubsystem())
-		{
-			AgentSubsystem->GetLastExecutionLocateTargets(ResultLocateTargets);
-		}
-
-		if (ResultTargetsHintText.IsValid())
-		{
-			if (ResultLocateTargets.Num() <= 0)
-			{
-				ResultTargetsHintText->SetText(FText::FromString(TEXT("暂无可定位结果。执行扫描后会在这里显示 Actor/Asset。")));
-			}
-			else
-			{
-				ResultTargetsHintText->SetText(FText::FromString(FString::Printf(
-					TEXT("共 %d 项。点击按钮可在视口或内容浏览器定位。"),
-					ResultLocateTargets.Num())));
-			}
-		}
-
-		if (!ResultTargetsBox.IsValid())
+		FHCIAbilityKitChatBubbleMessage& Msg = ChatMessages[ActiveThinkingBubbleIndex];
+		if (Msg.Kind != EHCIAbilityKitChatBubbleKind::Thinking && Msg.Kind != EHCIAbilityKitChatBubbleKind::Text)
 		{
 			return;
 		}
 
-		ResultTargetsBox->ClearChildren();
-		if (ResultLocateTargets.Num() <= 0)
-		{
-			ResultTargetsBox->AddSlot()
-			.AutoHeight()
-			[
-				SNew(STextBlock)
-				.Text(FText::FromString(TEXT("无结果项")))
-			];
-			return;
-		}
+		const FString NewMainText = ActivityHint.IsEmpty() ? TEXT("思考中...") : ActivityHint;
+		Msg.Text = NewMainText;
+		Msg.SubText = ProgressLabel;
 
-		const int32 MaxButtons = FMath::Min(ResultLocateTargets.Num(), 16);
-		for (int32 Index = 0; Index < MaxButtons; ++Index)
-		{
-			const FString Label = ResultLocateTargets[Index].DisplayLabel;
-			ResultTargetsBox->AddSlot()
-			.AutoHeight()
-			.Padding(0.0f, 0.0f, 0.0f, 4.0f)
-			[
-				SNew(SButton)
-				.Text(FText::FromString(Label))
-				.ToolTipText(FText::FromString(ResultLocateTargets[Index].TargetPath))
-				.OnClicked_Lambda([WeakThis = TWeakPtr<SHCIAbilityKitAgentChatWindow>(SharedThis(this)), Index]()
-				{
-					const TSharedPtr<SHCIAbilityKitAgentChatWindow> Pinned = WeakThis.Pin();
-					if (!Pinned.IsValid())
-					{
-						return FReply::Handled();
-					}
-					return Pinned->HandleLocateResultTargetClicked(Index);
-				})
-			];
-		}
+		const bool bActiveThinkingState = bHasSubsystem && (
+			State == EHCIAbilityKitAgentSessionState::Thinking ||
+			State == EHCIAbilityKitAgentSessionState::PlanReady ||
+			State == EHCIAbilityKitAgentSessionState::AutoExecuteReadOnly ||
+			State == EHCIAbilityKitAgentSessionState::Executing ||
+			State == EHCIAbilityKitAgentSessionState::Summarizing);
 
-		if (ResultLocateTargets.Num() > MaxButtons)
-		{
-			ResultTargetsBox->AddSlot()
-			.AutoHeight()
-			[
-				SNew(STextBlock)
-				.Text(FText::FromString(FString::Printf(TEXT("仅显示前 %d 项（总计 %d 项）"), MaxButtons, ResultLocateTargets.Num())))
-			];
-		}
+		Msg.Kind = EHCIAbilityKitChatBubbleKind::Thinking;
+		Msg.bShowThrobber = bActiveThinkingState;
+		RebuildChatListWidgets();
 	}
 
-	void RefreshPlanCardFromSubsystem()
+	void TryFinalizeThinkingBubbleIfReady()
 	{
-		TArray<FString> CardLines;
-		bool bHasPlan = false;
-		if (UHCIAbilityKitAgentSubsystem* AgentSubsystem = GetAgentSubsystem())
+		if (!ChatMessages.IsValidIndex(ActiveThinkingBubbleIndex))
 		{
-			bHasPlan = AgentSubsystem->BuildLastPlanCardLines(CardLines);
+			return;
 		}
-
-		if (PlanCardTextBox.IsValid())
+		if (CachedSummaryText.IsEmpty())
 		{
-			if (!bHasPlan || CardLines.Num() <= 0)
-			{
-				PlanCardTextBox->SetText(FText::FromString(TEXT("暂无计划。发送请求后将展示状态、意图和步骤摘要。")));
-			}
-			else
-			{
-				FString CardText;
-				for (int32 Index = 0; Index < CardLines.Num(); ++Index)
-				{
-					if (Index > 0)
-					{
-						CardText += LINE_TERMINATOR;
-					}
-					CardText += CardLines[Index];
-				}
-				PlanCardTextBox->SetText(FText::FromString(CardText));
-			}
-		}
-
-		if (OpenPreviewButton.IsValid())
-		{
-			OpenPreviewButton->SetEnabled(bHasPlan);
-		}
-		if (CommitPlanButton.IsValid())
-		{
-			bool bCanCommit = false;
-			bool bCanCancel = false;
 			if (UHCIAbilityKitAgentSubsystem* AgentSubsystem = GetAgentSubsystem())
 			{
-				bCanCommit = AgentSubsystem->CanCommitLastPlanFromChat();
-				bCanCancel = AgentSubsystem->CanCancelPendingPlanFromChat();
+				const EHCIAbilityKitAgentSessionState State = AgentSubsystem->GetCurrentState();
+				if ((State == EHCIAbilityKitAgentSessionState::Failed || State == EHCIAbilityKitAgentSessionState::Cancelled) &&
+					!BufferedAssistantLineForActiveRequest.IsEmpty())
+				{
+					FinalizeThinkingBubbleWithText(BufferedAssistantLineForActiveRequest);
+					BufferedAssistantLineForActiveRequest.Reset();
+				}
 			}
-			CommitPlanButton->SetEnabled(bHasPlan && bCanCommit);
-			if (CancelPlanButton.IsValid())
+			return;
+		}
+
+		bool bReadyToFinalize = false;
+		if (UHCIAbilityKitAgentSubsystem* AgentSubsystem = GetAgentSubsystem())
+		{
+			const EHCIAbilityKitAgentSessionState State = AgentSubsystem->GetCurrentState();
+			const bool bHasPlan = AgentSubsystem->HasLastPlan();
+			bReadyToFinalize = !bHasPlan ||
+				State == EHCIAbilityKitAgentSessionState::AwaitUserConfirm ||
+				State == EHCIAbilityKitAgentSessionState::Completed ||
+				State == EHCIAbilityKitAgentSessionState::Failed ||
+				State == EHCIAbilityKitAgentSessionState::Cancelled;
+		}
+		else
+		{
+			bReadyToFinalize = true;
+		}
+
+		if (!bReadyToFinalize)
+		{
+			return;
+		}
+
+		FinalizeThinkingBubbleWithText(CachedSummaryText);
+		CachedSummaryText.Reset();
+		BufferedAssistantLineForActiveRequest.Reset();
+	}
+
+	void RefreshReviewCardBubbleFromSubsystem()
+	{
+		UHCIAbilityKitAgentSubsystem* AgentSubsystem = GetAgentSubsystem();
+		if (!AgentSubsystem)
+		{
+			return;
+		}
+
+		if (!AgentSubsystem->CanCommitLastPlanFromChat() && !AgentSubsystem->CanCancelPendingPlanFromChat())
+		{
+			return;
+		}
+
+		TArray<FString> CardLines;
+		if (!AgentSubsystem->BuildLastPlanCardLines(CardLines) || CardLines.Num() <= 0)
+		{
+			return;
+		}
+
+		FHCIAbilityKitChatBubbleMessage* TargetMsg = nullptr;
+		if (ChatMessages.IsValidIndex(CurrentRequestReviewBubbleIndex))
+		{
+			TargetMsg = &ChatMessages[CurrentRequestReviewBubbleIndex];
+		}
+		else
+		{
+			FHCIAbilityKitChatBubbleMessage Msg;
+			Msg.Role = EHCIAbilityKitChatBubbleRole::Assistant;
+			Msg.Kind = EHCIAbilityKitChatBubbleKind::ReviewCard;
+			ChatMessages.Add(MoveTemp(Msg));
+			CurrentRequestReviewBubbleIndex = ChatMessages.Num() - 1;
+			TargetMsg = &ChatMessages[CurrentRequestReviewBubbleIndex];
+		}
+
+		TargetMsg->Role = EHCIAbilityKitChatBubbleRole::Assistant;
+		TargetMsg->Kind = EHCIAbilityKitChatBubbleKind::ReviewCard;
+		TargetMsg->Text = TEXT("待确认执行（写操作）");
+		TargetMsg->ReviewLines = CardLines;
+		TargetMsg->bShowReviewActions = true;
+		TargetMsg->bShowPreviewButton = true;
+		RebuildChatListWidgets();
+	}
+
+	void RefreshLocateTargetsBubbleFromSubsystem()
+	{
+		UHCIAbilityKitAgentSubsystem* AgentSubsystem = GetAgentSubsystem();
+		if (!AgentSubsystem)
+		{
+			return;
+		}
+
+		TArray<FHCIAbilityKitAgentUiLocateTarget> Targets;
+		AgentSubsystem->GetLastExecutionLocateTargets(Targets);
+		if (Targets.Num() <= 0)
+		{
+			return;
+		}
+
+		FHCIAbilityKitChatBubbleMessage* TargetMsg = nullptr;
+		if (ChatMessages.IsValidIndex(CurrentRequestLocateBubbleIndex))
+		{
+			TargetMsg = &ChatMessages[CurrentRequestLocateBubbleIndex];
+		}
+		else
+		{
+			FHCIAbilityKitChatBubbleMessage Msg;
+			Msg.Role = EHCIAbilityKitChatBubbleRole::Assistant;
+			Msg.Kind = EHCIAbilityKitChatBubbleKind::LocateTargets;
+			ChatMessages.Add(MoveTemp(Msg));
+			CurrentRequestLocateBubbleIndex = ChatMessages.Num() - 1;
+			TargetMsg = &ChatMessages[CurrentRequestLocateBubbleIndex];
+		}
+
+		TargetMsg->Text = FString::Printf(TEXT("结果定位（%d 项，可点击跳转）"), Targets.Num());
+		TargetMsg->LocateTargets = MoveTemp(Targets);
+		RebuildChatListWidgets();
+	}
+
+	TSharedRef<SWidget> BuildBubbleWidget(const int32 MessageIndex)
+	{
+		const FHCIAbilityKitChatBubbleMessage& Msg = ChatMessages[MessageIndex];
+		const bool bIsUser = Msg.Role == EHCIAbilityKitChatBubbleRole::User;
+		const FLinearColor BubbleColor = bIsUser
+			? FLinearColor(0.14f, 0.38f, 0.93f, 1.0f)
+			: FLinearColor(0.17f, 0.17f, 0.19f, 1.0f);
+
+		TSharedRef<SVerticalBox> ContentBox = SNew(SVerticalBox);
+
+		if (Msg.Kind == EHCIAbilityKitChatBubbleKind::Thinking)
+		{
+			ContentBox->AddSlot()
+			.AutoHeight()
+			[
+				SNew(SHorizontalBox)
+				+ SHorizontalBox::Slot()
+				.AutoWidth()
+				.VAlign(VAlign_Center)
+				[
+					SNew(SThrobber)
+					.Visibility(Msg.bShowThrobber ? EVisibility::Visible : EVisibility::Collapsed)
+				]
+				+ SHorizontalBox::Slot()
+				.FillWidth(1.0f)
+				.Padding(8.0f, 0.0f, 0.0f, 0.0f)
+				[
+					SNew(STextBlock)
+					.Text(FText::FromString(Msg.Text))
+					.AutoWrapText(true)
+					.WrapTextAt(560.0f)
+					.ColorAndOpacity(FSlateColor(FLinearColor::White))
+				]
+			];
+
+			if (!Msg.SubText.IsEmpty())
 			{
-				CancelPlanButton->SetEnabled(bHasPlan && bCanCancel);
+				ContentBox->AddSlot()
+				.AutoHeight()
+				.Padding(0.0f, 6.0f, 0.0f, 0.0f)
+				[
+					SNew(STextBlock)
+					.Text(FText::FromString(Msg.SubText))
+					.AutoWrapText(true)
+					.WrapTextAt(560.0f)
+					.ColorAndOpacity(FSlateColor(FLinearColor(0.82f, 0.82f, 0.86f, 1.0f)))
+				];
 			}
 		}
-		else if (CancelPlanButton.IsValid())
+		else if (Msg.Kind == EHCIAbilityKitChatBubbleKind::ReviewCard)
 		{
-			CancelPlanButton->SetEnabled(false);
+			ContentBox->AddSlot().AutoHeight()
+			[
+				SNew(STextBlock)
+				.Text(FText::FromString(Msg.Text))
+				.AutoWrapText(true)
+				.WrapTextAt(560.0f)
+				.ColorAndOpacity(FSlateColor(FLinearColor::White))
+			];
+
+			for (int32 LineIndex = 0; LineIndex < Msg.ReviewLines.Num(); ++LineIndex)
+			{
+				ContentBox->AddSlot().AutoHeight().Padding(0.0f, 4.0f, 0.0f, 0.0f)
+				[
+					SNew(STextBlock)
+					.Text(FText::FromString(Msg.ReviewLines[LineIndex]))
+					.AutoWrapText(true)
+					.WrapTextAt(560.0f)
+					.ColorAndOpacity(FSlateColor(FLinearColor(0.90f, 0.90f, 0.92f, 1.0f)))
+				];
+			}
+
+			if (Msg.bShowReviewActions)
+			{
+				ContentBox->AddSlot().AutoHeight().Padding(0.0f, 8.0f, 0.0f, 0.0f)
+				[
+					SNew(SHorizontalBox)
+					+ SHorizontalBox::Slot().AutoWidth()
+					[
+						SNew(SButton)
+						.Text(FText::FromString(TEXT("取消")))
+						.OnClicked(this, &SHCIAbilityKitAgentChatWindow::HandleCancelPendingPlanClicked)
+					]
+					+ SHorizontalBox::Slot().AutoWidth().Padding(8.0f, 0.0f, 0.0f, 0.0f)
+					[
+						SNew(SButton)
+						.Text(FText::FromString(TEXT("确认执行")))
+						.OnClicked(this, &SHCIAbilityKitAgentChatWindow::HandleCommitLastPlanClicked)
+					]
+					+ SHorizontalBox::Slot().AutoWidth().Padding(8.0f, 0.0f, 0.0f, 0.0f)
+					[
+						SNew(SButton)
+						.Visibility(Msg.bShowPreviewButton ? EVisibility::Visible : EVisibility::Collapsed)
+						.Text(FText::FromString(TEXT("调试预览")))
+						.OnClicked(this, &SHCIAbilityKitAgentChatWindow::HandleOpenPreviewClicked)
+					]
+				];
+			}
+		}
+		else if (Msg.Kind == EHCIAbilityKitChatBubbleKind::LocateTargets)
+		{
+			ContentBox->AddSlot().AutoHeight()
+			[
+				SNew(STextBlock)
+				.Text(FText::FromString(Msg.Text))
+				.AutoWrapText(true)
+				.WrapTextAt(560.0f)
+				.ColorAndOpacity(FSlateColor(FLinearColor::White))
+			];
+
+			const int32 MaxButtons = FMath::Min(Msg.LocateTargets.Num(), 12);
+			for (int32 Index = 0; Index < MaxButtons; ++Index)
+			{
+				const FHCIAbilityKitAgentUiLocateTarget& Target = Msg.LocateTargets[Index];
+				ContentBox->AddSlot().AutoHeight().Padding(0.0f, 6.0f, 0.0f, 0.0f)
+				[
+					SNew(SButton)
+					.Text(FText::FromString(Target.DisplayLabel))
+					.ToolTipText(FText::FromString(Target.TargetPath))
+					.OnClicked_Lambda([this, Index]()
+					{
+						return HandleLocateResultTargetClicked(Index);
+					})
+				];
+			}
+
+			if (Msg.LocateTargets.Num() > MaxButtons)
+			{
+				ContentBox->AddSlot().AutoHeight().Padding(0.0f, 6.0f, 0.0f, 0.0f)
+				[
+					SNew(STextBlock)
+					.Text(FText::FromString(FString::Printf(TEXT("仅显示前 %d 项（总计 %d 项）"), MaxButtons, Msg.LocateTargets.Num())))
+					.AutoWrapText(true)
+					.WrapTextAt(560.0f)
+					.ColorAndOpacity(FSlateColor(FLinearColor(0.82f, 0.82f, 0.86f, 1.0f)))
+				];
+			}
+		}
+		else
+		{
+			ContentBox->AddSlot().AutoHeight()
+			[
+				SNew(STextBlock)
+				.Text(FText::FromString(Msg.Text))
+				.AutoWrapText(true)
+				.WrapTextAt(560.0f)
+				.ColorAndOpacity(FSlateColor(FLinearColor::White))
+			];
+
+			if (!Msg.SubText.IsEmpty())
+			{
+				ContentBox->AddSlot().AutoHeight().Padding(0.0f, 6.0f, 0.0f, 0.0f)
+				[
+					SNew(STextBlock)
+					.Text(FText::FromString(Msg.SubText))
+					.AutoWrapText(true)
+					.WrapTextAt(560.0f)
+					.ColorAndOpacity(FSlateColor(FLinearColor(0.82f, 0.82f, 0.86f, 1.0f)))
+				];
+			}
+		}
+
+		return SNew(SHorizontalBox)
+			+ SHorizontalBox::Slot()
+			.HAlign(bIsUser ? HAlign_Right : HAlign_Left)
+			.FillWidth(1.0f)
+			[
+				SNew(SBox)
+				.MaxDesiredWidth(620.0f)
+				[
+					SNew(SBorder)
+					.BorderImage(FAppStyle::GetBrush("WhiteBrush"))
+					.BorderBackgroundColor(BubbleColor)
+					.Padding(FMargin(12.0f, 10.0f))
+					[
+						ContentBox
+					]
+				]
+			];
+	}
+
+	void RebuildChatListWidgets()
+	{
+		if (!ChatMessagesBox.IsValid())
+		{
+			return;
+		}
+
+		ChatMessagesBox->ClearChildren();
+		for (int32 Index = 0; Index < ChatMessages.Num(); ++Index)
+		{
+			ChatMessagesBox->AddSlot()
+			.AutoHeight()
+			.Padding(0.0f, 0.0f, 0.0f, 8.0f)
+			[
+				BuildBubbleWidget(Index)
+			];
+		}
+
+		if (ChatScrollBox.IsValid())
+		{
+			ChatScrollBox->ScrollToEnd();
+		}
+	}
+
+	int32 LoadHistoryFromDisk()
+	{
+		FString Error;
+		if (!HCI_LoadAgentChatHistory(HistoryLines, Error))
+		{
+			HistoryLines.Reset();
+			AppendPersistentTextBubble(EHCIAbilityKitChatBubbleRole::Assistant, FString::Printf(TEXT("历史加载失败：%s"), *Error));
+			return -1;
+		}
+
+		for (const FString& Line : HistoryLines)
+		{
+			EHCIAbilityKitChatBubbleRole Role;
+			FString Text;
+			HCI_ParseChatHistoryLine(Line, Role, Text);
+			FHCIAbilityKitChatBubbleMessage Msg;
+			Msg.Role = Role;
+			Msg.Kind = EHCIAbilityKitChatBubbleKind::Text;
+			Msg.Text = Text;
+			ChatMessages.Add(MoveTemp(Msg));
+		}
+		return HistoryLines.Num();
+	}
+
+	void SaveHistoryToDisk() const
+	{
+		FString Error;
+		if (!HCI_SaveAgentChatHistory(HistoryLines, Error))
+		{
+			UE_LOG(LogTemp, Warning, TEXT("[HCIAbilityKit][AgentChatUI] save_history_failed reason=%s"), *Error);
+		}
+	}
+
+	void RebuildQuickCommandButtons()
+	{
+		if (!QuickCommandsBox.IsValid())
+		{
+			return;
+		}
+
+		QuickCommandsBox->ClearChildren();
+		if (QuickCommands.Num() <= 0)
+		{
+			QuickCommandsBox->AddSlot().AutoWidth()
+			[
+				SNew(STextBlock).Text(FText::FromString(TEXT("未配置")))
+			];
+			return;
+		}
+
+		for (const FHCIAbilityKitAgentQuickCommand& Command : QuickCommands)
+		{
+			const FString PromptText = Command.Prompt;
+			QuickCommandsBox->AddSlot()
+			.AutoWidth()
+			.Padding(0.0f, 0.0f, 8.0f, 0.0f)
+			[
+				SNew(SButton)
+				.Text(FText::FromString(Command.Label))
+				.OnClicked_Lambda([this, PromptText]()
+				{
+					return SubmitUserInput(PromptText);
+				})
+			];
 		}
 	}
 
@@ -715,151 +1036,40 @@ private:
 		return FReply::Handled();
 	}
 
-	void AppendUserLine(const FString& Text)
-	{
-		AppendHistoryLine(FString::Printf(TEXT("你：%s"), *Text));
-	}
-
-	void AppendAssistantLine(const FString& Text)
-	{
-		AppendHistoryLine(FString::Printf(TEXT("系统：%s"), *Text));
-	}
-
-	void AppendHistoryLine(const FString& Line)
-	{
-		HistoryLines.Add(Line);
-		constexpr int32 MaxLines = 120;
-		if (HistoryLines.Num() > MaxLines)
-		{
-			HistoryLines.RemoveAt(0, HistoryLines.Num() - MaxLines);
-		}
-		RefreshHistoryText();
-		SaveHistoryToDisk();
-	}
-
-	void RefreshHistoryText()
-	{
-		if (!HistoryTextBox.IsValid())
-		{
-			return;
-		}
-
-		FString History;
-		for (int32 Index = 0; Index < HistoryLines.Num(); ++Index)
-		{
-			if (Index > 0)
-			{
-				History += LINE_TERMINATOR;
-			}
-			History += HistoryLines[Index];
-		}
-		HistoryTextBox->SetText(FText::FromString(History));
-	}
-
-	void SetStatus(const FString& InStatus)
-	{
-		if (StatusTextBlock.IsValid())
-		{
-			StatusTextBlock->SetText(FText::FromString(InStatus));
-		}
-	}
-
-	int32 LoadHistoryFromDisk()
-	{
-		FString Error;
-		if (!HCI_LoadAgentChatHistory(HistoryLines, Error))
-		{
-			HistoryLines.Reset();
-			AppendAssistantLine(FString::Printf(TEXT("历史加载失败：%s"), *Error));
-			return -1;
-		}
-		return HistoryLines.Num();
-	}
-
-	void SaveHistoryToDisk() const
-	{
-		FString Error;
-		if (!HCI_SaveAgentChatHistory(HistoryLines, Error))
-		{
-			UE_LOG(LogTemp, Warning, TEXT("[HCIAbilityKit][AgentChatUI] save_history_failed reason=%s"), *Error);
-		}
-	}
-
-	void RebuildQuickCommandButtons()
-	{
-		if (!QuickCommandsBox.IsValid())
-		{
-			return;
-		}
-
-		QuickCommandsBox->ClearChildren();
-		if (QuickCommands.Num() <= 0)
-		{
-			QuickCommandsBox->AddSlot()
-			.AutoWidth()
-			[
-				SNew(STextBlock)
-				.Text(FText::FromString(TEXT("未配置")))
-			];
-			return;
-		}
-
-		const TWeakPtr<SHCIAbilityKitAgentChatWindow> WeakWidget(SharedThis(this));
-		for (const FHCIAbilityKitAgentQuickCommand& Command : QuickCommands)
-		{
-			const FString PromptText = Command.Prompt;
-			QuickCommandsBox->AddSlot()
-			.AutoWidth()
-			.Padding(0.0f, 0.0f, 8.0f, 0.0f)
-			[
-				SNew(SButton)
-				.Text(FText::FromString(Command.Label))
-				.OnClicked_Lambda([WeakWidget, PromptText]()
-				{
-					const TSharedPtr<SHCIAbilityKitAgentChatWindow> Pinned = WeakWidget.Pin();
-					if (!Pinned.IsValid())
-					{
-						return FReply::Handled();
-					}
-					return Pinned->SubmitUserInput(PromptText);
-				})
-			];
-		}
-	}
-
 private:
 	FString InitialInput;
 	FString QuickCommandsLoadError;
+	FString CachedSummaryText;
+	FString CachedStatusText;
+	FString BufferedAssistantLineForActiveRequest;
 	TArray<FString> HistoryLines;
 	TArray<FHCIAbilityKitAgentQuickCommand> QuickCommands;
-	TArray<FHCIAbilityKitAgentUiLocateTarget> ResultLocateTargets;
-	TSharedPtr<SMultiLineEditableTextBox> HistoryTextBox;
-	TSharedPtr<SMultiLineEditableTextBox> PlanCardTextBox;
+	TArray<FHCIAbilityKitChatBubbleMessage> ChatMessages;
+	int32 ActiveThinkingBubbleIndex = INDEX_NONE;
+	int32 CurrentRequestReviewBubbleIndex = INDEX_NONE;
+	int32 CurrentRequestLocateBubbleIndex = INDEX_NONE;
+
+	TSharedPtr<SScrollBox> ChatScrollBox;
+	TSharedPtr<SVerticalBox> ChatMessagesBox;
 	TSharedPtr<SEditableTextBox> InputTextBox;
-	TSharedPtr<STextBlock> StatusTextBlock;
-	TSharedPtr<STextBlock> ProgressTextBlock;
-	TSharedPtr<STextBlock> ResultTargetsHintText;
-	TSharedPtr<SProgressBar> ProgressBar;
-	TSharedPtr<SThrobber> ProgressThrobber;
-	TSharedPtr<SVerticalBox> ResultTargetsBox;
 	TSharedPtr<SHorizontalBox> QuickCommandsBox;
-	TSharedPtr<SButton> OpenPreviewButton;
-	TSharedPtr<SButton> CancelPlanButton;
-	TSharedPtr<SButton> CommitPlanButton;
+
 	FDelegateHandle ChatLineHandle;
 	FDelegateHandle StatusChangedHandle;
+	FDelegateHandle SummaryHandle;
 	FDelegateHandle PlanReadyHandle;
 	FDelegateHandle SessionStateHandle;
 	FDelegateHandle ProgressStateHandle;
 	FDelegateHandle LocateTargetsChangedHandle;
+	FDelegateHandle ActivityHintHandle;
 };
 }
 
 void FHCIAbilityKitAgentChatWindow::OpenWindow(const FString& InitialInput)
 {
 	TSharedRef<SWindow> Window = SNew(SWindow)
-		.Title(FText::FromString(TEXT("HCIAbilityKit Agent Chat (Stage I8 Draft)")))
-		.ClientSize(FVector2D(860.0f, 620.0f))
+		.Title(FText::FromString(TEXT("HCIAbilityKit Agent Chat")))
+		.ClientSize(FVector2D(920.0f, 700.0f))
 		.SupportsMaximize(true)
 		.SupportsMinimize(true);
 

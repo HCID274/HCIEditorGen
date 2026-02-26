@@ -67,6 +67,7 @@ DECLARE_MULTICAST_DELEGATE(FHCIAbilityKitAgentPlanReadyEvent);
 DECLARE_MULTICAST_DELEGATE_OneParam(FHCIAbilityKitAgentSessionStateEvent, EHCIAbilityKitAgentSessionState /*State*/);
 DECLARE_MULTICAST_DELEGATE_OneParam(FHCIAbilityKitAgentProgressStateEvent, const FHCIAbilityKitAgentUiProgressState& /*Progress*/);
 DECLARE_MULTICAST_DELEGATE(FHCIAbilityKitAgentLocateTargetsChangedEvent);
+DECLARE_MULTICAST_DELEGATE_OneParam(FHCIAbilityKitAgentActivityHintEvent, const FString& /*HintText*/);
 
 /**
  * Agent 聊天编排入口：统一受理 UI 输入并分发命令。
@@ -89,6 +90,7 @@ public:
 	bool CanCancelPendingPlanFromChat() const;
 	bool BuildLastPlanCardLines(TArray<FString>& OutLines) const;
 	void GetCurrentProgressState(FHCIAbilityKitAgentUiProgressState& OutState) const;
+	void GetCurrentActivityHint(FString& OutHint) const;
 	void GetLastExecutionLocateTargets(TArray<FHCIAbilityKitAgentUiLocateTarget>& OutTargets) const;
 	bool OpenLastPlanPreview();
 	bool CommitLastPlanFromChat();
@@ -106,6 +108,7 @@ public:
 	FHCIAbilityKitAgentSessionStateEvent OnSessionStateChanged;
 	FHCIAbilityKitAgentProgressStateEvent OnProgressStateChanged;
 	FHCIAbilityKitAgentLocateTargetsChangedEvent OnLocateTargetsChanged;
+	FHCIAbilityKitAgentActivityHintEvent OnActivityHintChanged;
 
 	static bool IsWriteLikePlan(const FHCIAbilityKitAgentPlan& Plan);
 	static EHCIAbilityKitAgentPlanExecutionBranch ClassifyPlanExecutionBranch(const FHCIAbilityKitAgentPlan& Plan);
@@ -121,6 +124,7 @@ private:
 	void SetCurrentState(EHCIAbilityKitAgentSessionState NewState);
 	FString BuildStateStatusText(EHCIAbilityKitAgentSessionState State) const;
 	void SetProgressState(const FHCIAbilityKitAgentUiProgressState& InState);
+	void SetActivityHint(const FString& InHint);
 	void ClearLocateTargets();
 	void SetLocateTargetsFromExecutionReport(const struct FHCIAbilityKitAgentPlanExecutionReport& Report);
 	bool ExecuteLastPlan(EHCIAbilityKitAgentPlanExecutionBranch Branch, const TCHAR* TriggerTag);
@@ -141,5 +145,6 @@ private:
 	FHCIAbilityKitAgentPlannerResultMetadata LastPlannerMetadata;
 	EHCIAbilityKitAgentSessionState CurrentState = EHCIAbilityKitAgentSessionState::Idle;
 	FHCIAbilityKitAgentUiProgressState CurrentProgressState;
+	FString CurrentActivityHint;
 	TArray<FHCIAbilityKitAgentUiLocateTarget> LastExecutionLocateTargets;
 };

@@ -83,5 +83,6 @@ public:
 		const FHCIAbilityKitAgentPlan& Plan,
 		bool bDryRun,
 		bool bUserConfirmedWriteSteps,
-		FHCIAbilityKitAgentPlanExecutionReport& OutReport);
+		FHCIAbilityKitAgentPlanExecutionReport& OutReport,
+		TFunction<void(int32 /*StepIndex*/, int32 /*TotalSteps*/, const FHCIAbilityKitAgentPlanStep& /*Step*/)> OnStepBegin = nullptr);
 };

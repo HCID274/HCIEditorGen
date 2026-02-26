@@ -157,6 +157,80 @@ bool FHCIAbilityKitAgentPlannerLlmContractInvalidFallbackTest::RunTest(const FSt
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FHCIAbilityKitAgentPlannerLlmContractInvalidChitchatFallsBackToMessageOnlyTest,
+	"HCIAbilityKit.Editor.AgentPlanLLM.ContractInvalidChitchatFallsBackToPreparedMessageOnly",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FHCIAbilityKitAgentPlannerLlmContractInvalidChitchatFallsBackToMessageOnlyTest::RunTest(const FString& Parameters)
+{
+	FHCIAbilityKitToolRegistry& Registry = FHCIAbilityKitToolRegistry::Get();
+	Registry.ResetToDefaults();
+
+	FHCIAbilityKitAgentPlannerBuildOptions Options;
+	Options.bPreferLlm = true;
+	Options.LlmMockMode = EHCIAbilityKitAgentPlannerLlmMockMode::ContractInvalid;
+
+	FHCIAbilityKitAgentPlan Plan;
+	FString RouteReason;
+	FHCIAbilityKitAgentPlannerResultMetadata Metadata;
+	FString Error;
+	const bool bBuilt = FHCIAbilityKitAgentPlanner::BuildPlanFromNaturalLanguageWithProvider(
+		TEXT("你是谁？"),
+		TEXT("req_h5_llm_contract_chitchat_01"),
+		Registry,
+		Options,
+		Plan,
+		RouteReason,
+		Metadata,
+		Error);
+
+	TestTrue(TEXT("Contract invalid on chitchat should still build message-only plan"), bBuilt);
+	TestEqual(TEXT("Planner provider should be keyword_fallback"), Metadata.PlannerProvider, FString(TEXT("keyword_fallback")));
+	TestTrue(TEXT("Fallback should be used"), Metadata.bFallbackUsed);
+	TestEqual(TEXT("Fallback reason should remain llm_contract_invalid"), Metadata.FallbackReason, FString(TEXT("llm_contract_invalid")));
+	TestEqual(TEXT("Route should be prepared_message_only_identity"), RouteReason, FString(TEXT("prepared_message_only_identity")));
+	TestEqual(TEXT("No tool steps should be generated"), Plan.Steps.Num(), 0);
+	TestFalse(TEXT("Assistant message should not be empty"), Plan.AssistantMessage.IsEmpty());
+	TestTrue(TEXT("Assistant message should mention HCIAbilityKit"), Plan.AssistantMessage.Contains(TEXT("HCIAbilityKit")));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FHCIAbilityKitAgentPlannerKeywordUnknownInputReturnsClarifyMessageTest,
+	"HCIAbilityKit.Editor.AgentPlanLLM.KeywordFallbackUnknownInputReturnsPreparedClarifyMessage",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FHCIAbilityKitAgentPlannerKeywordUnknownInputReturnsClarifyMessageTest::RunTest(const FString& Parameters)
+{
+	FHCIAbilityKitToolRegistry& Registry = FHCIAbilityKitToolRegistry::Get();
+	Registry.ResetToDefaults();
+
+	FHCIAbilityKitAgentPlannerBuildOptions Options;
+	Options.bPreferLlm = false;
+
+	FHCIAbilityKitAgentPlan Plan;
+	FString RouteReason;
+	FHCIAbilityKitAgentPlannerResultMetadata Metadata;
+	FString Error;
+	const bool bBuilt = FHCIAbilityKitAgentPlanner::BuildPlanFromNaturalLanguageWithProvider(
+		TEXT("随便聊聊"),
+		TEXT("req_keyword_clarify_01"),
+		Registry,
+		Options,
+		Plan,
+		RouteReason,
+		Metadata,
+		Error);
+
+	TestTrue(TEXT("Unknown non-task input should return prepared clarify message"), bBuilt);
+	TestEqual(TEXT("Provider should be keyword_fallback when LLM disabled"), Metadata.PlannerProvider, FString(TEXT("keyword_fallback")));
+	TestEqual(TEXT("Route should be prepared_message_only_clarify"), RouteReason, FString(TEXT("prepared_message_only_clarify")));
+	TestEqual(TEXT("No tool steps should be generated"), Plan.Steps.Num(), 0);
+	TestFalse(TEXT("Assistant message should not be empty"), Plan.AssistantMessage.IsEmpty());
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FHCIAbilityKitAgentPlannerLlmRetrySuccessTest,
 	"HCIAbilityKit.Editor.AgentPlanLLM.RetryTimeoutThenLlmSuccess",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)

@@ -408,6 +408,50 @@ static FHCIAbilityKitAgentUiProgressState HCI_BuildProgressStateForSessionState(
 	}
 }
 
+static FString HCI_BuildStepActionHintForChat(const FHCIAbilityKitAgentPlanStep& Step)
+{
+	if (Step.ToolName == TEXT("SearchPath"))
+	{
+		return TEXT("正在定位目录...");
+	}
+	if (Step.ToolName == TEXT("ScanAssets"))
+	{
+		return TEXT("正在扫描资产...");
+	}
+	if (Step.ToolName == TEXT("ScanMeshTriangleCount"))
+	{
+		return TEXT("正在统计面数...");
+	}
+	if (Step.ToolName == TEXT("ScanLevelMeshRisks"))
+	{
+		return TEXT("正在扫描场景风险...");
+	}
+	if (Step.ToolName == TEXT("SetTextureMaxSize"))
+	{
+		return TEXT("正在调整贴图分辨率...");
+	}
+	if (Step.ToolName == TEXT("SetMeshLODGroup"))
+	{
+		return TEXT("正在设置模型 LOD Group...");
+	}
+	if (Step.ToolName == TEXT("NormalizeAssetNamingByMetadata"))
+	{
+		return TEXT("正在按规范命名并归档资产...");
+	}
+
+	FString Summary = HCI_BuildStepSummaryFallback(Step);
+	Summary.TrimStartAndEndInline();
+	if (Summary.IsEmpty())
+	{
+		return TEXT("正在执行步骤...");
+	}
+	if (!Summary.EndsWith(TEXT("...")) && !Summary.EndsWith(TEXT("…")))
+	{
+		Summary += TEXT("...");
+	}
+	return Summary;
+}
+
 static bool HCI_Subsystem_TryLocateActorByPathCameraFocus(const FString& ActorPath, FString& OutReason)
 {
 	if (!GEditor)
@@ -507,6 +551,7 @@ void UHCIAbilityKitAgentSubsystem::Deinitialize()
 	LastPlannerMetadata = FHCIAbilityKitAgentPlannerResultMetadata();
 	CurrentState = EHCIAbilityKitAgentSessionState::Idle;
 	CurrentProgressState = FHCIAbilityKitAgentUiProgressState();
+	CurrentActivityHint.Reset();
 	LastExecutionLocateTargets.Reset();
 	Super::Deinitialize();
 }
@@ -535,6 +580,7 @@ bool UHCIAbilityKitAgentSubsystem::SubmitChatInput(const FString& UserInput, con
 	LastPlannerMetadata = FHCIAbilityKitAgentPlannerResultMetadata();
 	ClearLocateTargets();
 	SetCurrentState(EHCIAbilityKitAgentSessionState::Thinking);
+	SetActivityHint(TEXT("思考中..."));
 
 	FHCIAbilityKitAgentCommandContext Context;
 	Context.InputParam = TrimmedInput;
@@ -581,6 +627,11 @@ bool UHCIAbilityKitAgentSubsystem::CanCancelPendingPlanFromChat() const
 void UHCIAbilityKitAgentSubsystem::GetCurrentProgressState(FHCIAbilityKitAgentUiProgressState& OutState) const
 {
 	OutState = CurrentProgressState;
+}
+
+void UHCIAbilityKitAgentSubsystem::GetCurrentActivityHint(FString& OutHint) const
+{
+	OutHint = CurrentActivityHint;
 }
 
 void UHCIAbilityKitAgentSubsystem::GetLastExecutionLocateTargets(TArray<FHCIAbilityKitAgentUiLocateTarget>& OutTargets) const
@@ -892,6 +943,12 @@ void UHCIAbilityKitAgentSubsystem::SetProgressState(const FHCIAbilityKitAgentUiP
 	OnProgressStateChanged.Broadcast(CurrentProgressState);
 }
 
+void UHCIAbilityKitAgentSubsystem::SetActivityHint(const FString& InHint)
+{
+	CurrentActivityHint = InHint;
+	OnActivityHintChanged.Broadcast(CurrentActivityHint);
+}
+
 void UHCIAbilityKitAgentSubsystem::ClearLocateTargets()
 {
 	LastExecutionLocateTargets.Reset();
@@ -924,6 +981,41 @@ void UHCIAbilityKitAgentSubsystem::SetCurrentState(const EHCIAbilityKitAgentSess
 	OnSessionStateChanged.Broadcast(CurrentState);
 	EmitStatus(BuildStateStatusText(CurrentState));
 	SetProgressState(HCI_BuildProgressStateForSessionState(CurrentState));
+	switch (CurrentState)
+	{
+	case EHCIAbilityKitAgentSessionState::Idle:
+		SetActivityHint(TEXT(""));
+		break;
+	case EHCIAbilityKitAgentSessionState::Thinking:
+		SetActivityHint(TEXT("思考中..."));
+		break;
+	case EHCIAbilityKitAgentSessionState::PlanReady:
+		SetActivityHint(TEXT("计划已生成，正在准备..."));
+		break;
+	case EHCIAbilityKitAgentSessionState::AutoExecuteReadOnly:
+		SetActivityHint(TEXT("正在自动执行只读操作..."));
+		break;
+	case EHCIAbilityKitAgentSessionState::AwaitUserConfirm:
+		SetActivityHint(TEXT("已生成待确认计划，请确认后执行。"));
+		break;
+	case EHCIAbilityKitAgentSessionState::Executing:
+		SetActivityHint(TEXT("正在执行..."));
+		break;
+	case EHCIAbilityKitAgentSessionState::Summarizing:
+		SetActivityHint(TEXT("正在整理结果..."));
+		break;
+	case EHCIAbilityKitAgentSessionState::Completed:
+		SetActivityHint(TEXT("已完成"));
+		break;
+	case EHCIAbilityKitAgentSessionState::Failed:
+		SetActivityHint(TEXT("执行失败"));
+		break;
+	case EHCIAbilityKitAgentSessionState::Cancelled:
+		SetActivityHint(TEXT("已取消"));
+		break;
+	default:
+		break;
+	}
 }
 
 FString UHCIAbilityKitAgentSubsystem::BuildStateStatusText(const EHCIAbilityKitAgentSessionState State) const
@@ -977,7 +1069,24 @@ bool UHCIAbilityKitAgentSubsystem::ExecuteLastPlan(
 		LastPlan,
 		false,
 		Branch == EHCIAbilityKitAgentPlanExecutionBranch::AwaitUserConfirm,
-		Report);
+		Report,
+		[this](const int32 StepIndex, const int32 TotalSteps, const FHCIAbilityKitAgentPlanStep& Step)
+		{
+			const FString ActionHint = HCI_BuildStepActionHintForChat(Step);
+			AsyncTask(ENamedThreads::GameThread, [this, StepIndex, TotalSteps, ActionHint]()
+			{
+				if (!IsValid(this))
+				{
+					return;
+				}
+				SetActivityHint(ActionHint);
+				SetProgressState(HCI_MakeProgressState(
+					true,
+					true,
+					0.60f,
+					FString::Printf(TEXT("进度：执行计划（%d/%d）%s"), StepIndex + 1, TotalSteps, *ActionHint)));
+			});
+		});
 
 	SetLocateTargetsFromExecutionReport(Report);
 	const int32 ExecutedSteps = Report.SucceededSteps + Report.FailedSteps;
@@ -1045,6 +1154,10 @@ void UHCIAbilityKitAgentSubsystem::HandleCommandCompleted(const FHCIAbilityKitAg
 
 	if (!bCanProcessPlanBranch)
 	{
+		if (Result.bSuccess && !Result.Message.IsEmpty())
+		{
+			SetActivityHint(TEXT("回复已生成"));
+		}
 		SetCurrentState(EHCIAbilityKitAgentSessionState::Completed);
 		return;
 	}
@@ -1053,12 +1166,17 @@ void UHCIAbilityKitAgentSubsystem::HandleCommandCompleted(const FHCIAbilityKitAg
 	if (Branch == EHCIAbilityKitAgentPlanExecutionBranch::AutoExecuteReadOnly)
 	{
 		SetCurrentState(EHCIAbilityKitAgentSessionState::AutoExecuteReadOnly);
+		if (LastPlan.Steps.Num() > 0)
+		{
+			SetActivityHint(HCI_BuildStepActionHintForChat(LastPlan.Steps[0]));
+		}
 		EmitAssistantLine(TEXT("检测到只读计划，正在自动执行并更新证据链..."));
 		ExecuteLastPlan(Branch, TEXT("auto_read_only"));
 		return;
 	}
 
 	SetCurrentState(EHCIAbilityKitAgentSessionState::AwaitUserConfirm);
+	SetActivityHint(TEXT("已生成待确认计划，请确认后执行。"));
 	EmitAssistantLine(TEXT("计划包含写操作，请在聊天窗口点击“确认并执行”继续。"));
 }
 

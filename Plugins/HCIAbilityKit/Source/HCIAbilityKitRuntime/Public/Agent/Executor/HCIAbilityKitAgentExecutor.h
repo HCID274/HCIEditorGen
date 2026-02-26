@@ -44,6 +44,9 @@ struct HCIABILITYKITRUNTIME_API FHCIAbilityKitAgentExecutorOptions
 
 	// Stage I draft: optional tool action implementations for DryRun/Execute.
 	TMap<FName, TSharedPtr<IHCIAbilityKitAgentToolAction>> ToolActions;
+
+	// Stage L-SliceL1: optional UI-facing step begin callback (no semantic impact on execution).
+	TFunction<void(int32 /*StepIndex*/, const FHCIAbilityKitAgentPlanStep& /*Step*/)> OnStepBegin;
 };
 
 struct HCIABILITYKITRUNTIME_API FHCIAbilityKitAgentExecutorStepResult

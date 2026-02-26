@@ -118,6 +118,30 @@ static bool HCI_TextContainsAny(const FString& Text, std::initializer_list<const
 	return false;
 }
 
+static bool HCI_BuildPreparedMessageOnlyPlan(
+	const FString& RequestId,
+	const FString& Intent,
+	const FString& RouteReason,
+	const FString& AssistantMessage,
+	FHCIAbilityKitAgentPlan& OutPlan,
+	FString& OutRouteReason,
+	FString& OutError)
+{
+	OutPlan = FHCIAbilityKitAgentPlan();
+	OutPlan.RequestId = RequestId;
+	OutPlan.Intent = Intent;
+	OutPlan.AssistantMessage = AssistantMessage;
+	OutRouteReason = RouteReason;
+	FString ContractError;
+	if (!FHCIAbilityKitAgentPlanContract::ValidateMinimalContract(OutPlan, ContractError))
+	{
+		OutError = ContractError;
+		return false;
+	}
+	OutError.Reset();
+	return true;
+}
+
 static bool HCI_IsVariableTemplateString(const FString& InText)
 {
 	const FRegexPattern Pattern(TEXT("^\\{\\{\\s*[A-Za-z0-9_]+\\.[A-Za-z0-9_]+(?:\\[\\d+\\])?\\s*\\}\\}$"));
@@ -1146,8 +1170,50 @@ static bool HCI_BuildKeywordPlan(
 
 	const bool bAssetComplianceIntent =
 		HCI_TextContainsAny(Text, {TEXT("贴图"), TEXT("texture"), TEXT("分辨率"), TEXT("npot"), TEXT("面数"), TEXT("lod")});
+	const bool bIdentityIntent =
+		HCI_TextContainsAny(Text, {TEXT("你是谁"), TEXT("你是做什么"), TEXT("你是什么"), TEXT("who are you"), TEXT("what are you")});
+	const bool bCapabilityIntent =
+		HCI_TextContainsAny(Text, {TEXT("你能做什么"), TEXT("能做什么"), TEXT("可以做什么"), TEXT("会什么"), TEXT("what can you do"), TEXT("capability"), TEXT("abilities")});
+	const bool bGreetingIntent =
+		HCI_TextContainsAny(Text, {TEXT("你好"), TEXT("早上好"), TEXT("晚上好"), TEXT("嗨"), TEXT("hello"), TEXT("hi")});
+	const bool bLikelyChitchatIntent = bIdentityIntent || bCapabilityIntent || bGreetingIntent;
 
-	if (bNamingIntent)
+	if (bLikelyChitchatIntent)
+	{
+		if (bIdentityIntent)
+		{
+			return HCI_BuildPreparedMessageOnlyPlan(
+				RequestId,
+				TEXT("chat_identity"),
+				TEXT("prepared_message_only_identity"),
+				TEXT("我是 HCIAbilityKit 的编辑器内资产审计与执行助理。我的职责是帮你在 UE 编辑器里做资产扫描、风险检查、批量合规修复与命名归档，并在涉及写操作时先给出确认。"),
+				OutPlan,
+				OutRouteReason,
+				OutError);
+		}
+
+		if (bCapabilityIntent)
+		{
+			return HCI_BuildPreparedMessageOnlyPlan(
+				RequestId,
+				TEXT("chat_capability"),
+				TEXT("prepared_message_only_capability"),
+				TEXT("我可以帮你做四类事：1）资产扫描与统计（如面数、目录资产清单）；2）关卡风险检查（缺碰撞、默认材质等）；3）资产合规修改（如贴图最大尺寸、StaticMesh LOD Group）；4）按元数据规范命名并归档资产。读操作默认自动执行，写操作会先让你确认。"),
+				OutPlan,
+				OutRouteReason,
+				OutError);
+		}
+
+		return HCI_BuildPreparedMessageOnlyPlan(
+			RequestId,
+			TEXT("chat_greeting"),
+			TEXT("prepared_message_only_greeting"),
+			TEXT("你好，我可以直接在 UE 编辑器里帮你检查资产问题、统计模型面数、扫描关卡风险，以及在你确认后执行批量修复。你可以直接说目标目录或想检查的问题。"),
+			OutPlan,
+			OutRouteReason,
+			OutError);
+	}
+	else if (bNamingIntent)
 	{
 		OutPlan.Intent = TEXT("normalize_temp_assets_by_metadata");
 		OutRouteReason = TEXT("naming_traceability_temp_assets");
@@ -1305,21 +1371,14 @@ static bool HCI_BuildKeywordPlan(
 	}
 	else
 	{
-		OutPlan.Intent = TEXT("scan_assets");
-		OutRouteReason = TEXT("fallback_scan_assets");
-
-		FHCIAbilityKitAgentPlanStep& Step = OutPlan.Steps.AddDefaulted_GetRef();
-		if (!HCI_StepFromTool(
-				ToolRegistry,
-				TEXT("s1"),
-					TEXT("ScanAssets"),
-					HCI_MakeScanAssetsArgs(),
-					{TEXT("scan_root"), TEXT("asset_count"), TEXT("asset_paths"), TEXT("result")},
-					Step,
-					OutError))
-			{
-				return false;
-		}
+		return HCI_BuildPreparedMessageOnlyPlan(
+			RequestId,
+			TEXT("chat_clarify"),
+			TEXT("prepared_message_only_clarify"),
+			TEXT("我这次没有明确识别到可执行的资产审计指令。你可以直接说要检查什么（例如“检查 /Game/HCI 目录下的模型面数”）或要修改什么（例如“把 /Game/__HCI_Auto 下贴图最大尺寸设为 1024”）。"),
+			OutPlan,
+			OutRouteReason,
+			OutError);
 	}
 
 	FString ContractError;

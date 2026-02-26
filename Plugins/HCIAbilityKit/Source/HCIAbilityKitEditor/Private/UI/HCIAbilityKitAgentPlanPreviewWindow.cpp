@@ -810,7 +810,8 @@ bool FHCIAbilityKitAgentPlanPreviewWindow::ExecutePlan(
 	const FHCIAbilityKitAgentPlan& Plan,
 	const bool bDryRun,
 	const bool bUserConfirmedWriteSteps,
-	FHCIAbilityKitAgentPlanExecutionReport& OutReport)
+	FHCIAbilityKitAgentPlanExecutionReport& OutReport,
+	TFunction<void(int32, int32, const FHCIAbilityKitAgentPlanStep&)> OnStepBegin)
 {
 	OutReport = FHCIAbilityKitAgentPlanExecutionReport();
 	OutReport.bDryRun = bDryRun;
@@ -822,6 +823,14 @@ bool FHCIAbilityKitAgentPlanPreviewWindow::ExecutePlan(
 	Options.TerminationPolicy = EHCIAbilityKitAgentExecutorTerminationPolicy::ContinueOnFailure;
 	Options.bEnablePreflightGates = true;
 	Options.bUserConfirmedWriteSteps = bUserConfirmedWriteSteps;
+	if (OnStepBegin)
+	{
+		const int32 TotalSteps = Plan.Steps.Num();
+		Options.OnStepBegin = [OnStepBegin, TotalSteps](const int32 StepIndex, const FHCIAbilityKitAgentPlanStep& Step)
+		{
+			OnStepBegin(StepIndex, TotalSteps, Step);
+		};
+	}
 	HCIAbilityKitAgentToolActions::BuildStageIDraftActions(Options.ToolActions);
 
 	FHCIAbilityKitAgentExecutorRunResult RunResult;

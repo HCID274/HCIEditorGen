@@ -106,6 +106,48 @@ bool FHCIAbilityKitAgentPlanLevelRiskIntentTest::RunTest(const FString& Paramete
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FHCIAbilityKitAgentPlanMeshTriangleCountIntentTest,
+	"HCIAbilityKit.Editor.AgentPlan.PlannerSupportsMeshTriangleCountIntent",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FHCIAbilityKitAgentPlanMeshTriangleCountIntentTest::RunTest(const FString& Parameters)
+{
+	FHCIAbilityKitToolRegistry& Registry = FHCIAbilityKitToolRegistry::Get();
+	Registry.ResetToDefaults();
+
+	FHCIAbilityKitAgentPlan Plan;
+	FString RouteReason;
+	FString Error;
+	const bool bOk = FHCIAbilityKitAgentPlanner::BuildPlanFromNaturalLanguage(
+		TEXT("检查一下 /Game/HCI 目录下的模型面数"),
+		TEXT("req_f1_mesh_triangle_scan"),
+		Registry,
+		Plan,
+		RouteReason,
+		Error);
+
+	TestTrue(TEXT("Planner should support mesh triangle count intent"), bOk);
+	TestEqual(TEXT("Planner route should be mesh triangle count"), RouteReason, FString(TEXT("mesh_triangle_count_analysis")));
+	TestEqual(TEXT("Intent should be mesh triangle count"), Plan.Intent, FString(TEXT("scan_mesh_triangle_count")));
+	TestEqual(TEXT("Plan should contain a single read-only step"), Plan.Steps.Num(), 1);
+
+	const FHCIAbilityKitAgentPlanStep* Step = FindStepByToolName(Plan, TEXT("ScanMeshTriangleCount"));
+	TestNotNull(TEXT("Mesh triangle plan should contain ScanMeshTriangleCount"), Step);
+	if (Step && Step->Args.IsValid())
+	{
+		FString Directory;
+		TestTrue(TEXT("directory should exist"), Step->Args->TryGetStringField(TEXT("directory"), Directory));
+		TestEqual(TEXT("directory should be /Game/HCI"), Directory, FString(TEXT("/Game/HCI")));
+		TestEqual(
+			TEXT("Read-only scan should not require confirm"),
+			Step->bRequiresConfirm,
+			false);
+	}
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FHCIAbilityKitAgentPlanJsonSerializerCoreFieldsTest,
 	"HCIAbilityKit.Editor.AgentPlan.JsonSerializerIncludesCoreContractFields",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)

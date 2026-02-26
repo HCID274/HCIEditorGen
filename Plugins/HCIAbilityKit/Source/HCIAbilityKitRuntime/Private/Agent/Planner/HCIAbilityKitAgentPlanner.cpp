@@ -466,6 +466,13 @@ static TSharedPtr<FJsonObject> HCI_MakeScanAssetsArgsWithDirectory(const FString
 	return Args;
 }
 
+static TSharedPtr<FJsonObject> HCI_MakeScanMeshTriangleCountArgsWithDirectory(const FString& Directory)
+{
+	TSharedPtr<FJsonObject> Args = MakeShared<FJsonObject>();
+	Args->SetStringField(TEXT("directory"), Directory);
+	return Args;
+}
+
 static TSharedPtr<FJsonObject> HCI_MakeSearchPathArgs(const FString& Keyword)
 {
 	TSharedPtr<FJsonObject> Args = MakeShared<FJsonObject>();
@@ -1029,6 +1036,10 @@ static bool HCI_BuildKeywordPlan(
 		HCI_TextContainsAny(Text, {TEXT("关卡"), TEXT("场景"), TEXT("level")}) &&
 		HCI_TextContainsAny(Text, {TEXT("碰撞"), TEXT("collision"), TEXT("材质丢失"), TEXT("默认材质"), TEXT("default material")});
 
+	const bool bMeshTriangleCountIntent =
+		HCI_TextContainsAny(Text, {TEXT("面数"), TEXT("triangle"), TEXT("triangles"), TEXT("poly")}) &&
+		HCI_TextContainsAny(Text, {TEXT("检查"), TEXT("扫描"), TEXT("统计"), TEXT("分析"), TEXT("查看"), TEXT("check"), TEXT("scan"), TEXT("inspect"), TEXT("analyze")});
+
 	const bool bAssetComplianceIntent =
 		HCI_TextContainsAny(Text, {TEXT("贴图"), TEXT("texture"), TEXT("分辨率"), TEXT("npot"), TEXT("面数"), TEXT("lod")});
 
@@ -1114,6 +1125,35 @@ static bool HCI_BuildKeywordPlan(
 					return false;
 			}
 		}
+	else if (bMeshTriangleCountIntent)
+	{
+		OutPlan.Intent = TEXT("scan_mesh_triangle_count");
+		OutRouteReason = TEXT("mesh_triangle_count_analysis");
+
+		FString PathToken;
+		FString Directory = TEXT("/Game/Temp");
+		if (HCI_TryExtractFirstGamePathToken(UserText, PathToken))
+		{
+			const FString DerivedDirectory = HCI_DeriveDirectoryFromPathToken(PathToken);
+			if (DerivedDirectory.StartsWith(TEXT("/Game/")))
+			{
+				Directory = DerivedDirectory;
+			}
+		}
+
+		FHCIAbilityKitAgentPlanStep& Step = OutPlan.Steps.AddDefaulted_GetRef();
+		if (!HCI_StepFromTool(
+				ToolRegistry,
+				TEXT("s1"),
+				TEXT("ScanMeshTriangleCount"),
+				HCI_MakeScanMeshTriangleCountArgsWithDirectory(Directory),
+				{TEXT("scan_root"), TEXT("scanned_count"), TEXT("mesh_count"), TEXT("max_triangle_count"), TEXT("max_triangle_asset"), TEXT("top_meshes"), TEXT("result")},
+				Step,
+				OutError))
+		{
+			return false;
+		}
+	}
 	else if (bAssetComplianceIntent)
 	{
 		OutPlan.Intent = TEXT("batch_fix_asset_compliance");

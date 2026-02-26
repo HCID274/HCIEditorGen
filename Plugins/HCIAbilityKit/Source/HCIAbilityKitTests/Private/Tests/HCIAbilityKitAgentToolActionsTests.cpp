@@ -232,6 +232,11 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FHCIAbilityKitScanMeshTriangleCountDryRunTest,
+	"HCIAbilityKit.Editor.AgentTools.ScanMeshTriangleCountDryRunReturnsMeshTriangleEvidence",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FHCIAbilityKitNormalizeNamingDryRunTest,
 	"HCIAbilityKit.Editor.AgentTools.NormalizeAssetNamingByMetadataDryRunBuildsProposals",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
@@ -409,6 +414,68 @@ bool FHCIAbilityKitSetMeshLODGroupExecuteTest::RunTest(const FString& Parameters
 	TestEqual(TEXT("modified_count evidence"), Result.Evidence.FindRef(TEXT("modified_count")), FString(TEXT("1")));
 
 	HCI_DeleteAssetIfExists(MeshAssetPath);
+	UEditorAssetLibrary::DeleteDirectory(RootDir);
+	return true;
+}
+
+bool FHCIAbilityKitScanMeshTriangleCountDryRunTest::RunTest(const FString& Parameters)
+{
+	const FString RootDir = TEXT("/Game/__HCI_Auto/J4_TriangleScan");
+	const FString MeshAssetPath = TEXT("/Game/__HCI_Auto/J4_TriangleScan/SM_J4_TriangleProbe");
+	const FString TextureAssetPath = TEXT("/Game/__HCI_Auto/J4_TriangleScan/T_J4_TriangleProbe");
+
+	HCI_DeleteAssetIfExists(MeshAssetPath);
+	HCI_DeleteAssetIfExists(TextureAssetPath);
+	UEditorAssetLibrary::DeleteDirectory(RootDir);
+	UEditorAssetLibrary::MakeDirectory(RootDir);
+	if (!HCI_TryDuplicateProbeAsset(MeshAssetPath) || !HCI_TryDuplicateProbeTexture(TextureAssetPath))
+	{
+		HCI_DeleteAssetIfExists(MeshAssetPath);
+		HCI_DeleteAssetIfExists(TextureAssetPath);
+		UEditorAssetLibrary::DeleteDirectory(RootDir);
+		AddError(TEXT("Failed to prepare probe assets for ScanMeshTriangleCount dry-run test."));
+		return false;
+	}
+
+	TMap<FName, TSharedPtr<IHCIAbilityKitAgentToolAction>> Actions;
+	HCIAbilityKitAgentToolActions::BuildStageIDraftActions(Actions);
+	const TSharedPtr<IHCIAbilityKitAgentToolAction>* ScanAction = Actions.Find(TEXT("ScanMeshTriangleCount"));
+	if (ScanAction == nullptr || !ScanAction->IsValid())
+	{
+		HCI_DeleteAssetIfExists(MeshAssetPath);
+		HCI_DeleteAssetIfExists(TextureAssetPath);
+		UEditorAssetLibrary::DeleteDirectory(RootDir);
+		AddError(TEXT("ScanMeshTriangleCount action is not registered."));
+		return false;
+	}
+
+	FHCIAbilityKitAgentToolActionRequest Request;
+	Request.RequestId = TEXT("req_test_j4_triangle_scan");
+	Request.StepId = TEXT("step_triangle_scan");
+	Request.ToolName = TEXT("ScanMeshTriangleCount");
+	Request.Args = MakeShared<FJsonObject>();
+	Request.Args->SetStringField(TEXT("directory"), RootDir);
+
+	FHCIAbilityKitAgentToolActionResult Result;
+	const bool bCallOk = (*ScanAction)->DryRun(Request, Result);
+
+	TestTrue(TEXT("ScanMeshTriangleCount dry-run call should succeed"), bCallOk);
+	TestTrue(TEXT("ScanMeshTriangleCount result should succeed"), Result.bSucceeded);
+	TestEqual(TEXT("ScanMeshTriangleCount reason"), Result.Reason, FString(TEXT("scan_mesh_triangle_count_ok")));
+	TestEqual(TEXT("scan_root evidence"), Result.Evidence.FindRef(TEXT("scan_root")), RootDir);
+	TestTrue(
+		TEXT("scanned_count should include created mesh+texture"),
+		FCString::Atoi(*Result.Evidence.FindRef(TEXT("scanned_count"))) >= 2);
+	TestEqual(TEXT("mesh_count evidence"), Result.Evidence.FindRef(TEXT("mesh_count")), FString(TEXT("1")));
+	TestTrue(
+		TEXT("max_triangle_count should be positive"),
+		FCString::Atoi(*Result.Evidence.FindRef(TEXT("max_triangle_count"))) > 0);
+	TestTrue(
+		TEXT("top_meshes should include probe mesh path"),
+		Result.Evidence.FindRef(TEXT("top_meshes")).Contains(TEXT("SM_J4_TriangleProbe")));
+
+	HCI_DeleteAssetIfExists(MeshAssetPath);
+	HCI_DeleteAssetIfExists(TextureAssetPath);
 	UEditorAssetLibrary::DeleteDirectory(RootDir);
 	return true;
 }

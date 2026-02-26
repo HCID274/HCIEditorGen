@@ -108,6 +108,12 @@ Step 5 - JSON Generation:
   - `intent = "batch_fix_asset_compliance"`
   - `route_reason = "asset_compliance_texture_lod"`
   - preferred tools: `SetTextureMaxSize` and/or `SetMeshLODGroup`
+- Mesh triangle count analysis:
+  - `intent = "scan_mesh_triangle_count"`
+  - `route_reason = "mesh_triangle_count_analysis"`
+  - preferred tool: `ScanMeshTriangleCount`
+  - if user provides explicit `/Game/...` path, set `ScanMeshTriangleCount.args.directory` to that path
+  - this is read-only analysis; do NOT map to write tools (`SetMeshLODGroup`) unless user explicitly asks to modify/repair
 - Generic fallback:
   - only when input is pure unclear chat with no actionable folder/asset target:
     - `intent = "scan_assets"`

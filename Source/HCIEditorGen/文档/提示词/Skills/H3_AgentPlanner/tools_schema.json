@@ -28,12 +28,13 @@
   "properties": {
     "allowed_tools": {
       "type": "array",
-      "minItems": 8,
-      "maxItems": 8,
+      "minItems": 9,
+      "maxItems": 9,
       "items": {
         "type": "string",
         "enum": [
           "ScanAssets",
+          "ScanMeshTriangleCount",
           "SearchPath",
           "SetTextureMaxSize",
           "SetMeshLODGroup",
@@ -50,6 +51,7 @@
       "additionalProperties": false,
       "required": [
         "ScanAssets",
+        "ScanMeshTriangleCount",
         "SearchPath",
         "SetTextureMaxSize",
         "SetMeshLODGroup",
@@ -60,6 +62,15 @@
       ],
       "properties": {
         "ScanAssets": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "directory": {
+              "$ref": "#/definitions/game_or_variable_path"
+            }
+          }
+        },
+        "ScanMeshTriangleCount": {
           "type": "object",
           "additionalProperties": false,
           "properties": {
@@ -297,6 +308,7 @@
                 "type": "string",
                 "enum": [
                   "ScanAssets",
+                  "ScanMeshTriangleCount",
                   "SearchPath",
                   "SetTextureMaxSize",
                   "SetMeshLODGroup",
@@ -361,6 +373,29 @@
                       "items": {
                         "enum": [
                           "scan_root", "asset_count", "result", "asset_path", "asset_paths"
+                        ]
+                      }
+                    }
+                  }
+                }
+              },
+              {
+                "if": {
+                  "properties": {
+                    "tool_name": {
+                      "const": "ScanMeshTriangleCount"
+                    }
+                  }
+                },
+                "then": {
+                  "properties": {
+                    "args": {
+                      "$ref": "#/properties/tool_args_json_schema/properties/ScanMeshTriangleCount"
+                    },
+                    "expected_evidence": {
+                      "items": {
+                        "enum": [
+                          "scan_root", "scanned_count", "mesh_count", "max_triangle_count", "max_triangle_asset", "top_meshes", "result"
                         ]
                       }
                     }

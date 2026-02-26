@@ -73,6 +73,23 @@ void FHCIAbilityKitToolRegistry::ResetToDefaults()
 
 	{
 		FHCIAbilityKitToolDescriptor Tool;
+		Tool.ToolName = TEXT("ScanMeshTriangleCount");
+		Tool.Capability = EHCIAbilityKitToolCapability::ReadOnly;
+		Tool.bSupportsDryRun = false;
+		Tool.bSupportsUndo = false;
+		Tool.bDestructive = false;
+		Tool.Domain = TEXT("AssetCompliance");
+		Tool.Summary = TEXT("Read-only mesh triangle count scan by directory.");
+
+		FHCIAbilityKitToolArgSchema DirectoryArg = MakeStringArg(TEXT("directory"));
+		DirectoryArg.bRequired = false;
+		DirectoryArg.bMustStartWithGamePath = true;
+		Tool.ArgsSchema.Add(MoveTemp(DirectoryArg));
+		RegisterDefault(MoveTemp(Tool));
+	}
+
+	{
+		FHCIAbilityKitToolDescriptor Tool;
 		Tool.ToolName = TEXT("SearchPath");
 		Tool.Capability = EHCIAbilityKitToolCapability::ReadOnly;
 		Tool.bSupportsDryRun = false;

@@ -169,6 +169,18 @@ static bool HCI_GetAllowedExpectedEvidenceSet(
 			TEXT("asset_paths")});
 		return true;
 	}
+	if (ToolName == TEXT("ScanMeshTriangleCount"))
+	{
+		HCI_AddEvidenceKeys(OutAllowedSet, {
+			TEXT("scan_root"),
+			TEXT("scanned_count"),
+			TEXT("mesh_count"),
+			TEXT("max_triangle_count"),
+			TEXT("max_triangle_asset"),
+			TEXT("top_meshes"),
+			TEXT("result")});
+		return true;
+	}
 	if (ToolName == TEXT("SetTextureMaxSize"))
 	{
 		HCI_AddEvidenceKeys(OutAllowedSet, {

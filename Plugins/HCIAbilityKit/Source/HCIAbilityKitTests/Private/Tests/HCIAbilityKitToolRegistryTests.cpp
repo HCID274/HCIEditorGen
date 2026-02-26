@@ -30,10 +30,11 @@ bool FHCIAbilityKitToolRegistryWhitelistFrozenTest::RunTest(const FString& Param
 	TestTrue(TEXT("Validation error should be empty"), Error.IsEmpty());
 
 	const TArray<FName> ToolNames = Registry.GetRegisteredToolNames();
-	TestEqual(TEXT("E1 whitelist should contain exactly 8 tools"), ToolNames.Num(), 8);
+	TestEqual(TEXT("E1 whitelist should contain exactly 9 tools"), ToolNames.Num(), 9);
 
 	const TArray<FName> ExpectedNames{
 		TEXT("ScanAssets"),
+		TEXT("ScanMeshTriangleCount"),
 		TEXT("SearchPath"),
 		TEXT("SetTextureMaxSize"),
 		TEXT("SetMeshLODGroup"),
@@ -177,6 +178,20 @@ bool FHCIAbilityKitToolRegistryArgsSchemaFrozenTest::RunTest(const FString& Para
 			TestEqual(TEXT("keyword type should be string"), static_cast<uint8>(KeywordArg->ValueType), static_cast<uint8>(EHCIAbilityKitToolArgValueType::String));
 			TestEqual(TEXT("keyword min length"), KeywordArg->MinStringLength, 1);
 			TestEqual(TEXT("keyword max length"), KeywordArg->MaxStringLength, 64);
+		}
+	}
+
+	const FHCIAbilityKitToolDescriptor* ScanMeshTriangleCountTool = Registry.FindTool(TEXT("ScanMeshTriangleCount"));
+	TestNotNull(TEXT("ScanMeshTriangleCount should exist"), ScanMeshTriangleCountTool);
+	if (ScanMeshTriangleCountTool)
+	{
+		const FHCIAbilityKitToolArgSchema* DirectoryArg = FindArg(*ScanMeshTriangleCountTool, TEXT("directory"));
+		TestNotNull(TEXT("ScanMeshTriangleCount.directory should exist"), DirectoryArg);
+		if (DirectoryArg)
+		{
+			TestEqual(TEXT("directory type should be string"), static_cast<uint8>(DirectoryArg->ValueType), static_cast<uint8>(EHCIAbilityKitToolArgValueType::String));
+			TestFalse(TEXT("directory should be optional"), DirectoryArg->bRequired);
+			TestTrue(TEXT("directory should require /Game path"), DirectoryArg->bMustStartWithGamePath);
 		}
 	}
 

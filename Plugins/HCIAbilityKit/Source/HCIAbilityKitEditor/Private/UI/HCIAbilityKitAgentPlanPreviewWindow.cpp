@@ -615,6 +615,15 @@ bool FHCIAbilityKitAgentPlanPreviewWindow::ExecutePlan(
 		{
 			ScannedAssets += HCI_TryGetIntEvidence(Step.Evidence, TEXT("asset_count"), Step.TargetCountEstimate);
 		}
+		else if (Step.ToolName == TEXT("ScanMeshTriangleCount"))
+		{
+			int32 Count = HCI_TryGetIntEvidence(Step.Evidence, TEXT("scanned_count"), -1);
+			if (Count < 0)
+			{
+				Count = HCI_TryGetIntEvidence(Step.Evidence, TEXT("mesh_count"), Step.TargetCountEstimate);
+			}
+			ScannedAssets += FMath::Max(0, Count);
+		}
 		else if (Step.ToolName == TEXT("ScanLevelMeshRisks"))
 		{
 			ScannedLevelActors += HCI_TryGetIntEvidence(Step.Evidence, TEXT("scanned_count"), 0);

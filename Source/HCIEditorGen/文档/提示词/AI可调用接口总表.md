@@ -36,7 +36,7 @@
   - 支持 `{{step_id.evidence_key}}`
   - 支持 `{{step_id.evidence_key[index]}}`
 
-## 4. 工具接口总表（当前 8 个）
+## 4. 工具接口总表（当前 9 个）
 
 ### 4.1 ScanAssets
 
@@ -51,7 +51,24 @@
   - `asset_count`
   - `asset_paths`
 
-### 4.2 SearchPath
+### 4.2 ScanMeshTriangleCount
+
+- `tool_name`: `ScanMeshTriangleCount`
+- `capability`: `ReadOnly`
+- `args`:
+  - `directory?: string`（建议 `/Game/...`）
+- `执行接线状态`: `已实接可执行`
+- `DryRun/Execute`: 均为真实扫描（遍历目录并统计 `StaticMesh` LOD0 三角面数）。
+- `关键 evidence`:
+  - `scan_root`
+  - `scanned_count`
+  - `mesh_count`
+  - `max_triangle_count`
+  - `max_triangle_asset`
+  - `top_meshes`
+  - `result`
+
+### 4.3 SearchPath
 
 - `tool_name`: `SearchPath`
 - `capability`: `ReadOnly`
@@ -68,7 +85,7 @@
   - `semantic_fallback_used`
   - `semantic_fallback_directory`
 
-### 4.3 SetTextureMaxSize
+### 4.4 SetTextureMaxSize
 
 - `tool_name`: `SetTextureMaxSize`
 - `capability`: `Write`
@@ -86,7 +103,7 @@
   - `failed_assets`
   - `result`
 
-### 4.4 SetMeshLODGroup
+### 4.5 SetMeshLODGroup
 
 - `tool_name`: `SetMeshLODGroup`
 - `capability`: `Write`
@@ -104,7 +121,7 @@
   - `failed_assets`
   - `result`
 
-### 4.5 ScanLevelMeshRisks
+### 4.6 ScanLevelMeshRisks
 
 - `tool_name`: `ScanLevelMeshRisks`
 - `capability`: `ReadOnly`
@@ -131,7 +148,7 @@
   - `default_material_actors`
   - `result`
 
-### 4.6 NormalizeAssetNamingByMetadata
+### 4.7 NormalizeAssetNamingByMetadata
 
 - `tool_name`: `NormalizeAssetNamingByMetadata`
 - `capability`: `Write`
@@ -148,7 +165,7 @@
   - `proposed_moves`
   - `affected_count`
 
-### 4.7 RenameAsset
+### 4.8 RenameAsset
 
 - `tool_name`: `RenameAsset`
 - `capability`: `Write`
@@ -163,7 +180,7 @@
   - `after`
   - `redirector_fixup`
 
-### 4.8 MoveAsset
+### 4.9 MoveAsset
 
 - `tool_name`: `MoveAsset`
 - `capability`: `Write`
@@ -180,12 +197,12 @@
 
 ## 5. 当前接线结论（给提示词维护者）
 
-- 当前可规划：8/8（由 `tools_schema.json` 与 ToolRegistry 支持）
-- 当前已实接可执行：8/8
-- 当前未实接会模拟：0/8
+- 当前可规划：9/9（由 `tools_schema.json` 与 ToolRegistry 支持）
+- 当前已实接可执行：9/9
+- 当前未实接会模拟：0/9
 - 因此提示词写法要求：
-  - 可以规划全部 8 个工具；
-  - 8 个工具均已具备真实执行接线，仍需遵循既有确认门禁与风险分级。
+  - 可以规划全部 9 个工具；
+  - 9 个工具均已具备真实执行接线，仍需遵循既有确认门禁与风险分级。
 
 ## 6. UE 入口接口（人工触发）
 

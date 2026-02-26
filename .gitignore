@@ -1,4 +1,3 @@
-﻿
 # Unreal Engine
 Binaries/
 DerivedDataCache/
@@ -49,3 +48,6 @@ Content/Untitled_HLOD0_Instancing.uasset
 
 Content/HCI/B1cases/*
 Content/__HCI_Auto/*
+
+# Interview Prep (Ignored to keep sensitive project details private)
+INTERVIEW_PREP.md

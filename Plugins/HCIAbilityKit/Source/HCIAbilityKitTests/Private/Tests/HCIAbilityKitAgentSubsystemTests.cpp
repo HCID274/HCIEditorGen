@@ -121,4 +121,52 @@ bool FHCIAbilityKitAgentSubsystemUiPresentationFallbackSummaryTest::RunTest(cons
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FHCIAbilityKitAgentSubsystemReviewImpactPipelineHintTest,
+	"HCIAbilityKit.Editor.AgentChat.ReviewCard.PipelineAssetPathsShowsDeferredImpactHint",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FHCIAbilityKitAgentSubsystemReviewImpactPipelineHintTest::RunTest(const FString& Parameters)
+{
+	FHCIAbilityKitAgentPlanStep Step;
+	Step.StepId = TEXT("step_2_set_max_size");
+	Step.ToolName = TEXT("SetTextureMaxSize");
+	Step.RiskLevel = EHCIAbilityKitAgentPlanRiskLevel::Write;
+	Step.bRequiresConfirm = true;
+	Step.Args = MakeShared<FJsonObject>();
+
+	TArray<TSharedPtr<FJsonValue>> AssetPaths;
+	AssetPaths.Add(MakeShared<FJsonValueString>(TEXT("{{step_1_scan.asset_paths}}")));
+	Step.Args->SetArrayField(TEXT("asset_paths"), AssetPaths);
+
+	const FString ImpactHint = UHCIAbilityKitAgentSubsystem::BuildStepImpactHintForUi(Step);
+	TestTrue(TEXT("Pipeline input should mention deferred impact"), ImpactHint.Contains(TEXT("前序扫描结果")));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FHCIAbilityKitAgentSubsystemReviewImpactExplicitCountTest,
+	"HCIAbilityKit.Editor.AgentChat.ReviewCard.ExplicitAssetPathsShowsImpactCount",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FHCIAbilityKitAgentSubsystemReviewImpactExplicitCountTest::RunTest(const FString& Parameters)
+{
+	FHCIAbilityKitAgentPlanStep Step;
+	Step.StepId = TEXT("step_2_set_lod");
+	Step.ToolName = TEXT("SetMeshLODGroup");
+	Step.RiskLevel = EHCIAbilityKitAgentPlanRiskLevel::Write;
+	Step.bRequiresConfirm = true;
+	Step.Args = MakeShared<FJsonObject>();
+
+	TArray<TSharedPtr<FJsonValue>> AssetPaths;
+	AssetPaths.Add(MakeShared<FJsonValueString>(TEXT("/Game/__HCI_Auto/SM_A.SM_A")));
+	AssetPaths.Add(MakeShared<FJsonValueString>(TEXT("/Game/__HCI_Auto/SM_B.SM_B")));
+	Step.Args->SetArrayField(TEXT("asset_paths"), AssetPaths);
+
+	const FString ImpactHint = UHCIAbilityKitAgentSubsystem::BuildStepImpactHintForUi(Step);
+	TestTrue(TEXT("Explicit paths should report asset count"), ImpactHint.Contains(TEXT("2")));
+	TestTrue(TEXT("Explicit paths should use impact count wording"), ImpactHint.Contains(TEXT("影响数量")));
+	return true;
+}
+
 #endif

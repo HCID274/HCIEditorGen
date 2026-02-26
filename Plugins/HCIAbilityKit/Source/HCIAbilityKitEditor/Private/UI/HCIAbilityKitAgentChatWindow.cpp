@@ -165,7 +165,7 @@ public:
 						.AutoHeight()
 						[
 							SNew(STextBlock)
-							.Text(FText::FromString(TEXT("最新计划（I8）")))
+							.Text(FText::FromString(TEXT("计划 / 审查卡")))
 						]
 						+ SVerticalBox::Slot()
 						.AutoHeight()
@@ -183,7 +183,7 @@ public:
 							.AutoWidth()
 							[
 								SAssignNew(OpenPreviewButton, SButton)
-								.Text(FText::FromString(TEXT("打开预览")))
+								.Text(FText::FromString(TEXT("调试预览")))
 								.IsEnabled(false)
 								.OnClicked(this, &SHCIAbilityKitAgentChatWindow::HandleOpenPreviewClicked)
 							]
@@ -191,8 +191,17 @@ public:
 							.AutoWidth()
 							.Padding(8.0f, 0.0f, 0.0f, 0.0f)
 							[
+								SAssignNew(CancelPlanButton, SButton)
+								.Text(FText::FromString(TEXT("取消")))
+								.IsEnabled(false)
+								.OnClicked(this, &SHCIAbilityKitAgentChatWindow::HandleCancelPendingPlanClicked)
+							]
+							+ SHorizontalBox::Slot()
+							.AutoWidth()
+							.Padding(8.0f, 0.0f, 0.0f, 0.0f)
+							[
 								SAssignNew(CommitPlanButton, SButton)
-								.Text(FText::FromString(TEXT("确认并执行")))
+								.Text(FText::FromString(TEXT("确认执行")))
 								.IsEnabled(false)
 								.OnClicked(this, &SHCIAbilityKitAgentChatWindow::HandleCommitLastPlanClicked)
 							]
@@ -411,7 +420,7 @@ private:
 	void HandleSubsystemPlanReady()
 	{
 		RefreshPlanCardFromSubsystem();
-		AppendAssistantLine(TEXT("计划卡片已更新。只读计划将自动执行；写计划需确认后执行。"));
+		AppendAssistantLine(TEXT("计划卡片已更新。只读计划自动执行；写计划会在聊天内显示审查卡并等待确认。"));
 	}
 
 	void RefreshPlanCardFromSubsystem()
@@ -451,11 +460,21 @@ private:
 		if (CommitPlanButton.IsValid())
 		{
 			bool bCanCommit = false;
+			bool bCanCancel = false;
 			if (UHCIAbilityKitAgentSubsystem* AgentSubsystem = GetAgentSubsystem())
 			{
 				bCanCommit = AgentSubsystem->CanCommitLastPlanFromChat();
+				bCanCancel = AgentSubsystem->CanCancelPendingPlanFromChat();
 			}
 			CommitPlanButton->SetEnabled(bHasPlan && bCanCommit);
+			if (CancelPlanButton.IsValid())
+			{
+				CancelPlanButton->SetEnabled(bHasPlan && bCanCancel);
+			}
+		}
+		else if (CancelPlanButton.IsValid())
+		{
+			CancelPlanButton->SetEnabled(false);
 		}
 	}
 
@@ -473,6 +492,15 @@ private:
 		if (UHCIAbilityKitAgentSubsystem* AgentSubsystem = GetAgentSubsystem())
 		{
 			AgentSubsystem->CommitLastPlanFromChat();
+		}
+		return FReply::Handled();
+	}
+
+	FReply HandleCancelPendingPlanClicked()
+	{
+		if (UHCIAbilityKitAgentSubsystem* AgentSubsystem = GetAgentSubsystem())
+		{
+			AgentSubsystem->CancelPendingPlanFromChat();
 		}
 		return FReply::Handled();
 	}
@@ -600,6 +628,7 @@ private:
 	TSharedPtr<STextBlock> StatusTextBlock;
 	TSharedPtr<SHorizontalBox> QuickCommandsBox;
 	TSharedPtr<SButton> OpenPreviewButton;
+	TSharedPtr<SButton> CancelPlanButton;
 	TSharedPtr<SButton> CommitPlanButton;
 	FDelegateHandle ChatLineHandle;
 	FDelegateHandle StatusChangedHandle;

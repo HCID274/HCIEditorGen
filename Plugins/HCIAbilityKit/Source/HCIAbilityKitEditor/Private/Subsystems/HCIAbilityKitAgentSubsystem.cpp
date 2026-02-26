@@ -5,7 +5,6 @@
 #include "Commands/HCIAbilityKitAgentCommand_ChatPlanAndSummary.h"
 #include "Dom/JsonObject.h"
 #include "Misc/FileHelper.h"
-#include "Misc/MessageDialog.h"
 #include "Misc/Paths.h"
 #include "Serialization/JsonReader.h"
 #include "Serialization/JsonSerializer.h"
@@ -288,6 +287,79 @@ static FString HCI_BuildStepRiskWarningFallback(const FHCIAbilityKitAgentPlanSte
 	}
 	return FString();
 }
+
+static bool HCI_TryGetStepArgStringArray(const FHCIAbilityKitAgentPlanStep& Step, const TCHAR* FieldName, TArray<FString>& OutValues)
+{
+	OutValues.Reset();
+	if (!Step.Args.IsValid())
+	{
+		return false;
+	}
+
+	const TArray<TSharedPtr<FJsonValue>>* JsonArray = nullptr;
+	if (!Step.Args->TryGetArrayField(FieldName, JsonArray) || JsonArray == nullptr)
+	{
+		return false;
+	}
+
+	for (const TSharedPtr<FJsonValue>& Value : *JsonArray)
+	{
+		FString StringValue;
+		if (Value.IsValid() && Value->TryGetString(StringValue))
+		{
+			OutValues.Add(StringValue);
+		}
+	}
+	return true;
+}
+
+static FString HCI_BuildStepImpactHintFallback(const FHCIAbilityKitAgentPlanStep& Step)
+{
+	TArray<FString> AssetPaths;
+	if (HCI_TryGetStepArgStringArray(Step, TEXT("asset_paths"), AssetPaths))
+	{
+		if (AssetPaths.Num() == 1 && AssetPaths[0].Contains(TEXT("{{")))
+		{
+			return TEXT("影响范围：将基于前序扫描结果确定（管道输入）。");
+		}
+
+		int32 ExplicitAssetCount = 0;
+		int32 ExplicitDirectoryCount = 0;
+		for (const FString& Path : AssetPaths)
+		{
+			if (Path.Contains(TEXT("{{")))
+			{
+				continue;
+			}
+
+			if (Path.StartsWith(TEXT("/Game/")) && Path.Contains(TEXT(".")))
+			{
+				++ExplicitAssetCount;
+			}
+			else if (Path.StartsWith(TEXT("/Game/")))
+			{
+				++ExplicitDirectoryCount;
+			}
+		}
+
+		if (ExplicitAssetCount > 0)
+		{
+			return FString::Printf(TEXT("影响数量：预计修改 %d 个资产（基于计划参数）。"), ExplicitAssetCount);
+		}
+		if (ExplicitDirectoryCount > 0)
+		{
+			return FString::Printf(TEXT("影响范围：目录输入 %d 项（执行时统计具体资产数量）。"), ExplicitDirectoryCount);
+		}
+	}
+
+	const FString Directory = HCI_GetStepArgString(Step, TEXT("directory"));
+	if (!Directory.IsEmpty())
+	{
+		return FString::Printf(TEXT("影响范围：目录 %s（执行时统计具体数量）。"), *Directory);
+	}
+
+	return FString();
+}
 }
 
 void UHCIAbilityKitAgentSubsystem::Initialize(FSubsystemCollectionBase& Collection)
@@ -376,12 +448,88 @@ bool UHCIAbilityKitAgentSubsystem::CanCommitLastPlanFromChat() const
 	return bHasLastPlan && CurrentState == EHCIAbilityKitAgentSessionState::AwaitUserConfirm;
 }
 
+bool UHCIAbilityKitAgentSubsystem::CanCancelPendingPlanFromChat() const
+{
+	return bHasLastPlan && CurrentState == EHCIAbilityKitAgentSessionState::AwaitUserConfirm;
+}
+
 bool UHCIAbilityKitAgentSubsystem::BuildLastPlanCardLines(TArray<FString>& OutLines) const
 {
 	OutLines.Reset();
 	if (!bHasLastPlan)
 	{
 		return false;
+	}
+
+	if (CurrentState == EHCIAbilityKitAgentSessionState::AwaitUserConfirm && IsWriteLikePlan(LastPlan))
+	{
+		int32 WriteStepCount = 0;
+		int32 DestructiveStepCount = 0;
+		int32 ReadOnlyPrepCount = 0;
+		for (const FHCIAbilityKitAgentPlanStep& Step : LastPlan.Steps)
+		{
+			if (Step.bRequiresConfirm || HCI_IsWriteLikeRisk(Step.RiskLevel))
+			{
+				++WriteStepCount;
+				if (Step.RiskLevel == EHCIAbilityKitAgentPlanRiskLevel::Destructive)
+				{
+					++DestructiveStepCount;
+				}
+			}
+			else
+			{
+				++ReadOnlyPrepCount;
+			}
+		}
+
+		OutLines.Add(TEXT("审查卡：待确认执行（写操作）"));
+		OutLines.Add(FString::Printf(
+			TEXT("request_id=%s | intent=%s | route_reason=%s"),
+			LastPlan.RequestId.IsEmpty() ? TEXT("-") : *LastPlan.RequestId,
+			LastPlan.Intent.IsEmpty() ? TEXT("-") : *LastPlan.Intent,
+			LastRouteReason.IsEmpty() ? TEXT("-") : *LastRouteReason));
+		OutLines.Add(FString::Printf(
+			TEXT("总步骤=%d | 写步骤=%d | 高风险=%d | 前置只读步骤=%d"),
+			LastPlan.Steps.Num(),
+			WriteStepCount,
+			DestructiveStepCount,
+			ReadOnlyPrepCount));
+		OutLines.Add(TEXT("请检查关键修改步骤、风险与影响范围；点击“确认执行”后才会真实修改资产。"));
+
+		int32 ReviewIndex = 0;
+		for (const FHCIAbilityKitAgentPlanStep& Step : LastPlan.Steps)
+		{
+			if (!(Step.bRequiresConfirm || HCI_IsWriteLikeRisk(Step.RiskLevel)))
+			{
+				continue;
+			}
+
+			++ReviewIndex;
+			const FString Summary = BuildStepDisplaySummaryForUi(Step);
+			const FString IntentReason = BuildStepIntentReasonForUi(Step);
+			const FString RiskWarning = BuildStepRiskWarningForUi(Step);
+			const FString ImpactHint = BuildStepImpactHintForUi(Step);
+
+			OutLines.Add(FString::Printf(TEXT("%d. %s"), ReviewIndex, *Summary));
+			OutLines.Add(FString::Printf(
+				TEXT("   step_id=%s | risk=%s"),
+				Step.StepId.IsEmpty() ? TEXT("-") : *Step.StepId,
+				*FHCIAbilityKitAgentPlanContract::RiskLevelToString(Step.RiskLevel)));
+			if (!ImpactHint.IsEmpty())
+			{
+				OutLines.Add(FString::Printf(TEXT("   %s"), *ImpactHint));
+			}
+			if (!IntentReason.IsEmpty())
+			{
+				OutLines.Add(FString::Printf(TEXT("   原因：%s"), *IntentReason));
+			}
+			if (!RiskWarning.IsEmpty())
+			{
+				OutLines.Add(FString::Printf(TEXT("   风险：%s"), *RiskWarning));
+			}
+		}
+
+		return true;
 	}
 
 	OutLines.Add(FString::Printf(
@@ -459,16 +607,35 @@ bool UHCIAbilityKitAgentSubsystem::CommitLastPlanFromChat()
 		return false;
 	}
 
-	const FString ConfirmText = FHCIAbilityKitAgentPlanPreviewWindow::BuildCommitConfirmMessage(LastPlan);
-	const EAppReturnType::Type UserDecision = FMessageDialog::Open(EAppMsgType::YesNo, FText::FromString(ConfirmText));
-	if (UserDecision != EAppReturnType::Yes)
+	EmitAssistantLine(TEXT("已确认执行，开始应用写操作计划..."));
+	return ExecuteLastPlan(EHCIAbilityKitAgentPlanExecutionBranch::AwaitUserConfirm, TEXT("manual_commit"));
+}
+
+bool UHCIAbilityKitAgentSubsystem::CancelPendingPlanFromChat()
+{
+	if (ActiveCommand != nullptr)
 	{
-		EmitAssistantLine(TEXT("Commit 已取消（未触发真实写操作）。"));
-		SetCurrentState(EHCIAbilityKitAgentSessionState::Cancelled);
+		EmitStatus(TEXT("状态：忙碌"));
+		EmitAssistantLine(TEXT("已有请求执行中，请等待当前请求完成后再取消。"));
 		return false;
 	}
 
-	return ExecuteLastPlan(EHCIAbilityKitAgentPlanExecutionBranch::AwaitUserConfirm, TEXT("manual_commit"));
+	if (!bHasLastPlan)
+	{
+		EmitAssistantLine(TEXT("暂无可取消计划，请先发送一条请求。"));
+		return false;
+	}
+
+	if (!CanCancelPendingPlanFromChat())
+	{
+		EmitAssistantLine(TEXT("当前没有处于待确认状态的写计划。"));
+		return false;
+	}
+
+	UE_LOG(LogTemp, Display, TEXT("[HCIAbilityKit][AgentChatStateMachine] trigger=manual_cancel state=await_user_confirm"));
+	EmitAssistantLine(TEXT("已取消本次执行（未触发真实写操作）。"));
+	SetCurrentState(EHCIAbilityKitAgentSessionState::Cancelled);
+	return true;
 }
 
 void UHCIAbilityKitAgentSubsystem::ReloadQuickCommands()
@@ -541,6 +708,11 @@ FString UHCIAbilityKitAgentSubsystem::BuildStepIntentReasonForUi(const FHCIAbili
 FString UHCIAbilityKitAgentSubsystem::BuildStepRiskWarningForUi(const FHCIAbilityKitAgentPlanStep& Step)
 {
 	return HCI_BuildStepRiskWarningFallback(Step);
+}
+
+FString UHCIAbilityKitAgentSubsystem::BuildStepImpactHintForUi(const FHCIAbilityKitAgentPlanStep& Step)
+{
+	return HCI_BuildStepImpactHintFallback(Step);
 }
 
 void UHCIAbilityKitAgentSubsystem::SetCurrentState(const EHCIAbilityKitAgentSessionState NewState)

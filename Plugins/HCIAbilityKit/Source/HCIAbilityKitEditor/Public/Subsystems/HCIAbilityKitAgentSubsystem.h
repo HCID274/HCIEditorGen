@@ -61,9 +61,11 @@ public:
 	EHCIAbilityKitAgentSessionState GetCurrentState() const;
 	FString GetCurrentStateLabel() const;
 	bool CanCommitLastPlanFromChat() const;
+	bool CanCancelPendingPlanFromChat() const;
 	bool BuildLastPlanCardLines(TArray<FString>& OutLines) const;
 	bool OpenLastPlanPreview();
 	bool CommitLastPlanFromChat();
+	bool CancelPendingPlanFromChat();
 
 	void ReloadQuickCommands();
 	const TArray<FHCIAbilityKitAgentQuickCommand>& GetQuickCommands() const;
@@ -80,6 +82,7 @@ public:
 	static FString BuildStepDisplaySummaryForUi(const FHCIAbilityKitAgentPlanStep& Step);
 	static FString BuildStepIntentReasonForUi(const FHCIAbilityKitAgentPlanStep& Step);
 	static FString BuildStepRiskWarningForUi(const FHCIAbilityKitAgentPlanStep& Step);
+	static FString BuildStepImpactHintForUi(const FHCIAbilityKitAgentPlanStep& Step);
 
 private:
 	void EmitUserLine(const FString& Text);

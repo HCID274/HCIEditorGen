@@ -1,6 +1,6 @@
 # AI 可调用接口总表（单一入口）
 
-> 更新时间：2026-02-25  
+> 更新时间：2026-02-26  
 > 目标：作为“语义识别 -> 工具调用 -> 提示词编写”的唯一查阅文件。  
 > 适用：`HCIAbilityKit` Agent Planner / Executor / Prompt 维护。
 
@@ -109,11 +109,15 @@
 - `tool_name`: `ScanLevelMeshRisks`
 - `capability`: `ReadOnly`
 - `args`:
-  - `scope: string`（`selected|all`）
+  - `scope: string`（`selected|all`，必填；默认策略为 `selected`）
   - `checks: string[]`（`missing_collision|default_material` 子集，1~2）
   - `max_actor_count: int`（1~5000）
+  - `actor_names?: string[]`（1~50，可选；用于精准指定目标 Actor）
 - `执行接线状态`: `已实接可执行`
 - `DryRun/Execute`: 均为真实关卡扫描（Actor 遍历 + 碰撞/默认材质风险检测）。
+- `selected-first 语义`：
+  - 若 `scope=selected` 且无选中目标，返回 `ErrorCode=no_actors_selected`（不允许隐式升级为全量扫描）。
+  - 仅当用户显式表达“全场景扫描”时才允许 `scope=all`。
 - `关键 evidence`:
   - `actor_path`
   - `issue`

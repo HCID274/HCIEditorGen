@@ -98,6 +98,12 @@ Step 5 - JSON Generation:
   - `intent = "scan_level_mesh_risks"`
   - `route_reason = "level_risk_collision_material"`
   - preferred tool: `ScanLevelMeshRisks`
+  - default `scope` strategy: `selected` (explicit intent first, never implicit full-scene scan)
+  - if user does NOT explicitly request full-scene scan ("全部/全场景/all/all actors"), you MUST NOT set `scope="all"`
+  - if `ENV_CONTEXT` indicates no selected actors (for example `selected_actor_count: 0`) and user did not explicitly request full-scene scan:
+    - keep `scope="selected"`
+    - set `route_reason = "level_risk_requires_selection_confirmation"`
+    - optionally use `actor_names` only when concrete actor names are clearly provided in user input
 - Asset compliance:
   - `intent = "batch_fix_asset_compliance"`
   - `route_reason = "asset_compliance_texture_lod"`

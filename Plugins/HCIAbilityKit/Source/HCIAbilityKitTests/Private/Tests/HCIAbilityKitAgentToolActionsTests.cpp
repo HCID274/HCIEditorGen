@@ -3,6 +3,7 @@
 #include "Agent/Tools/HCIAbilityKitAgentToolAction.h"
 #include "AgentActions/HCIAbilityKitAgentToolActions.h"
 #include "Dom/JsonObject.h"
+#include "Editor.h"
 #include "EditorAssetLibrary.h"
 #include "Misc/AutomationTest.h"
 
@@ -187,6 +188,49 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FHCIAbilityKitRenameAssetExecuteTest,
 	"HCIAbilityKit.Editor.AgentTools.RenameAssetExecuteRenamesRealAsset",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FHCIAbilityKitScanLevelMeshRisksSelectedWithoutSelectionFailsTest,
+	"HCIAbilityKit.Editor.AgentTools.ScanLevelMeshRisksSelectedWithoutSelectionFails",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FHCIAbilityKitScanLevelMeshRisksSelectedWithoutSelectionFailsTest::RunTest(const FString& Parameters)
+{
+	if (GEditor != nullptr)
+	{
+		GEditor->SelectNone(/*bNoteSelectionChange*/ false, /*bDeselectBSPSurfs*/ true, /*WarnAboutManyActors*/ false);
+	}
+
+	TMap<FName, TSharedPtr<IHCIAbilityKitAgentToolAction>> Actions;
+	HCIAbilityKitAgentToolActions::BuildStageIDraftActions(Actions);
+	const TSharedPtr<IHCIAbilityKitAgentToolAction>* ScanAction = Actions.Find(TEXT("ScanLevelMeshRisks"));
+	if (ScanAction == nullptr || !ScanAction->IsValid())
+	{
+		AddError(TEXT("ScanLevelMeshRisks action is not registered."));
+		return false;
+	}
+
+	FHCIAbilityKitAgentToolActionRequest Request;
+	Request.RequestId = TEXT("req_test_level_risk_selected_empty");
+	Request.StepId = TEXT("step_level_risk_selected_empty");
+	Request.ToolName = TEXT("ScanLevelMeshRisks");
+	Request.Args = MakeShared<FJsonObject>();
+	Request.Args->SetStringField(TEXT("scope"), TEXT("selected"));
+	TArray<TSharedPtr<FJsonValue>> Checks;
+	Checks.Add(MakeShared<FJsonValueString>(TEXT("missing_collision")));
+	Checks.Add(MakeShared<FJsonValueString>(TEXT("default_material")));
+	Request.Args->SetArrayField(TEXT("checks"), Checks);
+	Request.Args->SetNumberField(TEXT("max_actor_count"), 500);
+
+	FHCIAbilityKitAgentToolActionResult Result;
+	const bool bCallOk = (*ScanAction)->DryRun(Request, Result);
+
+	TestFalse(TEXT("ScanLevelMeshRisks selected scan should fail when no actors are selected"), bCallOk);
+	TestFalse(TEXT("Result should be marked as failed"), Result.bSucceeded);
+	TestEqual(TEXT("ErrorCode"), Result.ErrorCode, FString(TEXT("no_actors_selected")));
+	TestEqual(TEXT("Reason"), Result.Reason, FString(TEXT("no_actors_selected")));
+	return true;
+}
 
 bool FHCIAbilityKitRenameAssetExecuteTest::RunTest(const FString& Parameters)
 {

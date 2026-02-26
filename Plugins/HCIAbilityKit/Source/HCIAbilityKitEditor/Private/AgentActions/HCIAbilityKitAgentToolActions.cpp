@@ -107,6 +107,37 @@ static bool HCI_TryReadRequiredStringArrayArg(
 	return OutValue.Num() > 0;
 }
 
+static bool HCI_TryReadOptionalStringArrayArg(
+	const TSharedPtr<FJsonObject>& Args,
+	const TCHAR* Field,
+	TArray<FString>& OutValue)
+{
+	OutValue.Reset();
+	if (!Args.IsValid() || !Args->HasField(Field))
+	{
+		return true;
+	}
+	const TArray<TSharedPtr<FJsonValue>>* JsonArray = nullptr;
+	if (!Args->TryGetArrayField(Field, JsonArray))
+	{
+		return false;
+	}
+	for (const TSharedPtr<FJsonValue>& Val : *JsonArray)
+	{
+		if (!Val.IsValid() || Val->Type != EJson::String)
+		{
+			return false;
+		}
+		FString Item = Val->AsString();
+		Item.TrimStartAndEndInline();
+		if (!Item.IsEmpty())
+		{
+			OutValue.Add(MoveTemp(Item));
+		}
+	}
+	return true;
+}
+
 static bool HCI_TryReadRequiredIntArg(
 	const TSharedPtr<FJsonObject>& Args,
 	const TCHAR* Field,
@@ -616,6 +647,7 @@ private:
 	{
 		FString Scope;
 		TArray<FString> Checks;
+		TArray<FString> RequestedActorNames;
 		int32 MaxActorCount = 0;
 		if (!HCI_TryReadRequiredStringArg(Request.Args, TEXT("scope"), Scope) ||
 			!HCI_TryReadRequiredStringArrayArg(Request.Args, TEXT("checks"), Checks) ||
@@ -625,6 +657,23 @@ private:
 			OutResult.bSucceeded = false;
 			OutResult.ErrorCode = TEXT("E4001");
 			OutResult.Reason = TEXT("required_arg_missing");
+			return false;
+		}
+		if (!HCI_TryReadOptionalStringArrayArg(Request.Args, TEXT("actor_names"), RequestedActorNames))
+		{
+			OutResult = FHCIAbilityKitAgentToolActionResult();
+			OutResult.bSucceeded = false;
+			OutResult.ErrorCode = TEXT("E4002");
+			OutResult.Reason = TEXT("invalid_actor_names");
+			return false;
+		}
+
+		if (Scope != TEXT("selected") && Scope != TEXT("all"))
+		{
+			OutResult = FHCIAbilityKitAgentToolActionResult();
+			OutResult.bSucceeded = false;
+			OutResult.ErrorCode = TEXT("E4002");
+			OutResult.Reason = TEXT("invalid_scope");
 			return false;
 		}
 
@@ -660,6 +709,17 @@ private:
 					}
 				}
 			}
+
+			if (ActorsToScan.Num() == 0)
+			{
+				OutResult = FHCIAbilityKitAgentToolActionResult();
+				OutResult.bSucceeded = false;
+				OutResult.ErrorCode = TEXT("no_actors_selected");
+				OutResult.Reason = TEXT("no_actors_selected");
+				OutResult.Evidence.Add(TEXT("scope"), Scope);
+				OutResult.Evidence.Add(TEXT("selected_actor_count"), TEXT("0"));
+				return false;
+			}
 		}
 		else // "all"
 		{
@@ -669,134 +729,211 @@ private:
 			}
 		}
 
+		if (RequestedActorNames.Num() > 0)
+		{
+			TArray<AActor*> FilteredActors;
+			FilteredActors.Reserve(ActorsToScan.Num());
+			for (AActor* Actor : ActorsToScan)
+			{
+				if (!Actor)
+				{
+					continue;
+				}
+
+				const FString ActorLabel = Actor->GetActorLabel();
+				const FString ActorName = Actor->GetName();
+				const FString ActorPath = Actor->GetPathName();
+				const bool bMatched = RequestedActorNames.ContainsByPredicate(
+					[&ActorLabel, &ActorName, &ActorPath](const FString& RequestedName)
+					{
+						return ActorLabel.Equals(RequestedName, ESearchCase::IgnoreCase) ||
+							ActorName.Equals(RequestedName, ESearchCase::IgnoreCase) ||
+							ActorPath.Equals(RequestedName, ESearchCase::IgnoreCase);
+					});
+				if (bMatched)
+				{
+					FilteredActors.Add(Actor);
+				}
+			}
+			ActorsToScan = MoveTemp(FilteredActors);
+		}
+
 		const bool bCheckMissingCollision = Checks.Contains(TEXT("missing_collision"));
 		const bool bCheckDefaultMaterial = Checks.Contains(TEXT("default_material"));
 
-			TArray<FString> RiskyActorNames;
-			TArray<FString> RiskyActorPaths;
-			TArray<FString> RiskIssueDetails;
-			TArray<FString> MissingCollisionActors;
-			TArray<FString> DefaultMaterialActors;
-			int32 ScannedCount = 0;
+		TArray<FString> RiskyActorNames;
+		TArray<FString> RiskyActorPaths;
+		TArray<FString> RiskIssueDetails;
+		TArray<FString> MissingCollisionActors;
+		TArray<FString> DefaultMaterialActors;
+		int32 ScannedCount = 0;
 
 		for (AActor* Actor : ActorsToScan)
 		{
-			if (ScannedCount >= MaxActorCount)
+			if (MaxActorCount > 0 && ScannedCount >= MaxActorCount)
 			{
 				break;
 			}
-			++ScannedCount;
 
 			TArray<UStaticMeshComponent*> MeshComponents;
 			Actor->GetComponents<UStaticMeshComponent>(MeshComponents);
+			if (MeshComponents.Num() == 0)
+			{
+				continue;
+			}
 
-			if (MeshComponents.Num() == 0) continue;
-
-			UStaticMeshComponent* SMC = nullptr;
+			bool bHasValidStaticMeshComponent = false;
 			for (UStaticMeshComponent* Comp : MeshComponents)
 			{
 				if (Comp && Comp->GetStaticMesh())
 				{
-					SMC = Comp;
+					bHasValidStaticMeshComponent = true;
+					break;
+				}
+			}
+			if (!bHasValidStaticMeshComponent)
+			{
+				continue;
+			}
+
+			// Count only actors that actually have scanable static meshes.
+			++ScannedCount;
+
+			bool bHasRisk = false;
+			bool bMissingCollisionForActor = false;
+			bool bDefaultMaterialForActor = false;
+			TArray<FString> ActorRiskTags;
+			const FString ActorLabel = Actor->GetActorLabel();
+
+			for (UStaticMeshComponent* SMC : MeshComponents)
+			{
+				if (!SMC)
+				{
+					continue;
+				}
+
+				UStaticMesh* SM = SMC->GetStaticMesh();
+				if (!SM)
+				{
+					continue;
+				}
+
+				if (bCheckMissingCollision && !bMissingCollisionForActor)
+				{
+					const bool bComponentCollisionDisabled =
+						(SMC->GetCollisionEnabled() == ECollisionEnabled::NoCollision) || !SMC->IsCollisionEnabled();
+
+					bool bMeshCollisionInvalid = false;
+					UBodySetup* BodySetup = SM->GetBodySetup();
+					if (!BodySetup)
+					{
+						bMeshCollisionInvalid = true;
+					}
+					else
+					{
+						const bool bHasPrimitives = BodySetup->AggGeom.GetElementCount() > 0;
+						const bool bIsComplexAsSimple =
+							BodySetup->CollisionTraceFlag == ECollisionTraceFlag::CTF_UseComplexAsSimple;
+						const bool bCollideAll = BodySetup->bMeshCollideAll;
+						bMeshCollisionInvalid = !bHasPrimitives && !bIsComplexAsSimple && !bCollideAll;
+					}
+
+					if (bComponentCollisionDisabled || bMeshCollisionInvalid)
+					{
+						bHasRisk = true;
+						bMissingCollisionForActor = true;
+						ActorRiskTags.Add(TEXT("[MissingCollision]"));
+					}
+				}
+
+				if (bCheckDefaultMaterial && !bDefaultMaterialForActor)
+				{
+					bool bHasDefaultMat = false;
+					const int32 NumMaterials = SMC->GetNumMaterials();
+					if (NumMaterials == 0)
+					{
+						bHasDefaultMat = true;
+					}
+					else
+					{
+						for (int32 MaterialIndex = 0; MaterialIndex < NumMaterials; ++MaterialIndex)
+						{
+							UMaterialInterface* Mat = SMC->GetMaterial(MaterialIndex);
+							if (!Mat ||
+								Mat->GetName().Contains(TEXT("Default")) ||
+								Mat->GetName().Contains(TEXT("WorldGrid")) ||
+								Mat->GetName().Contains(TEXT("BasicShape")) ||
+								Mat->GetPathName().StartsWith(TEXT("/Engine/")))
+							{
+								bHasDefaultMat = true;
+								break;
+							}
+						}
+					}
+
+					if (bHasDefaultMat)
+					{
+						bHasRisk = true;
+						bDefaultMaterialForActor = true;
+						ActorRiskTags.Add(TEXT("[DefaultMaterial]"));
+					}
+				}
+
+				if ((!bCheckMissingCollision || bMissingCollisionForActor) &&
+					(!bCheckDefaultMaterial || bDefaultMaterialForActor))
+				{
 					break;
 				}
 			}
 
-			if (!SMC) continue;
-
-			UStaticMesh* SM = SMC->GetStaticMesh();
-			if (!SM) continue;
-
-			bool bHasRisk = false;
-			FString RiskReason;
-
-			if (bCheckMissingCollision)
+			if (bHasRisk)
 			{
-				UBodySetup* BodySetup = SM->GetBodySetup();
-				if (!BodySetup)
+				if (bMissingCollisionForActor)
 				{
-					bHasRisk = true;
-					RiskReason += TEXT("[MissingBodySetup]");
-					MissingCollisionActors.Add(Actor->GetActorLabel());
+					MissingCollisionActors.Add(ActorLabel);
 				}
-				else
+				if (bDefaultMaterialForActor)
 				{
-					const bool bHasPrimitives = BodySetup->AggGeom.GetElementCount() > 0;
-					const bool bIsComplexAsSimple = BodySetup->CollisionTraceFlag == ECollisionTraceFlag::CTF_UseComplexAsSimple;
-					const bool bCollideAll = BodySetup->bMeshCollideAll;
-					
-					if (!bHasPrimitives && !bIsComplexAsSimple && !bCollideAll)
-					{
-						bHasRisk = true;
-						RiskReason += TEXT("[NoCollisionPrimitives]");
-						MissingCollisionActors.Add(Actor->GetActorLabel());
-					}
-				}
-			}
-
-			if (bCheckDefaultMaterial)
-			{
-				bool bHasDefaultMat = false;
-				const int32 NumMaterials = SMC->GetNumMaterials();
-				if (NumMaterials == 0)
-				{
-					bHasDefaultMat = true;
-				}
-				else
-				{
-					for (int32 i = 0; i < NumMaterials; ++i)
-					{
-						UMaterialInterface* Mat = SMC->GetMaterial(i);
-						if (!Mat || 
-							Mat->GetName().Contains(TEXT("Default")) || 
-							Mat->GetName().Contains(TEXT("WorldGrid")) ||
-							Mat->GetName().Contains(TEXT("BasicShape")) ||
-							Mat->GetPathName().StartsWith(TEXT("/Engine/")))
-						{
-							bHasDefaultMat = true;
-							break;
-						}
-					}
+					DefaultMaterialActors.Add(ActorLabel);
 				}
 
-				if (bHasDefaultMat)
-				{
-					bHasRisk = true;
-					RiskReason += TEXT("[DefaultMaterial]");
-					DefaultMaterialActors.Add(Actor->GetActorLabel());
-				}
+				const FString RiskReason =
+					ActorRiskTags.Num() > 0 ? FString::Join(ActorRiskTags, TEXT("")) : TEXT("-");
+				RiskyActorNames.Add(FString::Printf(TEXT("%s %s"), *ActorLabel, *RiskReason));
+				RiskyActorPaths.Add(Actor->GetPathName());
+				RiskIssueDetails.Add(RiskReason);
 			}
-
-				if (bHasRisk)
-				{
-					RiskyActorNames.Add(FString::Printf(TEXT("%s %s"), *Actor->GetActorLabel(), *RiskReason));
-					RiskyActorPaths.Add(Actor->GetPathName());
-					RiskIssueDetails.Add(RiskReason.IsEmpty() ? TEXT("-") : RiskReason);
-				}
-			}
+		}
 
 		OutResult = FHCIAbilityKitAgentToolActionResult();
 		OutResult.bSucceeded = true;
 		OutResult.Reason = TEXT("scan_level_mesh_risks_ok");
 		OutResult.EstimatedAffectedCount = RiskyActorNames.Num();
-		
+
 		OutResult.Evidence.Add(TEXT("scope"), Scope);
+		OutResult.Evidence.Add(TEXT("requested_actor_count"), FString::FromInt(RequestedActorNames.Num()));
+		OutResult.Evidence.Add(TEXT("candidate_actor_count"), FString::FromInt(ActorsToScan.Num()));
 		OutResult.Evidence.Add(TEXT("scanned_count"), FString::FromInt(ScannedCount));
 		OutResult.Evidence.Add(TEXT("risky_count"), FString::FromInt(RiskyActorNames.Num()));
-		
+
 		FString ReportSummary = FString::Printf(TEXT("Scanned %d actors in world '%s', found %d with risks."), ScannedCount, *World->GetName(), RiskyActorNames.Num());
 		OutResult.Evidence.Add(TEXT("risk_summary"), ReportSummary);
-		
-			FString AffectedActorsStr = RiskyActorNames.Num() > 0 ? FString::Join(RiskyActorNames, TEXT(" | ")) : TEXT("none");
-			OutResult.Evidence.Add(TEXT("risky_actors"), AffectedActorsStr);
-			OutResult.Evidence.Add(TEXT("actor_path"), RiskyActorPaths.Num() > 0 ? RiskyActorPaths[0] : TEXT("-"));
-			OutResult.Evidence.Add(TEXT("issue"), RiskIssueDetails.Num() > 0 ? RiskIssueDetails[0] : TEXT("none"));
-			OutResult.Evidence.Add(
-				TEXT("evidence"),
-				RiskIssueDetails.Num() > 0
-					? FString::Printf(TEXT("risk_issues=%s"), *FString::Join(RiskIssueDetails, TEXT(" | ")))
-					: TEXT("risk_issues=none"));
-		
+
+		if (RequestedActorNames.Num() > 0)
+		{
+			OutResult.Evidence.Add(TEXT("actor_names"), FString::Join(RequestedActorNames, TEXT(" | ")));
+		}
+
+		FString AffectedActorsStr = RiskyActorNames.Num() > 0 ? FString::Join(RiskyActorNames, TEXT(" | ")) : TEXT("none");
+		OutResult.Evidence.Add(TEXT("risky_actors"), AffectedActorsStr);
+		OutResult.Evidence.Add(TEXT("actor_path"), RiskyActorPaths.Num() > 0 ? RiskyActorPaths[0] : TEXT("-"));
+		OutResult.Evidence.Add(TEXT("issue"), RiskIssueDetails.Num() > 0 ? RiskIssueDetails[0] : TEXT("none"));
+		OutResult.Evidence.Add(
+			TEXT("evidence"),
+			RiskIssueDetails.Num() > 0
+				? FString::Printf(TEXT("risk_issues=%s"), *FString::Join(RiskIssueDetails, TEXT(" | ")))
+				: TEXT("risk_issues=none"));
+
 		if (MissingCollisionActors.Num() > 0)
 		{
 			OutResult.Evidence.Add(TEXT("missing_collision_actors"), FString::Join(MissingCollisionActors, TEXT(" | ")));
@@ -814,7 +951,7 @@ private:
 		{
 			OutResult.Evidence.Add(TEXT("default_material_actors"), TEXT("none"));
 		}
-		
+
 		OutResult.Evidence.Add(TEXT("result"), TEXT("scan_level_mesh_risks_ok"));
 		return true;
 	}

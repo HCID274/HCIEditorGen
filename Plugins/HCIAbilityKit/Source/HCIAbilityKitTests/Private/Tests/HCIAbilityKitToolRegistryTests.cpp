@@ -130,9 +130,11 @@ bool FHCIAbilityKitToolRegistryArgsSchemaFrozenTest::RunTest(const FString& Para
 	const FHCIAbilityKitToolArgSchema* ScopeArg = FindArg(*LevelRiskTool, TEXT("scope"));
 	const FHCIAbilityKitToolArgSchema* ChecksArg = FindArg(*LevelRiskTool, TEXT("checks"));
 	const FHCIAbilityKitToolArgSchema* MaxActorCountArg = FindArg(*LevelRiskTool, TEXT("max_actor_count"));
+	const FHCIAbilityKitToolArgSchema* ActorNamesArg = FindArg(*LevelRiskTool, TEXT("actor_names"));
 	TestNotNull(TEXT("ScanLevelMeshRisks.scope should exist"), ScopeArg);
 	TestNotNull(TEXT("ScanLevelMeshRisks.checks should exist"), ChecksArg);
 	TestNotNull(TEXT("ScanLevelMeshRisks.max_actor_count should exist"), MaxActorCountArg);
+	TestNotNull(TEXT("ScanLevelMeshRisks.actor_names should exist"), ActorNamesArg);
 
 	if (ScopeArg)
 	{
@@ -151,6 +153,17 @@ bool FHCIAbilityKitToolRegistryArgsSchemaFrozenTest::RunTest(const FString& Para
 	{
 		TestEqual(TEXT("max_actor_count min"), MaxActorCountArg->MinIntValue, 1);
 		TestEqual(TEXT("max_actor_count max"), MaxActorCountArg->MaxIntValue, 5000);
+	}
+
+	if (ActorNamesArg)
+	{
+		TestEqual(
+			TEXT("actor_names type should be string array"),
+			static_cast<uint8>(ActorNamesArg->ValueType),
+			static_cast<uint8>(EHCIAbilityKitToolArgValueType::StringArray));
+		TestFalse(TEXT("actor_names should be optional"), ActorNamesArg->bRequired);
+		TestEqual(TEXT("actor_names min length"), ActorNamesArg->MinArrayLength, 1);
+		TestEqual(TEXT("actor_names max length"), ActorNamesArg->MaxArrayLength, 50);
 	}
 
 	const FHCIAbilityKitToolDescriptor* SearchPathTool = Registry.FindTool(TEXT("SearchPath"));

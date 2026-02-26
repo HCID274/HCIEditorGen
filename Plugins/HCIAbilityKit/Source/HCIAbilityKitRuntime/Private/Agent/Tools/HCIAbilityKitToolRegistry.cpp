@@ -152,6 +152,10 @@ void FHCIAbilityKitToolRegistry::ResetToDefaults()
 		MaxActorCountArg.MinIntValue = 1;
 		MaxActorCountArg.MaxIntValue = 5000;
 		Tool.ArgsSchema.Add(MoveTemp(MaxActorCountArg));
+
+		FHCIAbilityKitToolArgSchema ActorNamesArg = MakeStringArrayArg(TEXT("actor_names"), 1, 50);
+		ActorNamesArg.bRequired = false;
+		Tool.ArgsSchema.Add(MoveTemp(ActorNamesArg));
 		RegisterDefault(MoveTemp(Tool));
 	}
 

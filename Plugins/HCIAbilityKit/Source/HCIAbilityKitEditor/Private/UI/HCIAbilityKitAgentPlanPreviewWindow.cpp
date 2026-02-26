@@ -607,18 +607,25 @@ bool FHCIAbilityKitAgentPlanPreviewWindow::ExecutePlan(
 	OutReport.FailedSteps = RunResult.FailedSteps;
 
 	int32 ScannedAssets = 0;
+	int32 ScannedLevelActors = 0;
+	int32 RiskyLevelActors = 0;
 	for (const FHCIAbilityKitAgentExecutorStepResult& Step : RunResult.StepResults)
 	{
 		if (Step.ToolName == TEXT("ScanAssets"))
 		{
 			ScannedAssets += HCI_TryGetIntEvidence(Step.Evidence, TEXT("asset_count"), Step.TargetCountEstimate);
 		}
+		else if (Step.ToolName == TEXT("ScanLevelMeshRisks"))
+		{
+			ScannedLevelActors += HCI_TryGetIntEvidence(Step.Evidence, TEXT("scanned_count"), 0);
+			RiskyLevelActors += HCI_TryGetIntEvidence(Step.Evidence, TEXT("risky_count"), Step.TargetCountEstimate);
+		}
 	}
-	OutReport.ScannedAssets = ScannedAssets;
+	OutReport.ScannedAssets = ScannedAssets + ScannedLevelActors;
 
 	const FString ModeLabel = bDryRun ? TEXT("DryRun") : TEXT("Commit");
 	OutReport.SummaryText = FString::Printf(
-		TEXT("%s: ok=%s execution_mode=%s terminal=%s reason=%s succeeded=%d failed=%d scanned_assets=%d"),
+		TEXT("%s: ok=%s execution_mode=%s terminal=%s reason=%s succeeded=%d failed=%d scanned_assets=%d scanned_level_actors=%d risky_level_actors=%d"),
 		*ModeLabel,
 		OutReport.bRunOk ? TEXT("true") : TEXT("false"),
 		*OutReport.ExecutionMode,
@@ -626,13 +633,15 @@ bool FHCIAbilityKitAgentPlanPreviewWindow::ExecutePlan(
 		*OutReport.TerminalReason,
 		OutReport.SucceededSteps,
 		OutReport.FailedSteps,
-		OutReport.ScannedAssets);
+		OutReport.ScannedAssets,
+		ScannedLevelActors,
+		RiskyLevelActors);
 	OutReport.SearchPathEvidenceText = BuildSearchPathEvidenceSummary(RunResult.StepResults);
 
 	UE_LOG(
 		LogHCIAbilityKitAgentPlanPreview,
 		Display,
-		TEXT("[HCIAbilityKit][AgentPlanPreview] mode=%s execution_mode=%s executed request_id=%s steps=%d terminal=%s terminal_reason=%s succeeded=%d failed=%d scanned_assets=%d"),
+		TEXT("[HCIAbilityKit][AgentPlanPreview] mode=%s execution_mode=%s executed request_id=%s steps=%d terminal=%s terminal_reason=%s succeeded=%d failed=%d scanned_assets=%d scanned_level_actors=%d risky_level_actors=%d"),
 		bDryRun ? TEXT("dry_run") : TEXT("execute"),
 		*OutReport.ExecutionMode,
 		*Plan.RequestId,
@@ -641,7 +650,9 @@ bool FHCIAbilityKitAgentPlanPreviewWindow::ExecutePlan(
 		*OutReport.TerminalReason,
 		OutReport.SucceededSteps,
 		OutReport.FailedSteps,
-		OutReport.ScannedAssets);
+		OutReport.ScannedAssets,
+		ScannedLevelActors,
+		RiskyLevelActors);
 
 	return OutReport.bRunOk;
 }

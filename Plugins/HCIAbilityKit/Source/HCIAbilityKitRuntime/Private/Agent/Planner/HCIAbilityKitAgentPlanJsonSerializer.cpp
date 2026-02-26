@@ -34,6 +34,24 @@ bool FHCIAbilityKitAgentPlanJsonSerializer::SerializeToJsonString(const FHCIAbil
 		}
 		StepObject->SetArrayField(TEXT("expected_evidence"), EvidenceJson);
 
+		if (Step.UiPresentation.HasAnyField())
+		{
+			TSharedRef<FJsonObject> UiObject = MakeShared<FJsonObject>();
+			if (Step.UiPresentation.bHasStepSummary)
+			{
+				UiObject->SetStringField(TEXT("step_summary"), Step.UiPresentation.StepSummary);
+			}
+			if (Step.UiPresentation.bHasIntentReason)
+			{
+				UiObject->SetStringField(TEXT("intent_reason"), Step.UiPresentation.IntentReason);
+			}
+			if (Step.UiPresentation.bHasRiskWarning)
+			{
+				UiObject->SetStringField(TEXT("risk_warning"), Step.UiPresentation.RiskWarning);
+			}
+			StepObject->SetObjectField(TEXT("ui_presentation"), UiObject);
+		}
+
 		StepsJson.Add(MakeShared<FJsonValueObject>(StepObject));
 	}
 	Root->SetArrayField(TEXT("steps"), StepsJson);

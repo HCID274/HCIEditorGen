@@ -32,6 +32,10 @@
   - `tool_name: enum`
   - `args: object`（必须匹配对应工具参数）
   - `expected_evidence: string[]`
+  - `ui_presentation?: object`（可选，人话展示增强；缺失时由 C++ 自动降级）
+    - `step_summary?: string`（步骤摘要，给美术看的短句）
+    - `intent_reason?: string`（为什么要做这一步）
+    - `risk_warning?: string`（仅写/高风险步骤建议填写）
 - 管道变量：
   - 支持 `{{step_id.evidence_key}}`
   - 支持 `{{step_id.evidence_key[index]}}`
@@ -90,8 +94,11 @@
 - `tool_name`: `SetTextureMaxSize`
 - `capability`: `Write`
 - `args`:
-  - `asset_paths: string[]`（1~50）
+  - `asset_paths: string[]`（1~50，`requires_pipeline_input=true`，必须来自 `{{step_x.asset_paths}}`）
   - `max_size: int`（`256|512|1024|2048|4096|8192`）
+- `PlanReady 结构门禁`:
+  - 修改意图（`batch_fix_asset_compliance`）下，计划中必须存在至少一个写步骤。
+  - `asset_paths` 必须消费前置 `ScanAssets` 的 `asset_paths` 证据（禁止直接写目录或硬编码路径）。
 - `执行接线状态`: `已实接可执行`
 - `DryRun/Execute`: 已接线真实实现（Texture2D 校验、`MaxTextureSize` 写入与资产保存）。
 - `关键 evidence`:
@@ -108,8 +115,10 @@
 - `tool_name`: `SetMeshLODGroup`
 - `capability`: `Write`
 - `args`:
-  - `asset_paths: string[]`（1~50）
+  - `asset_paths: string[]`（1~50，`requires_pipeline_input=true`，必须来自 `{{step_x.asset_paths}}`）
   - `lod_group: string`（`LevelArchitecture|SmallProp|LargeProp|Foliage|Character`）
+- `PlanReady 结构门禁`:
+  - `asset_paths` 必须消费前置 `ScanAssets` 的 `asset_paths` 证据（禁止绕过管道变量）。
 - `执行接线状态`: `已实接可执行`
 - `DryRun/Execute`: 已接线真实实现（StaticMesh 校验、`LODGroup` 写入与资产保存）。
 - `关键 evidence`:

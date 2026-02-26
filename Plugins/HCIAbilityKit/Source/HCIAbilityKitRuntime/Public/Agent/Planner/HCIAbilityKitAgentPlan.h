@@ -13,6 +13,21 @@ enum class EHCIAbilityKitAgentPlanRiskLevel : uint8
 
 struct HCIABILITYKITRUNTIME_API FHCIAbilityKitAgentPlanStep
 {
+	struct FUiPresentation
+	{
+		bool bHasStepSummary = false;
+		FString StepSummary;
+		bool bHasIntentReason = false;
+		FString IntentReason;
+		bool bHasRiskWarning = false;
+		FString RiskWarning;
+
+		bool HasAnyField() const
+		{
+			return bHasStepSummary || bHasIntentReason || bHasRiskWarning;
+		}
+	};
+
 	FString StepId;
 	FName ToolName;
 	TSharedPtr<FJsonObject> Args;
@@ -20,6 +35,7 @@ struct HCIABILITYKITRUNTIME_API FHCIAbilityKitAgentPlanStep
 	bool bRequiresConfirm = false;
 	FString RollbackStrategy = TEXT("all_or_nothing");
 	TArray<FString> ExpectedEvidence;
+	FUiPresentation UiPresentation;
 };
 
 struct HCIABILITYKITRUNTIME_API FHCIAbilityKitAgentPlan
@@ -36,4 +52,3 @@ public:
 	static FString RiskLevelToString(EHCIAbilityKitAgentPlanRiskLevel RiskLevel);
 	static bool ValidateMinimalContract(const FHCIAbilityKitAgentPlan& Plan, FString& OutError);
 };
-

@@ -37,6 +37,7 @@ struct HCIABILITYKITRUNTIME_API FHCIAbilityKitToolArgSchema
 
 	bool bMustStartWithGamePath = false;
 	bool bStringArrayAllowsSubsetOfEnum = false;
+	bool bRequiresPipelineInput = false;
 };
 
 struct HCIABILITYKITRUNTIME_API FHCIAbilityKitToolDescriptor

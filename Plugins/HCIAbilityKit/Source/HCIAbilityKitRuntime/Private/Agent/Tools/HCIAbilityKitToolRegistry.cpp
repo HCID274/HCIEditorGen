@@ -115,7 +115,9 @@ void FHCIAbilityKitToolRegistry::ResetToDefaults()
 		Tool.Domain = TEXT("AssetCompliance");
 		Tool.Summary = TEXT("Set texture maximum size using frozen allowed enum values.");
 
-		Tool.ArgsSchema.Add(MakeStringArrayArg(TEXT("asset_paths"), 1, 50));
+		FHCIAbilityKitToolArgSchema AssetPathsArg = MakeStringArrayArg(TEXT("asset_paths"), 1, 50);
+		AssetPathsArg.bRequiresPipelineInput = true;
+		Tool.ArgsSchema.Add(MoveTemp(AssetPathsArg));
 
 		FHCIAbilityKitToolArgSchema MaxSizeArg = MakeIntArg(TEXT("max_size"));
 		MaxSizeArg.AllowedIntValues = {256, 512, 1024, 2048, 4096, 8192};
@@ -133,7 +135,9 @@ void FHCIAbilityKitToolRegistry::ResetToDefaults()
 		Tool.Domain = TEXT("AssetCompliance");
 		Tool.Summary = TEXT("Assign mesh LOD group using frozen whitelist.");
 
-		Tool.ArgsSchema.Add(MakeStringArrayArg(TEXT("asset_paths"), 1, 50));
+		FHCIAbilityKitToolArgSchema AssetPathsArg = MakeStringArrayArg(TEXT("asset_paths"), 1, 50);
+		AssetPathsArg.bRequiresPipelineInput = true;
+		Tool.ArgsSchema.Add(MoveTemp(AssetPathsArg));
 
 		FHCIAbilityKitToolArgSchema LodGroupArg = MakeStringArg(TEXT("lod_group"));
 		LodGroupArg.AllowedStringValues = {

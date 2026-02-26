@@ -9,6 +9,12 @@ struct HCIABILITYKITRUNTIME_API FHCIAbilityKitAgentPlanValidationContext
 {
 	// F2 mock seam: caller can mark asset paths as metadata-insufficient to trigger E4012 without touching UE assets.
 	TSet<FString> MockMetadataUnavailableAssetPaths;
+
+	// PlanReady hard gate: if true, modify intents must include at least one write step.
+	bool bRequireWriteStepForModifyIntent = false;
+
+	// PlanReady hard gate: if true, args marked as pipeline-required must bind variable templates.
+	bool bRequirePipelineInputs = false;
 };
 
 struct HCIABILITYKITRUNTIME_API FHCIAbilityKitAgentPlanValidationResult

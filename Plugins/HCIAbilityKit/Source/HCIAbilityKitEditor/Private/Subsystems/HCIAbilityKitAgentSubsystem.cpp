@@ -145,6 +145,149 @@ static const TCHAR* HCI_SessionStateToLabel(const EHCIAbilityKitAgentSessionStat
 		return TEXT("Unknown");
 	}
 }
+
+static FString HCI_GetStepArgString(const FHCIAbilityKitAgentPlanStep& Step, const TCHAR* FieldName)
+{
+	if (!Step.Args.IsValid())
+	{
+		return FString();
+	}
+
+	FString Value;
+	Step.Args->TryGetStringField(FieldName, Value);
+	return Value;
+}
+
+static int32 HCI_GetStepArgInt(const FHCIAbilityKitAgentPlanStep& Step, const TCHAR* FieldName, const int32 DefaultValue = 0)
+{
+	if (!Step.Args.IsValid())
+	{
+		return DefaultValue;
+	}
+
+	double Number = static_cast<double>(DefaultValue);
+	if (Step.Args->TryGetNumberField(FieldName, Number))
+	{
+		return static_cast<int32>(Number);
+	}
+	return DefaultValue;
+}
+
+static FString HCI_BuildStepSummaryFallback(const FHCIAbilityKitAgentPlanStep& Step)
+{
+	if (Step.UiPresentation.bHasStepSummary)
+	{
+		const FString Trimmed = Step.UiPresentation.StepSummary.TrimStartAndEnd();
+		if (!Trimmed.IsEmpty())
+		{
+			return Trimmed;
+		}
+	}
+
+	if (Step.ToolName == TEXT("ScanLevelMeshRisks"))
+	{
+		const FString Scope = HCI_GetStepArgString(Step, TEXT("scope"));
+		return Scope == TEXT("all")
+			? TEXT("正在扫描场景模型风险（全场景）")
+			: TEXT("正在扫描场景模型风险（当前选中）");
+	}
+	if (Step.ToolName == TEXT("ScanMeshTriangleCount"))
+	{
+		const FString Directory = HCI_GetStepArgString(Step, TEXT("directory"));
+		return Directory.IsEmpty() ? TEXT("正在统计模型面数") : FString::Printf(TEXT("正在统计模型面数（%s）"), *Directory);
+	}
+	if (Step.ToolName == TEXT("ScanAssets"))
+	{
+		const FString Directory = HCI_GetStepArgString(Step, TEXT("directory"));
+		return Directory.IsEmpty() ? TEXT("正在扫描目录资产") : FString::Printf(TEXT("正在扫描目录资产（%s）"), *Directory);
+	}
+	if (Step.ToolName == TEXT("SearchPath"))
+	{
+		const FString Keyword = HCI_GetStepArgString(Step, TEXT("keyword"));
+		return Keyword.IsEmpty() ? TEXT("正在定位目标目录") : FString::Printf(TEXT("正在定位目标目录（关键词：%s）"), *Keyword);
+	}
+	if (Step.ToolName == TEXT("SetTextureMaxSize"))
+	{
+		const int32 MaxSize = HCI_GetStepArgInt(Step, TEXT("max_size"), 0);
+		return MaxSize > 0
+			? FString::Printf(TEXT("准备批量限制贴图分辨率（Maximum Texture Size=%d）"), MaxSize)
+			: TEXT("准备批量限制贴图分辨率");
+	}
+	if (Step.ToolName == TEXT("SetMeshLODGroup"))
+	{
+		const FString LODGroup = HCI_GetStepArgString(Step, TEXT("lod_group"));
+		return LODGroup.IsEmpty()
+			? TEXT("准备批量设置模型 LOD Group")
+			: FString::Printf(TEXT("准备批量设置模型 LOD Group（%s）"), *LODGroup);
+	}
+	if (Step.ToolName == TEXT("NormalizeAssetNamingByMetadata"))
+	{
+		return TEXT("准备按元数据规范命名并归档资产");
+	}
+	if (Step.ToolName == TEXT("RenameAsset"))
+	{
+		return TEXT("准备重命名资产");
+	}
+	if (Step.ToolName == TEXT("MoveAsset"))
+	{
+		return TEXT("准备移动资产");
+	}
+
+	const FString ToolName = Step.ToolName.ToString();
+	return ToolName.IsEmpty() ? TEXT("正在处理步骤") : FString::Printf(TEXT("正在执行步骤（%s）"), *ToolName);
+}
+
+static FString HCI_BuildStepIntentReasonFallback(const FHCIAbilityKitAgentPlanStep& Step)
+{
+	if (Step.UiPresentation.bHasIntentReason)
+	{
+		const FString Trimmed = Step.UiPresentation.IntentReason.TrimStartAndEnd();
+		if (!Trimmed.IsEmpty())
+		{
+			return Trimmed;
+		}
+	}
+
+	if (Step.ToolName == TEXT("SearchPath"))
+	{
+		return TEXT("用户未提供绝对路径，先定位目录再继续执行。");
+	}
+	if (Step.ToolName == TEXT("ScanAssets"))
+	{
+		return TEXT("先获取资产清单，作为后续分析或修改的输入范围。");
+	}
+	if (Step.ToolName == TEXT("ScanLevelMeshRisks"))
+	{
+		return TEXT("先收集缺碰撞与默认材质证据，再决定是否需要修复。");
+	}
+	if (Step.ToolName == TEXT("SetTextureMaxSize") || Step.ToolName == TEXT("SetMeshLODGroup"))
+	{
+		return TEXT("根据前序扫描结果执行批量合规修改。");
+	}
+	return FString();
+}
+
+static FString HCI_BuildStepRiskWarningFallback(const FHCIAbilityKitAgentPlanStep& Step)
+{
+	if (Step.UiPresentation.bHasRiskWarning)
+	{
+		const FString Trimmed = Step.UiPresentation.RiskWarning.TrimStartAndEnd();
+		if (!Trimmed.IsEmpty())
+		{
+			return Trimmed;
+		}
+	}
+
+	if (Step.RiskLevel == EHCIAbilityKitAgentPlanRiskLevel::Destructive)
+	{
+		return TEXT("高风险操作：可能删除或覆盖大量资产，请确认后执行。");
+	}
+	if (Step.bRequiresConfirm || Step.RiskLevel == EHCIAbilityKitAgentPlanRiskLevel::Write)
+	{
+		return TEXT("将真实修改项目资产，执行前请确认范围与目标。");
+	}
+	return FString();
+}
 }
 
 void UHCIAbilityKitAgentSubsystem::Initialize(FSubsystemCollectionBase& Collection)
@@ -257,12 +400,25 @@ bool UHCIAbilityKitAgentSubsystem::BuildLastPlanCardLines(TArray<FString>& OutLi
 	for (int32 Index = 0; Index < LastPlan.Steps.Num(); ++Index)
 	{
 		const FHCIAbilityKitAgentPlanStep& Step = LastPlan.Steps[Index];
+		const FString Summary = BuildStepDisplaySummaryForUi(Step);
+		const FString IntentReason = BuildStepIntentReasonForUi(Step);
+		const FString RiskWarning = BuildStepRiskWarningForUi(Step);
 		OutLines.Add(FString::Printf(
-			TEXT("%d. %s | tool=%s | risk=%s"),
+			TEXT("%d. %s"),
 			Index + 1,
+			*Summary));
+		OutLines.Add(FString::Printf(
+			TEXT("   step_id=%s | risk=%s"),
 			Step.StepId.IsEmpty() ? TEXT("-") : *Step.StepId,
-			*Step.ToolName.ToString(),
 			*FHCIAbilityKitAgentPlanContract::RiskLevelToString(Step.RiskLevel)));
+		if (!IntentReason.IsEmpty())
+		{
+			OutLines.Add(FString::Printf(TEXT("   原因：%s"), *IntentReason));
+		}
+		if (!RiskWarning.IsEmpty())
+		{
+			OutLines.Add(FString::Printf(TEXT("   风险：%s"), *RiskWarning));
+		}
 	}
 
 	return true;
@@ -370,6 +526,21 @@ EHCIAbilityKitAgentPlanExecutionBranch UHCIAbilityKitAgentSubsystem::ClassifyPla
 	return IsWriteLikePlan(Plan)
 		? EHCIAbilityKitAgentPlanExecutionBranch::AwaitUserConfirm
 		: EHCIAbilityKitAgentPlanExecutionBranch::AutoExecuteReadOnly;
+}
+
+FString UHCIAbilityKitAgentSubsystem::BuildStepDisplaySummaryForUi(const FHCIAbilityKitAgentPlanStep& Step)
+{
+	return HCI_BuildStepSummaryFallback(Step);
+}
+
+FString UHCIAbilityKitAgentSubsystem::BuildStepIntentReasonForUi(const FHCIAbilityKitAgentPlanStep& Step)
+{
+	return HCI_BuildStepIntentReasonFallback(Step);
+}
+
+FString UHCIAbilityKitAgentSubsystem::BuildStepRiskWarningForUi(const FHCIAbilityKitAgentPlanStep& Step)
+{
+	return HCI_BuildStepRiskWarningFallback(Step);
 }
 
 void UHCIAbilityKitAgentSubsystem::SetCurrentState(const EHCIAbilityKitAgentSessionState NewState)

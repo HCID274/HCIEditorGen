@@ -374,4 +374,157 @@ bool FHCIAbilityKitAgentPlanValidatorExpectedEvidenceNotAllowedReturnsE4009Test:
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FHCIAbilityKitAgentPlanValidatorModifyIntentRequiresWriteStepTest,
+	"HCIAbilityKit.Editor.AgentPlanValidation.ModifyIntentRequiresWriteStepAtPlanReady",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FHCIAbilityKitAgentPlanValidatorModifyIntentRequiresWriteStepTest::RunTest(const FString& Parameters)
+{
+	FHCIAbilityKitToolRegistry& Registry = FHCIAbilityKitToolRegistry::Get();
+	Registry.ResetToDefaults();
+
+	FHCIAbilityKitAgentPlan Plan;
+	Plan.PlanVersion = 1;
+	Plan.RequestId = TEXT("req_modify_intent_read_only_only");
+	Plan.Intent = TEXT("batch_fix_asset_compliance");
+
+	FHCIAbilityKitAgentPlanStep& Step = Plan.Steps.AddDefaulted_GetRef();
+	Step.StepId = TEXT("step_1_scan");
+	Step.ToolName = TEXT("ScanAssets");
+	Step.RiskLevel = EHCIAbilityKitAgentPlanRiskLevel::ReadOnly;
+	Step.bRequiresConfirm = false;
+	Step.RollbackStrategy = TEXT("all_or_nothing");
+	Step.ExpectedEvidence = {TEXT("scan_root"), TEXT("asset_count"), TEXT("asset_paths"), TEXT("result")};
+	Step.Args = MakeShared<FJsonObject>();
+	Step.Args->SetStringField(TEXT("directory"), TEXT("/Game/__HCI_Auto"));
+
+	FHCIAbilityKitAgentPlanValidationContext Context;
+	Context.bRequireWriteStepForModifyIntent = true;
+
+	FHCIAbilityKitAgentPlanValidationResult Result;
+	TestFalse(TEXT("Modify intent without write step should fail"), FHCIAbilityKitAgentPlanValidator::ValidatePlan(Plan, Registry, Context, Result));
+	TestEqual(TEXT("Error code"), Result.ErrorCode, FString(TEXT("E4009")));
+	TestEqual(TEXT("Reason"), Result.Reason, FString(TEXT("modify_intent_requires_write_step")));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FHCIAbilityKitAgentPlanValidatorPipelineInputRequiredForWriteArgTest,
+	"HCIAbilityKit.Editor.AgentPlanValidation.WriteArgRequiresPipelineInputAtPlanReady",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FHCIAbilityKitAgentPlanValidatorPipelineInputRequiredForWriteArgTest::RunTest(const FString& Parameters)
+{
+	FHCIAbilityKitToolRegistry& Registry = FHCIAbilityKitToolRegistry::Get();
+	Registry.ResetToDefaults();
+
+	FHCIAbilityKitAgentPlan Plan = MakeValidTexturePlan();
+
+	FHCIAbilityKitAgentPlanValidationContext Context;
+	Context.bRequirePipelineInputs = true;
+
+	FHCIAbilityKitAgentPlanValidationResult Result;
+	TestFalse(TEXT("Write arg should fail when asset_paths is not pipeline variable"), FHCIAbilityKitAgentPlanValidator::ValidatePlan(Plan, Registry, Context, Result));
+	TestEqual(TEXT("Error code"), Result.ErrorCode, FString(TEXT("E4009")));
+	TestEqual(TEXT("Reason"), Result.Reason, FString(TEXT("pipeline_input_required_for_arg")));
+	TestTrue(TEXT("Field should mention asset_paths"), Result.Field.Contains(TEXT("asset_paths")));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FHCIAbilityKitAgentPlanValidatorPipelineInputPassesForScanToWriteChainTest,
+	"HCIAbilityKit.Editor.AgentPlanValidation.WriteArgPipelineInputPassesForScanChain",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FHCIAbilityKitAgentPlanValidatorPipelineInputPassesForScanToWriteChainTest::RunTest(const FString& Parameters)
+{
+	FHCIAbilityKitToolRegistry& Registry = FHCIAbilityKitToolRegistry::Get();
+	Registry.ResetToDefaults();
+
+	FHCIAbilityKitAgentPlan Plan;
+	Plan.PlanVersion = 1;
+	Plan.RequestId = TEXT("req_pipeline_scan_to_write_ok");
+	Plan.Intent = TEXT("batch_fix_asset_compliance");
+
+	FHCIAbilityKitAgentPlanStep& ScanStep = Plan.Steps.AddDefaulted_GetRef();
+	ScanStep.StepId = TEXT("step_1_scan");
+	ScanStep.ToolName = TEXT("ScanAssets");
+	ScanStep.RiskLevel = EHCIAbilityKitAgentPlanRiskLevel::ReadOnly;
+	ScanStep.bRequiresConfirm = false;
+	ScanStep.RollbackStrategy = TEXT("all_or_nothing");
+	ScanStep.ExpectedEvidence = {TEXT("scan_root"), TEXT("asset_count"), TEXT("asset_paths"), TEXT("result")};
+	ScanStep.Args = MakeShared<FJsonObject>();
+	ScanStep.Args->SetStringField(TEXT("directory"), TEXT("/Game/__HCI_Auto"));
+
+	FHCIAbilityKitAgentPlanStep& WriteStep = Plan.Steps.AddDefaulted_GetRef();
+	WriteStep.StepId = TEXT("step_2_set_max_size");
+	WriteStep.ToolName = TEXT("SetTextureMaxSize");
+	WriteStep.RiskLevel = EHCIAbilityKitAgentPlanRiskLevel::Write;
+	WriteStep.bRequiresConfirm = true;
+	WriteStep.RollbackStrategy = TEXT("all_or_nothing");
+	WriteStep.ExpectedEvidence = {
+		TEXT("target_max_size"),
+		TEXT("scanned_count"),
+		TEXT("modified_count"),
+		TEXT("failed_count"),
+		TEXT("modified_assets"),
+		TEXT("failed_assets"),
+		TEXT("result")};
+	WriteStep.Args = MakeShared<FJsonObject>();
+	WriteStep.Args->SetArrayField(TEXT("asset_paths"), HCI_MakeStringArray({TEXT("{{step_1_scan.asset_paths}}")}));
+	WriteStep.Args->SetNumberField(TEXT("max_size"), 1024);
+
+	FHCIAbilityKitAgentPlanValidationContext Context;
+	Context.bRequireWriteStepForModifyIntent = true;
+	Context.bRequirePipelineInputs = true;
+
+	FHCIAbilityKitAgentPlanValidationResult Result;
+	TestTrue(TEXT("Scan->write chain should pass plan-ready constraints"), FHCIAbilityKitAgentPlanValidator::ValidatePlan(Plan, Registry, Context, Result));
+	TestTrue(TEXT("Result should be valid"), Result.bValid);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FHCIAbilityKitAgentPlanValidatorUiPresentationEmptySummaryRejectedTest,
+	"HCIAbilityKit.Editor.AgentPlanValidation.UiPresentationEmptySummaryRejected",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FHCIAbilityKitAgentPlanValidatorUiPresentationEmptySummaryRejectedTest::RunTest(const FString& Parameters)
+{
+	FHCIAbilityKitToolRegistry& Registry = FHCIAbilityKitToolRegistry::Get();
+	Registry.ResetToDefaults();
+
+	FHCIAbilityKitAgentPlan Plan = MakeValidTexturePlan();
+	Plan.Steps[0].UiPresentation.bHasStepSummary = true;
+	Plan.Steps[0].UiPresentation.StepSummary = TEXT("   ");
+
+	FHCIAbilityKitAgentPlanValidationResult Result;
+	TestFalse(TEXT("Empty ui_presentation.step_summary should fail"), FHCIAbilityKitAgentPlanValidator::ValidatePlan(Plan, Registry, Result));
+	TestEqual(TEXT("Error code"), Result.ErrorCode, FString(TEXT("E4009")));
+	TestTrue(TEXT("Field should mention ui_presentation.step_summary"), Result.Field.Contains(TEXT("ui_presentation.step_summary")));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FHCIAbilityKitAgentPlanValidatorUiPresentationLongRiskWarningRejectedTest,
+	"HCIAbilityKit.Editor.AgentPlanValidation.UiPresentationRiskWarningTooLongRejected",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FHCIAbilityKitAgentPlanValidatorUiPresentationLongRiskWarningRejectedTest::RunTest(const FString& Parameters)
+{
+	FHCIAbilityKitToolRegistry& Registry = FHCIAbilityKitToolRegistry::Get();
+	Registry.ResetToDefaults();
+
+	FHCIAbilityKitAgentPlan Plan = MakeValidTexturePlan();
+	Plan.Steps[0].UiPresentation.bHasRiskWarning = true;
+	Plan.Steps[0].UiPresentation.RiskWarning = FString::ChrN(201, TEXT('W'));
+
+	FHCIAbilityKitAgentPlanValidationResult Result;
+	TestFalse(TEXT("Overlong ui_presentation.risk_warning should fail"), FHCIAbilityKitAgentPlanValidator::ValidatePlan(Plan, Registry, Result));
+	TestEqual(TEXT("Error code"), Result.ErrorCode, FString(TEXT("E4009")));
+	TestTrue(TEXT("Field should mention ui_presentation.risk_warning"), Result.Field.Contains(TEXT("ui_presentation.risk_warning")));
+	return true;
+}
+
 #endif

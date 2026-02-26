@@ -1744,12 +1744,16 @@ bool HCI_RequestAgentPlanPreviewFromUi(
 			}
 
 			FHCIAbilityKitAgentPlanValidationResult Validation;
-			if (!FHCIAbilityKitAgentPlanValidator::ValidatePlan(Plan, *ToolRegistryPtr, Validation))
+			FHCIAbilityKitAgentPlanValidationContext ValidationContext;
+			ValidationContext.bRequireWriteStepForModifyIntent = true;
+			ValidationContext.bRequirePipelineInputs = true;
+			if (!FHCIAbilityKitAgentPlanValidator::ValidatePlan(Plan, *ToolRegistryPtr, ValidationContext, Validation))
 			{
 				const FString ValidationError = FString::Printf(
-					TEXT("plan_validation_failed code=%s field=%s"),
+					TEXT("plan_validation_failed code=%s field=%s reason=%s"),
 					Validation.ErrorCode.IsEmpty() ? TEXT("-") : *Validation.ErrorCode,
-					Validation.Field.IsEmpty() ? TEXT("-") : *Validation.Field);
+					Validation.Field.IsEmpty() ? TEXT("-") : *Validation.Field,
+					Validation.Reason.IsEmpty() ? TEXT("-") : *Validation.Reason);
 				UE_LOG(
 					LogHCIAbilityKitAgentDemo,
 					Error,

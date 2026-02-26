@@ -82,5 +82,43 @@ bool FHCIAbilityKitAgentSubsystemWriteBranchTest::RunTest(const FString& Paramet
 	return true;
 }
 
-#endif
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FHCIAbilityKitAgentSubsystemUiPresentationSummaryPreferredTest,
+	"HCIAbilityKit.Editor.AgentChat.UiPresentation.StepSummaryPreferredOverFallback",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
+bool FHCIAbilityKitAgentSubsystemUiPresentationSummaryPreferredTest::RunTest(const FString& Parameters)
+{
+	FHCIAbilityKitAgentPlanStep Step;
+	Step.StepId = TEXT("step_1_scan_risks");
+	Step.ToolName = TEXT("ScanLevelMeshRisks");
+	Step.RiskLevel = EHCIAbilityKitAgentPlanRiskLevel::ReadOnly;
+	Step.UiPresentation.bHasStepSummary = true;
+	Step.UiPresentation.StepSummary = TEXT("正在扫描场景模型风险");
+
+	const FString Summary = UHCIAbilityKitAgentSubsystem::BuildStepDisplaySummaryForUi(Step);
+	TestEqual(TEXT("Should prefer ui_presentation.step_summary"), Summary, FString(TEXT("正在扫描场景模型风险")));
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FHCIAbilityKitAgentSubsystemUiPresentationFallbackSummaryTest,
+	"HCIAbilityKit.Editor.AgentChat.UiPresentation.MissingSummaryFallsBackToCppHumanText",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FHCIAbilityKitAgentSubsystemUiPresentationFallbackSummaryTest::RunTest(const FString& Parameters)
+{
+	FHCIAbilityKitAgentPlanStep Step;
+	Step.StepId = TEXT("step_1_scan_risks");
+	Step.ToolName = TEXT("ScanLevelMeshRisks");
+	Step.RiskLevel = EHCIAbilityKitAgentPlanRiskLevel::ReadOnly;
+	Step.Args = MakeShared<FJsonObject>();
+	Step.Args->SetStringField(TEXT("scope"), TEXT("selected"));
+
+	const FString Summary = UHCIAbilityKitAgentSubsystem::BuildStepDisplaySummaryForUi(Step);
+	TestTrue(TEXT("Fallback summary should be human-readable"), Summary.Contains(TEXT("扫描场景模型风险")));
+	TestFalse(TEXT("Fallback summary should avoid raw tool name"), Summary.Contains(TEXT("ScanLevelMeshRisks")));
+	return true;
+}
+
+#endif

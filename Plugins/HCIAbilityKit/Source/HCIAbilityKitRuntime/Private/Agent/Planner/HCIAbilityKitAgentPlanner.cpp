@@ -60,6 +60,7 @@ static bool HCI_StepFromTool(
 	const TCHAR* ToolName,
 	const TSharedPtr<FJsonObject>& Args,
 	const TArray<FString>& ExpectedEvidence,
+	const FHCIAbilityKitAgentPlanStep::FUiPresentation* UiPresentation,
 	FHCIAbilityKitAgentPlanStep& OutStep,
 	FString& OutError)
 {
@@ -78,7 +79,23 @@ static bool HCI_StepFromTool(
 	OutStep.bRequiresConfirm = (Tool->Capability != EHCIAbilityKitToolCapability::ReadOnly) || Tool->bDestructive;
 	OutStep.RollbackStrategy = TEXT("all_or_nothing");
 	OutStep.ExpectedEvidence = ExpectedEvidence;
+	if (UiPresentation != nullptr)
+	{
+		OutStep.UiPresentation = *UiPresentation;
+	}
 	return true;
+}
+
+static bool HCI_StepFromTool(
+	const FHCIAbilityKitToolRegistry& ToolRegistry,
+	const TCHAR* StepId,
+	const TCHAR* ToolName,
+	const TSharedPtr<FJsonObject>& Args,
+	const TArray<FString>& ExpectedEvidence,
+	FHCIAbilityKitAgentPlanStep& OutStep,
+	FString& OutError)
+{
+	return HCI_StepFromTool(ToolRegistry, StepId, ToolName, Args, ExpectedEvidence, nullptr, OutStep, OutError);
 }
 
 static FString HCI_NormalizeText(const FString& InText)
@@ -134,6 +151,66 @@ static bool HCI_TryParseJsonStringArrayLiteral(const FString& InText, TArray<FSt
 		}
 	}
 	return OutValues.Num() > 0;
+}
+
+static bool HCI_TryParseOptionalUiPresentation(
+	const TSharedPtr<FJsonObject>& StepObject,
+	const int32 StepIndex,
+	FHCIAbilityKitAgentPlanStep::FUiPresentation& OutUi,
+	FString& OutError)
+{
+	OutUi = FHCIAbilityKitAgentPlanStep::FUiPresentation();
+	if (!StepObject.IsValid() || !StepObject->HasField(TEXT("ui_presentation")))
+	{
+		return true;
+	}
+
+	const TSharedPtr<FJsonObject>* UiObjectPtr = nullptr;
+	if (!StepObject->TryGetObjectField(TEXT("ui_presentation"), UiObjectPtr) || UiObjectPtr == nullptr || !UiObjectPtr->IsValid())
+	{
+		OutError = FString::Printf(TEXT("Invalid field type: ui_presentation (llm_plan.steps[%d])"), StepIndex);
+		return false;
+	}
+
+	const TSharedPtr<FJsonObject>& UiObject = *UiObjectPtr;
+	auto TryReadOptionalStringField = [&](const TCHAR* FieldName, bool& bOutHasValue, FString& OutValue) -> bool
+	{
+		bOutHasValue = false;
+		OutValue.Reset();
+		if (!UiObject->HasField(FieldName))
+		{
+			return true;
+		}
+
+		FString Parsed;
+		if (!UiObject->TryGetStringField(FieldName, Parsed))
+		{
+			OutError = FString::Printf(
+				TEXT("Invalid field type: ui_presentation.%s (llm_plan.steps[%d])"),
+				FieldName,
+				StepIndex);
+			return false;
+		}
+
+		bOutHasValue = true;
+		OutValue = Parsed;
+		return true;
+	};
+
+	if (!TryReadOptionalStringField(TEXT("step_summary"), OutUi.bHasStepSummary, OutUi.StepSummary))
+	{
+		return false;
+	}
+	if (!TryReadOptionalStringField(TEXT("intent_reason"), OutUi.bHasIntentReason, OutUi.IntentReason))
+	{
+		return false;
+	}
+	if (!TryReadOptionalStringField(TEXT("risk_warning"), OutUi.bHasRiskWarning, OutUi.RiskWarning))
+	{
+		return false;
+	}
+
+	return true;
 }
 
 static void HCI_ParseLooseStringList(const FString& InText, TArray<FString>& OutValues)
@@ -992,6 +1069,12 @@ static bool HCI_TryBuildPlanFromLlmPlanJson(
 				return false;
 			}
 
+			FHCIAbilityKitAgentPlanStep::FUiPresentation UiPresentation;
+			if (!HCI_TryParseOptionalUiPresentation(StepObject, Index, UiPresentation, OutError))
+			{
+				return false;
+			}
+
 		FHCIAbilityKitAgentPlanStep& Step = OutPlan.Steps.AddDefaulted_GetRef();
 		if (!HCI_StepFromTool(
 				ToolRegistry,
@@ -999,6 +1082,7 @@ static bool HCI_TryBuildPlanFromLlmPlanJson(
 				*ToolName,
 				ArgsObject,
 				ExpectedEvidence,
+				&UiPresentation,
 				Step,
 				OutError))
 		{

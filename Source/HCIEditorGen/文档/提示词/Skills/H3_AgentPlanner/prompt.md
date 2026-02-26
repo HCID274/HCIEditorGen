@@ -30,11 +30,19 @@ Step 5 - JSON Generation:
 - `args` MUST satisfy the chosen tool schema.
 - `args` MUST NOT include undeclared fields (`additionalProperties=false`).
 - `expected_evidence` MUST be a non-empty string array.
+- `ui_presentation` SHOULD be provided for each step; at minimum include `step_summary`.
+- `ui_presentation.step_summary` should be a short human-readable phrase (for artists), not raw `tool_name + args`.
+- `ui_presentation.risk_warning` should be filled for write/destructive steps; omit for ordinary read-only steps.
+- For `SetTextureMaxSize.asset_paths` / `SetMeshLODGroup.asset_paths`, you MUST use pipeline input from `ScanAssets` evidence (`{{step_x.asset_paths}}`).
+- For `intent = "batch_fix_asset_compliance"`, plan MUST contain at least one write step (`SetTextureMaxSize` or `SetMeshLODGroup`).
 - `fallback_scan_assets` is allowed ONLY for non-directory, non-operational, pure-chat unclear input (user gives no actionable folder/asset target).
 - If `ENV_CONTEXT` contains a file list, treat that file list as the ONLY source of truth for concrete asset paths in `RenameAsset`/`MoveAsset`/`NormalizeAssetNamingByMetadata`.
 - Never fabricate asset paths that are not present in `ENV_CONTEXT` when file list is available.
 - `NormalizeAssetNamingByMetadata` / `RenameAsset` / `MoveAsset` are ALLOWED only when `ENV_CONTEXT` already provides concrete asset file list.
-- If `ENV_CONTEXT` is empty, you MUST avoid any write tools and output discovery/read-only plan only (`SearchPath`/`ScanAssets`).
+- If `ENV_CONTEXT` is empty and user explicitly requests modification, you MUST still output a modification-capable pipeline plan:
+  - first produce a `ScanAssets` step;
+  - then a write step that consumes `{{step_scan.asset_paths}}`;
+  - NEVER output write steps with hardcoded `asset_paths`.
 
 ## IRON RULE: DIRECTORY SEARCH FIRST (absolute, non-negotiable)
 - If user asks to inspect/organize/modify a "folder/directory/文件夹/目录" and the referenced directory is NOT an explicit `/Game/...` absolute path, Step 1 MUST be `SearchPath`.
@@ -55,7 +63,8 @@ Step 5 - JSON Generation:
 - If user intent references a directory/folder bucket (e.g. "临时目录", "temp folder", "整理某目录资产") and the path is not explicit `/Game/...`, step 1 MUST be `SearchPath`.
 - `SearchPath` is REQUIRED (not optional) for non-absolute directory references.
 - For directory-first cases, do not start with `NormalizeAssetNamingByMetadata` / `RenameAsset` / `MoveAsset` directly.
-- Emit an intermediate scan-first plan only, then wait for a next planning turn with real ENV evidence before any write plan.
+- For naming-only intents, emit an intermediate scan-first plan only, then wait for a next planning turn with real ENV evidence before any write plan.
+- For explicit asset compliance modify intent (`batch_fix_asset_compliance`), do NOT stop at scan-only; you must append write step(s) with pipeline-bound asset paths.
 - Always bind `ScanAssets.args.directory` to `{{step_1_search.matched_directories[0]}}` after `SearchPath`.
 - For semantic alias phrases (e.g. "临时目录"), `SearchPath.args.keyword` MUST use a canonical searchable token from `COMMON_UE_PATHS` (example: `Temp`), not the raw phrase.
 
@@ -73,7 +82,8 @@ Step 5 - JSON Generation:
   - MUST start with `SearchPath` using the user-mentioned folder keyword.
   - If the folder phrase matches `COMMON_UE_PATHS`, `SearchPath.keyword` MUST be rewritten to canonical keyword (`Temp`/`Art`/`Maps`).
   - Then use `ScanAssets` on `{{step_1_search.matched_directories[0]}}`.
-  - STOP at discovery plan (`SearchPath` + `ScanAssets`) when `ENV_CONTEXT` is empty.
+  - For naming-only intents, STOP at discovery plan (`SearchPath` + `ScanAssets`) when `ENV_CONTEXT` is empty.
+  - For explicit asset compliance modify intent, continue with pipeline-bound write step(s).
 - Case B: explicit absolute path in user input:
   - Use `ScanAssets` directly on that explicit path.
 - Case C: user provides no actionable target and no directory/asset intent:
@@ -107,7 +117,8 @@ Step 5 - JSON Generation:
 - Asset compliance:
   - `intent = "batch_fix_asset_compliance"`
   - `route_reason = "asset_compliance_texture_lod"`
-  - preferred tools: `SetTextureMaxSize` and/or `SetMeshLODGroup`
+  - required structure: `ScanAssets` -> (`SetTextureMaxSize` and/or `SetMeshLODGroup`)
+  - write-step `asset_paths` MUST consume `ScanAssets` evidence via template (`{{step_x.asset_paths}}`)
 - Mesh triangle count analysis:
   - `intent = "scan_mesh_triangle_count"`
   - `route_reason = "mesh_triangle_count_analysis"`

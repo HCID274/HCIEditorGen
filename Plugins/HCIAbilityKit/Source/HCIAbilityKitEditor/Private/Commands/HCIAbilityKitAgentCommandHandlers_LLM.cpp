@@ -511,12 +511,15 @@ void HCI_RunAbilityKitAgentPlanWithRealLLMDemoCommand(const TArray<FString>& Arg
 			}
 
 			FHCIAbilityKitAgentPlanValidationResult Validation;
-			if (!FHCIAbilityKitAgentPlanValidator::ValidatePlan(Plan, *ToolRegistryPtr, Validation))
+			FHCIAbilityKitAgentPlanValidationContext ValidationContext;
+			ValidationContext.bRequireWriteStepForModifyIntent = true;
+			ValidationContext.bRequirePipelineInputs = true;
+			if (!FHCIAbilityKitAgentPlanValidator::ValidatePlan(Plan, *ToolRegistryPtr, ValidationContext, Validation))
 			{
 				UE_LOG(
 					LogHCIAbilityKitAgentDemo,
 					Error,
-					TEXT("[HCIAbilityKit][AgentPlanLLM][H3] build_failed mode=%s input=%s provider=%s provider_mode=%s fallback_used=%s fallback_reason=%s error_code=%s reason=plan_validation_failed code=%s field=%s"),
+					TEXT("[HCIAbilityKit][AgentPlanLLM][H3] build_failed mode=%s input=%s provider=%s provider_mode=%s fallback_used=%s fallback_reason=%s error_code=%s reason=plan_validation_failed code=%s field=%s validation_reason=%s"),
 					*Mode,
 					*UserText,
 					*PlannerMetadata.PlannerProvider,
@@ -525,7 +528,8 @@ void HCI_RunAbilityKitAgentPlanWithRealLLMDemoCommand(const TArray<FString>& Arg
 					*PlannerMetadata.FallbackReason,
 					PlannerMetadata.ErrorCode.IsEmpty() ? TEXT("-") : *PlannerMetadata.ErrorCode,
 					Validation.ErrorCode.IsEmpty() ? TEXT("-") : *Validation.ErrorCode,
-					Validation.Field.IsEmpty() ? TEXT("-") : *Validation.Field);
+					Validation.Field.IsEmpty() ? TEXT("-") : *Validation.Field,
+					Validation.Reason.IsEmpty() ? TEXT("-") : *Validation.Reason);
 				return;
 			}
 

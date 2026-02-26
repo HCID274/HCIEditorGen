@@ -321,6 +321,52 @@ static bool HCI_ValidateExpectedEvidence(
 	return true;
 }
 
+static bool HCI_ValidateUiPresentation(
+	const FHCIAbilityKitAgentPlanStep& Step,
+	const int32 StepIndex,
+	FHCIAbilityKitAgentPlanValidationResult& OutResult)
+{
+	const FHCIAbilityKitAgentPlanStep::FUiPresentation& Ui = Step.UiPresentation;
+	if (!Ui.HasAnyField())
+	{
+		return true;
+	}
+
+	auto ValidateField = [&](const bool bHasValue, const FString& Value, const TCHAR* FieldName, const int32 MaxLen) -> bool
+	{
+		if (!bHasValue)
+		{
+			return true;
+		}
+
+		const FString Trimmed = Value.TrimStartAndEnd();
+		const FString FieldPath = FString::Printf(TEXT("steps[%d].ui_presentation.%s"), StepIndex, FieldName);
+		if (Trimmed.IsEmpty())
+		{
+			return HCI_Fail(OutResult, TEXT("E4009"), FieldPath, TEXT("ui_presentation_empty"), StepIndex, &Step);
+		}
+		if (Trimmed.Len() > MaxLen)
+		{
+			return HCI_Fail(OutResult, TEXT("E4009"), FieldPath, TEXT("ui_presentation_too_long"), StepIndex, &Step);
+		}
+		return true;
+	};
+
+	if (!ValidateField(Ui.bHasStepSummary, Ui.StepSummary, TEXT("step_summary"), 120))
+	{
+		return false;
+	}
+	if (!ValidateField(Ui.bHasIntentReason, Ui.IntentReason, TEXT("intent_reason"), 160))
+	{
+		return false;
+	}
+	if (!ValidateField(Ui.bHasRiskWarning, Ui.RiskWarning, TEXT("risk_warning"), 200))
+	{
+		return false;
+	}
+	return true;
+}
+
 static bool HCI_ValidateStringValue(
 	const FHCIAbilityKitToolArgSchema& Schema,
 	const FString& Parsed,
@@ -651,14 +697,19 @@ static bool HCI_CheckNamingMetadataSafetyMock(
 struct FHCIAbilityKitVariableTemplateRef
 {
 	FString SourceStepId;
+	FString SourceEvidenceKey;
 	FString FieldPath;
 };
 
-static bool HCI_TryParseVariableTemplateReference(const FString& InText, FString& OutSourceStepId)
+static bool HCI_TryParseVariableTemplateReference(
+	const FString& InText,
+	FString& OutSourceStepId,
+	FString& OutSourceEvidenceKey)
 {
 	OutSourceStepId.Reset();
+	OutSourceEvidenceKey.Reset();
 	const FString Trimmed = InText.TrimStartAndEnd();
-	const FRegexPattern Pattern(TEXT("^\\{\\{\\s*([A-Za-z0-9_]+)\\.[A-Za-z0-9_]+(?:\\[\\d+\\])?\\s*\\}\\}$"));
+	const FRegexPattern Pattern(TEXT("^\\{\\{\\s*([A-Za-z0-9_]+)\\.([A-Za-z0-9_]+)(?:\\[\\d+\\])?\\s*\\}\\}$"));
 	FRegexMatcher Matcher(Pattern, Trimmed);
 	if (!Matcher.FindNext())
 	{
@@ -666,7 +717,8 @@ static bool HCI_TryParseVariableTemplateReference(const FString& InText, FString
 	}
 
 	OutSourceStepId = Matcher.GetCaptureGroup(1);
-	return !OutSourceStepId.IsEmpty();
+	OutSourceEvidenceKey = Matcher.GetCaptureGroup(2);
+	return !OutSourceStepId.IsEmpty() && !OutSourceEvidenceKey.IsEmpty();
 }
 
 static void HCI_CollectVariableTemplateRefsFromJsonValue(
@@ -684,10 +736,12 @@ static void HCI_CollectVariableTemplateRefsFromJsonValue(
 	case EJson::String:
 	{
 		FString SourceStepId;
-		if (HCI_TryParseVariableTemplateReference(InValue->AsString(), SourceStepId))
+		FString SourceEvidenceKey;
+		if (HCI_TryParseVariableTemplateReference(InValue->AsString(), SourceStepId, SourceEvidenceKey))
 		{
 			FHCIAbilityKitVariableTemplateRef& Ref = OutRefs.AddDefaulted_GetRef();
 			Ref.SourceStepId = SourceStepId;
+			Ref.SourceEvidenceKey = SourceEvidenceKey;
 			Ref.FieldPath = InFieldPath;
 		}
 		break;
@@ -772,6 +826,215 @@ static bool HCI_ValidateVariableTemplateReferences(
 
 	return true;
 }
+
+static bool HCI_IsModifyStyleIntent(const FString& InIntent)
+{
+	const FString IntentLower = InIntent.TrimStartAndEnd().ToLower();
+	return IntentLower == TEXT("batch_fix_asset_compliance") ||
+		IntentLower == TEXT("normalize_temp_assets_by_metadata") ||
+		IntentLower.Contains(TEXT("batch_fix")) ||
+		IntentLower.Contains(TEXT("normalize")) ||
+		IntentLower.Contains(TEXT("rename")) ||
+		IntentLower.Contains(TEXT("move"));
+}
+
+static bool HCI_IsWriteLikeStep(const FHCIAbilityKitAgentPlanStep& Step)
+{
+	return Step.bRequiresConfirm || Step.RiskLevel != EHCIAbilityKitAgentPlanRiskLevel::ReadOnly;
+}
+
+static bool HCI_ValidateModifyIntentHasWriteStep(
+	const FHCIAbilityKitAgentPlan& Plan,
+	const FHCIAbilityKitAgentPlanValidationContext& Context,
+	FHCIAbilityKitAgentPlanValidationResult& OutResult)
+{
+	if (!Context.bRequireWriteStepForModifyIntent || !HCI_IsModifyStyleIntent(Plan.Intent))
+	{
+		return true;
+	}
+
+	for (const FHCIAbilityKitAgentPlanStep& Step : Plan.Steps)
+	{
+		if (HCI_IsWriteLikeStep(Step))
+		{
+			return true;
+		}
+	}
+
+	return HCI_Fail(
+		OutResult,
+		TEXT("E4009"),
+		TEXT("steps"),
+		TEXT("modify_intent_requires_write_step"),
+		INDEX_NONE,
+		nullptr);
+}
+
+static bool HCI_ValidatePipelineReferenceTargetsScanAssets(
+	const FHCIAbilityKitAgentPlan& Plan,
+	const int32 StepIndex,
+	const FHCIAbilityKitAgentPlanStep& Step,
+	const FHCIAbilityKitVariableTemplateRef& Ref,
+	const TMap<FString, int32>& StepIndexById,
+	FHCIAbilityKitAgentPlanValidationResult& OutResult)
+{
+	const int32* SourceStepIndexPtr = StepIndexById.Find(Ref.SourceStepId);
+	if (SourceStepIndexPtr == nullptr)
+	{
+		return HCI_Fail(
+			OutResult,
+			TEXT("E4009"),
+			Ref.FieldPath,
+			TEXT("pipeline_source_step_missing"),
+			StepIndex,
+			&Step);
+	}
+	if (*SourceStepIndexPtr >= StepIndex)
+	{
+		return HCI_Fail(
+			OutResult,
+			TEXT("E4009"),
+			Ref.FieldPath,
+			TEXT("pipeline_source_step_must_precede_consumer"),
+			StepIndex,
+			&Step);
+	}
+
+	const FHCIAbilityKitAgentPlanStep& SourceStep = Plan.Steps[*SourceStepIndexPtr];
+	if (SourceStep.ToolName != TEXT("ScanAssets"))
+	{
+		return HCI_Fail(
+			OutResult,
+			TEXT("E4009"),
+			Ref.FieldPath,
+			TEXT("pipeline_source_must_be_scan_assets"),
+			StepIndex,
+			&Step);
+	}
+	if (!SourceStep.ExpectedEvidence.Contains(TEXT("asset_paths")))
+	{
+		return HCI_Fail(
+			OutResult,
+			TEXT("E4009"),
+			Ref.FieldPath,
+			TEXT("pipeline_source_missing_asset_paths_evidence"),
+			StepIndex,
+			&Step);
+	}
+	if (!Ref.SourceEvidenceKey.Equals(TEXT("asset_paths"), ESearchCase::CaseSensitive))
+	{
+		return HCI_Fail(
+			OutResult,
+			TEXT("E4009"),
+			Ref.FieldPath,
+			TEXT("pipeline_evidence_key_must_be_asset_paths"),
+			StepIndex,
+			&Step);
+	}
+
+	return true;
+}
+
+static bool HCI_ValidatePipelineRequiredArgs(
+	const FHCIAbilityKitAgentPlan& Plan,
+	const FHCIAbilityKitToolDescriptor& Tool,
+	const int32 StepIndex,
+	const FHCIAbilityKitAgentPlanStep& Step,
+	const TMap<FString, int32>& StepIndexById,
+	const FHCIAbilityKitAgentPlanValidationContext& Context,
+	FHCIAbilityKitAgentPlanValidationResult& OutResult)
+{
+	if (!Context.bRequirePipelineInputs || !Step.Args.IsValid())
+	{
+		return true;
+	}
+
+	for (const FHCIAbilityKitToolArgSchema& Schema : Tool.ArgsSchema)
+	{
+		if (!Schema.bRequiresPipelineInput)
+		{
+			continue;
+		}
+
+		const FString ArgKey = Schema.ArgName.ToString();
+		const TSharedPtr<FJsonValue>* ValuePtr = Step.Args->Values.Find(ArgKey);
+		if (!ValuePtr || !ValuePtr->IsValid())
+		{
+			continue;
+		}
+
+		const FString FieldPath = HCI_MakeArgFieldPath(StepIndex, ArgKey);
+		const TSharedPtr<FJsonValue>& Value = *ValuePtr;
+
+		if (Schema.ValueType == EHCIAbilityKitToolArgValueType::String)
+		{
+			if (Value->Type != EJson::String)
+			{
+				return HCI_Fail(OutResult, TEXT("E4009"), FieldPath, TEXT("pipeline_input_required_for_arg"), StepIndex, &Step);
+			}
+
+			FString SourceStepId;
+			FString SourceEvidenceKey;
+			if (!HCI_TryParseVariableTemplateReference(Value->AsString(), SourceStepId, SourceEvidenceKey))
+			{
+				return HCI_Fail(OutResult, TEXT("E4009"), FieldPath, TEXT("pipeline_input_required_for_arg"), StepIndex, &Step);
+			}
+
+			FHCIAbilityKitVariableTemplateRef Ref;
+			Ref.SourceStepId = SourceStepId;
+			Ref.SourceEvidenceKey = SourceEvidenceKey;
+			Ref.FieldPath = FieldPath;
+			if (!HCI_ValidatePipelineReferenceTargetsScanAssets(Plan, StepIndex, Step, Ref, StepIndexById, OutResult))
+			{
+				return false;
+			}
+			continue;
+		}
+
+		if (Schema.ValueType == EHCIAbilityKitToolArgValueType::StringArray)
+		{
+			if (Value->Type != EJson::Array)
+			{
+				return HCI_Fail(OutResult, TEXT("E4009"), FieldPath, TEXT("pipeline_input_required_for_arg"), StepIndex, &Step);
+			}
+
+			const TArray<TSharedPtr<FJsonValue>>& ArrayValues = Value->AsArray();
+			if (ArrayValues.Num() <= 0)
+			{
+				return HCI_Fail(OutResult, TEXT("E4009"), FieldPath, TEXT("pipeline_input_required_for_arg"), StepIndex, &Step);
+			}
+
+			for (int32 ArrayIndex = 0; ArrayIndex < ArrayValues.Num(); ++ArrayIndex)
+			{
+				const TSharedPtr<FJsonValue>& Element = ArrayValues[ArrayIndex];
+				const FString ElementFieldPath = FString::Printf(TEXT("%s[%d]"), *FieldPath, ArrayIndex);
+				if (!Element.IsValid() || Element->Type != EJson::String)
+				{
+					return HCI_Fail(OutResult, TEXT("E4009"), ElementFieldPath, TEXT("pipeline_input_required_for_arg"), StepIndex, &Step);
+				}
+
+				FString SourceStepId;
+				FString SourceEvidenceKey;
+				if (!HCI_TryParseVariableTemplateReference(Element->AsString(), SourceStepId, SourceEvidenceKey))
+				{
+					return HCI_Fail(OutResult, TEXT("E4009"), ElementFieldPath, TEXT("pipeline_input_required_for_arg"), StepIndex, &Step);
+				}
+
+				FHCIAbilityKitVariableTemplateRef Ref;
+				Ref.SourceStepId = SourceStepId;
+				Ref.SourceEvidenceKey = SourceEvidenceKey;
+				Ref.FieldPath = ElementFieldPath;
+				if (!HCI_ValidatePipelineReferenceTargetsScanAssets(Plan, StepIndex, Step, Ref, StepIndexById, OutResult))
+				{
+					return false;
+				}
+			}
+			continue;
+		}
+	}
+
+	return true;
+}
 }
 
 bool FHCIAbilityKitAgentPlanValidator::ValidatePlan(
@@ -795,6 +1058,10 @@ bool FHCIAbilityKitAgentPlanValidator::ValidatePlan(
 	if (!FHCIAbilityKitAgentPlanContract::ValidateMinimalContract(Plan, MinimalContractError))
 	{
 		return HCI_Fail(OutResult, TEXT("E4001"), TEXT("plan"), MinimalContractError, INDEX_NONE, nullptr);
+	}
+	if (!HCI_ValidateModifyIntentHasWriteStep(Plan, Context, OutResult))
+	{
+		return false;
 	}
 
 	int32 HighestRiskRank = 0;
@@ -863,11 +1130,19 @@ bool FHCIAbilityKitAgentPlanValidator::ValidatePlan(
 			{
 				return false;
 			}
+			if (!HCI_ValidateUiPresentation(Step, StepIndex, OutResult))
+			{
+				return false;
+			}
 			if (!HCI_ValidateArgsAgainstSchema(*Tool, Step, StepIndex, OutResult))
 			{
 				return false;
 			}
 			if (!HCI_ValidateVariableTemplateReferences(StepIndex, Step, StepIndexById, OutResult))
+			{
+				return false;
+			}
+			if (!HCI_ValidatePipelineRequiredArgs(Plan, *Tool, StepIndex, Step, StepIndexById, Context, OutResult))
 			{
 				return false;
 			}

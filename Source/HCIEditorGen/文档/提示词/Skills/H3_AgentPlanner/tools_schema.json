@@ -105,6 +105,11 @@
               "type": "array",
               "minItems": 1,
               "maxItems": 50,
+              "x_requires_pipeline_input": true,
+              "x_pipeline_source": {
+                "tool_name": "ScanAssets",
+                "evidence_key": "asset_paths"
+              },
               "items": {
                 "$ref": "#/definitions/game_or_variable_path"
               }
@@ -134,6 +139,11 @@
               "type": "array",
               "minItems": 1,
               "maxItems": 50,
+              "x_requires_pipeline_input": true,
+              "x_pipeline_source": {
+                "tool_name": "ScanAssets",
+                "evidence_key": "asset_paths"
+              },
               "items": {
                 "$ref": "#/definitions/game_or_variable_path"
               }
@@ -327,6 +337,27 @@
                 "items": {
                   "type": "string",
                   "minLength": 1
+                }
+              },
+              "ui_presentation": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "step_summary": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 120
+                  },
+                  "intent_reason": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 160
+                  },
+                  "risk_warning": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 200
+                  }
                 }
               }
             },

@@ -77,6 +77,9 @@ public:
 
 	static bool IsWriteLikePlan(const FHCIAbilityKitAgentPlan& Plan);
 	static EHCIAbilityKitAgentPlanExecutionBranch ClassifyPlanExecutionBranch(const FHCIAbilityKitAgentPlan& Plan);
+	static FString BuildStepDisplaySummaryForUi(const FHCIAbilityKitAgentPlanStep& Step);
+	static FString BuildStepIntentReasonForUi(const FHCIAbilityKitAgentPlanStep& Step);
+	static FString BuildStepRiskWarningForUi(const FHCIAbilityKitAgentPlanStep& Step);
 
 private:
 	void EmitUserLine(const FString& Text);

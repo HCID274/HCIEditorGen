@@ -118,6 +118,14 @@ static bool HCI_TextContainsAny(const FString& Text, std::initializer_list<const
 	return false;
 }
 
+static bool HCI_BuildKeywordPlan(
+	const FString& UserText,
+	const FString& RequestId,
+	const FHCIAbilityKitToolRegistry& ToolRegistry,
+	FHCIAbilityKitAgentPlan& OutPlan,
+	FString& OutRouteReason,
+	FString& OutError);
+
 static bool HCI_BuildPreparedMessageOnlyPlan(
 	const FString& RequestId,
 	const FString& Intent,
@@ -138,6 +146,40 @@ static bool HCI_BuildPreparedMessageOnlyPlan(
 		OutError = ContractError;
 		return false;
 	}
+	OutError.Reset();
+	return true;
+}
+
+static bool HCI_TryOverrideLlmPlanWithKeywordMessageOnlyGuard(
+	const FString& UserText,
+	const FString& RequestId,
+	const FHCIAbilityKitToolRegistry& ToolRegistry,
+	FHCIAbilityKitAgentPlan& InOutPlan,
+	FString& InOutRouteReason,
+	FString& OutError)
+{
+	FHCIAbilityKitAgentPlan KeywordPlan;
+	FString KeywordRouteReason;
+	FString KeywordError;
+	if (!HCI_BuildKeywordPlan(UserText, RequestId, ToolRegistry, KeywordPlan, KeywordRouteReason, KeywordError))
+	{
+		return false;
+	}
+
+	const bool bKeywordMessageOnly = KeywordPlan.Steps.Num() == 0 && !KeywordPlan.AssistantMessage.IsEmpty();
+	if (!bKeywordMessageOnly)
+	{
+		return false;
+	}
+
+	const bool bLlmHasToolSteps = InOutPlan.Steps.Num() > 0;
+	if (!bLlmHasToolSteps)
+	{
+		return false;
+	}
+
+	InOutPlan = MoveTemp(KeywordPlan);
+	InOutRouteReason = MoveTemp(KeywordRouteReason);
 	OutError.Reset();
 	return true;
 }
@@ -1171,9 +1213,9 @@ static bool HCI_BuildKeywordPlan(
 	const bool bAssetComplianceIntent =
 		HCI_TextContainsAny(Text, {TEXT("贴图"), TEXT("texture"), TEXT("分辨率"), TEXT("npot"), TEXT("面数"), TEXT("lod")});
 	const bool bIdentityIntent =
-		HCI_TextContainsAny(Text, {TEXT("你是谁"), TEXT("你是做什么"), TEXT("你是什么"), TEXT("who are you"), TEXT("what are you")});
+		HCI_TextContainsAny(Text, {TEXT("你是谁"), TEXT("你是哪个"), TEXT("你是哪位"), TEXT("你是做什么"), TEXT("你是什么"), TEXT("who are you"), TEXT("what are you")});
 	const bool bCapabilityIntent =
-		HCI_TextContainsAny(Text, {TEXT("你能做什么"), TEXT("能做什么"), TEXT("可以做什么"), TEXT("会什么"), TEXT("what can you do"), TEXT("capability"), TEXT("abilities")});
+		HCI_TextContainsAny(Text, {TEXT("你能做什么"), TEXT("你有哪些能力"), TEXT("有什么能力"), TEXT("有啥能力"), TEXT("能做什么"), TEXT("可以做什么"), TEXT("会什么"), TEXT("what can you do"), TEXT("capability"), TEXT("abilities")});
 	const bool bGreetingIntent =
 		HCI_TextContainsAny(Text, {TEXT("你好"), TEXT("早上好"), TEXT("晚上好"), TEXT("嗨"), TEXT("hello"), TEXT("hi")});
 	const bool bLikelyChitchatIntent = bIdentityIntent || bCapabilityIntent || bGreetingIntent;
@@ -1438,6 +1480,29 @@ static bool HCI_TryBuildMockLlmPlan(
 		OutErrorCode = TEXT("E4303");
 		OutError = TEXT("Missing required field: expected_evidence");
 		return false;
+	case EHCIAbilityKitAgentPlannerLlmMockMode::ValidButMisroutedScanAssets:
+		OutPlan.RequestId = RequestId;
+		OutPlan.Intent = TEXT("scan_assets");
+		OutRouteReason = TEXT("fallback_scan_assets");
+		{
+			FHCIAbilityKitAgentPlanStep& ScanStep = OutPlan.Steps.AddDefaulted_GetRef();
+			if (!HCI_StepFromTool(
+					ToolRegistry,
+					TEXT("step_1_fallback_scan"),
+					TEXT("ScanAssets"),
+					HCI_MakeScanAssetsArgs(),
+					{TEXT("scan_root"), TEXT("asset_count"), TEXT("result"), TEXT("asset_path"), TEXT("asset_paths")},
+					ScanStep,
+					OutError))
+			{
+				OutPlan = FHCIAbilityKitAgentPlan();
+				OutRouteReason.Reset();
+				OutFallbackReason = HCI_FallbackReasonContractInvalid;
+				OutErrorCode = TEXT("E4303");
+				return false;
+			}
+		}
+		return true;
 	case EHCIAbilityKitAgentPlannerLlmMockMode::None:
 	default:
 		return HCI_BuildKeywordPlan(UserText, RequestId, ToolRegistry, OutPlan, OutRouteReason, OutError);
@@ -1805,6 +1870,13 @@ static void HCI_StartAsyncRealHttpAttempt(const TSharedRef<FHCIAbilityKitAsyncPl
 					HCI_FinishAsyncWithKeywordFallback(Pinned.ToSharedRef());
 					return;
 				}
+					HCI_TryOverrideLlmPlanWithKeywordMessageOnlyGuard(
+						Pinned->UserText,
+						Pinned->RequestId,
+						*Pinned->ToolRegistry,
+						Plan,
+						RouteReason,
+						BuildError);
 
 				GHCIAbilityKitAgentPlannerRuntimeState.ConsecutiveLlmFailures = 0;
 			GHCIAbilityKitAgentPlannerRuntimeState.Metrics.ConsecutiveLlmFailures = 0;
@@ -1996,6 +2068,13 @@ bool FHCIAbilityKitAgentPlanner::BuildPlanFromNaturalLanguageWithProvider(
 
 	if (bLlmSucceeded)
 	{
+		HCI_TryOverrideLlmPlanWithKeywordMessageOnlyGuard(
+			UserText,
+			RequestId,
+			ToolRegistry,
+			OutPlan,
+			OutRouteReason,
+			OutError);
 		GHCIAbilityKitAgentPlannerRuntimeState.ConsecutiveLlmFailures = 0;
 		GHCIAbilityKitAgentPlannerRuntimeState.Metrics.ConsecutiveLlmFailures = 0;
 		OutMetadata.PlannerProvider = HCI_LlmProviderName;

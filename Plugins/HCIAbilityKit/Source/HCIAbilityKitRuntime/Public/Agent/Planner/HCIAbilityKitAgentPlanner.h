@@ -12,7 +12,8 @@ enum class EHCIAbilityKitAgentPlannerLlmMockMode : uint8
 	Timeout,
 	InvalidJson,
 	ContractInvalid,
-	EmptyResponse
+	EmptyResponse,
+	ValidButMisroutedScanAssets
 };
 
 struct HCIABILITYKITRUNTIME_API FHCIAbilityKitAgentPlannerEnvAssetEntry

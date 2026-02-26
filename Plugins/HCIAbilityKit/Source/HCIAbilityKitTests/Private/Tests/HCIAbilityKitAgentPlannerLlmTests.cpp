@@ -231,6 +231,43 @@ bool FHCIAbilityKitAgentPlannerKeywordUnknownInputReturnsClarifyMessageTest::Run
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FHCIAbilityKitAgentPlannerLlmSuccessMisroutedChitchatIsGuardedTest,
+	"HCIAbilityKit.Editor.AgentPlanLLM.LlmSuccessMisroutedChitchatIsForcedToPreparedMessageOnly",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FHCIAbilityKitAgentPlannerLlmSuccessMisroutedChitchatIsGuardedTest::RunTest(const FString& Parameters)
+{
+	FHCIAbilityKitToolRegistry& Registry = FHCIAbilityKitToolRegistry::Get();
+	Registry.ResetToDefaults();
+
+	FHCIAbilityKitAgentPlannerBuildOptions Options;
+	Options.bPreferLlm = true;
+	Options.LlmMockMode = EHCIAbilityKitAgentPlannerLlmMockMode::ValidButMisroutedScanAssets;
+
+	FHCIAbilityKitAgentPlan Plan;
+	FString RouteReason;
+	FHCIAbilityKitAgentPlannerResultMetadata Metadata;
+	FString Error;
+	const bool bBuilt = FHCIAbilityKitAgentPlanner::BuildPlanFromNaturalLanguageWithProvider(
+		TEXT("你是哪个？"),
+		TEXT("req_h5_llm_guard_chitchat_01"),
+		Registry,
+		Options,
+		Plan,
+		RouteReason,
+		Metadata,
+		Error);
+
+	TestTrue(TEXT("LLM misrouted chitchat plan should be guarded into message-only"), bBuilt);
+	TestEqual(TEXT("Planner provider should still be llm"), Metadata.PlannerProvider, FString(TEXT("llm")));
+	TestFalse(TEXT("Fallback should not be used for semantic guard"), Metadata.bFallbackUsed);
+	TestEqual(TEXT("Guard route should be prepared_message_only_identity"), RouteReason, FString(TEXT("prepared_message_only_identity")));
+	TestEqual(TEXT("Guarded plan should have no steps"), Plan.Steps.Num(), 0);
+	TestFalse(TEXT("Assistant message should not be empty"), Plan.AssistantMessage.IsEmpty());
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FHCIAbilityKitAgentPlannerLlmRetrySuccessTest,
 	"HCIAbilityKit.Editor.AgentPlanLLM.RetryTimeoutThenLlmSuccess",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)

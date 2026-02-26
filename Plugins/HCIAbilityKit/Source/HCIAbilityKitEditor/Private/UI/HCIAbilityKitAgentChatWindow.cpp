@@ -12,6 +12,7 @@
 #include "Serialization/JsonWriter.h"
 #include "Subsystems/HCIAbilityKitAgentSubsystem.h"
 #include "Styling/AppStyle.h"
+#include "Widgets/Images/SImage.h"
 #include "Widgets/Images/SThrobber.h"
 #include "Widgets/Input/SButton.h"
 #include "Widgets/Input/SEditableTextBox.h"
@@ -790,13 +791,59 @@ private:
 
 			for (int32 LineIndex = 0; LineIndex < Msg.ReviewLines.Num(); ++LineIndex)
 			{
-				ContentBox->AddSlot().AutoHeight().Padding(0.0f, 4.0f, 0.0f, 0.0f)
+				ContentBox->AddSlot().AutoHeight().Padding(0.0f, 8.0f, 0.0f, 0.0f)
 				[
-					SNew(STextBlock)
-					.Text(FText::FromString(Msg.ReviewLines[LineIndex]))
-					.AutoWrapText(true)
-					.WrapTextAt(560.0f)
-					.ColorAndOpacity(FSlateColor(FLinearColor(0.90f, 0.90f, 0.92f, 1.0f)))
+					SNew(SBorder)
+					.BorderImage(FAppStyle::GetBrush("WhiteBrush"))
+					.BorderBackgroundColor(FLinearColor(0.23f, 0.23f, 0.26f, 1.0f))
+					.Padding(FMargin(10.0f, 8.0f))
+					[
+						SNew(SHorizontalBox)
+						+ SHorizontalBox::Slot()
+						.FillWidth(1.0f)
+						.VAlign(VAlign_Center)
+						.Padding(0.0f, 0.0f, 8.0f, 0.0f)
+						[
+							SNew(STextBlock)
+							.Text(FText::FromString(Msg.ReviewLines[LineIndex]))
+							.AutoWrapText(true)
+							.WrapTextAt(440.0f)
+							.ColorAndOpacity(FSlateColor(FLinearColor(0.93f, 0.93f, 0.95f, 1.0f)))
+						]
+						+ SHorizontalBox::Slot()
+						.AutoWidth()
+						.VAlign(VAlign_Center)
+						.Padding(0.0f, 0.0f, 4.0f, 0.0f)
+						[
+							SNew(SButton)
+							.IsEnabled(Msg.bShowReviewActions)
+							.ToolTipText(FText::FromString(TEXT("取消本次待确认计划（当前为整单取消）")))
+							.ButtonColorAndOpacity(FLinearColor(0.32f, 0.18f, 0.18f, 1.0f))
+							.ContentPadding(FMargin(6.0f))
+							.OnClicked(this, &SHCIAbilityKitAgentChatWindow::HandleCancelPendingPlanClicked)
+							[
+								SNew(SImage)
+								.Image(FAppStyle::GetBrush("Icons.X"))
+								.ColorAndOpacity(FSlateColor(FLinearColor(1.0f, 0.85f, 0.85f, 1.0f)))
+							]
+						]
+						+ SHorizontalBox::Slot()
+						.AutoWidth()
+						.VAlign(VAlign_Center)
+						[
+							SNew(SButton)
+							.IsEnabled(Msg.bShowReviewActions)
+							.ToolTipText(FText::FromString(TEXT("确认执行待确认计划（当前为整单执行）")))
+							.ButtonColorAndOpacity(FLinearColor(0.16f, 0.30f, 0.20f, 1.0f))
+							.ContentPadding(FMargin(6.0f))
+							.OnClicked(this, &SHCIAbilityKitAgentChatWindow::HandleCommitLastPlanClicked)
+							[
+								SNew(SImage)
+								.Image(FAppStyle::GetBrush("Icons.Check"))
+								.ColorAndOpacity(FSlateColor(FLinearColor(0.84f, 1.0f, 0.88f, 1.0f)))
+							]
+						]
+					]
 				];
 			}
 
@@ -804,26 +851,11 @@ private:
 			{
 				ContentBox->AddSlot().AutoHeight().Padding(0.0f, 8.0f, 0.0f, 0.0f)
 				[
-					SNew(SHorizontalBox)
-					+ SHorizontalBox::Slot().AutoWidth()
-					[
-						SNew(SButton)
-						.Text(FText::FromString(TEXT("取消")))
-						.OnClicked(this, &SHCIAbilityKitAgentChatWindow::HandleCancelPendingPlanClicked)
-					]
-					+ SHorizontalBox::Slot().AutoWidth().Padding(8.0f, 0.0f, 0.0f, 0.0f)
-					[
-						SNew(SButton)
-						.Text(FText::FromString(TEXT("确认执行")))
-						.OnClicked(this, &SHCIAbilityKitAgentChatWindow::HandleCommitLastPlanClicked)
-					]
-					+ SHorizontalBox::Slot().AutoWidth().Padding(8.0f, 0.0f, 0.0f, 0.0f)
-					[
-						SNew(SButton)
-						.Visibility(Msg.bShowPreviewButton ? EVisibility::Visible : EVisibility::Collapsed)
-						.Text(FText::FromString(TEXT("调试预览")))
-						.OnClicked(this, &SHCIAbilityKitAgentChatWindow::HandleOpenPreviewClicked)
-					]
+					SNew(STextBlock)
+					.Text(FText::FromString(TEXT("提示：当前执行策略为整单确认/取消（All-or-Nothing）。")))
+					.AutoWrapText(true)
+					.WrapTextAt(560.0f)
+					.ColorAndOpacity(FSlateColor(FLinearColor(0.80f, 0.80f, 0.84f, 1.0f)))
 				];
 			}
 		}

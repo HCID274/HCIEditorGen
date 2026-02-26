@@ -352,13 +352,25 @@ bool FHCIAbilityKitAgentPlanValidatorExpectedEvidenceNotAllowedReturnsE4009Test:
 	FHCIAbilityKitToolRegistry& Registry = FHCIAbilityKitToolRegistry::Get();
 	Registry.ResetToDefaults();
 
-	FHCIAbilityKitAgentPlan Plan = MakeValidTexturePlan();
-	Plan.Steps[0].ExpectedEvidence = {TEXT("asset_path")};
+	FHCIAbilityKitAgentPlan Plan;
+	Plan.PlanVersion = 1;
+	Plan.RequestId = TEXT("req_expected_evidence_illegal_key");
+	Plan.Intent = TEXT("inspect_folder_contents");
+
+	FHCIAbilityKitAgentPlanStep& Step = Plan.Steps.AddDefaulted_GetRef();
+	Step.StepId = TEXT("s1");
+	Step.ToolName = TEXT("ScanAssets");
+	Step.RiskLevel = EHCIAbilityKitAgentPlanRiskLevel::ReadOnly;
+	Step.bRequiresConfirm = false;
+	Step.RollbackStrategy = TEXT("all_or_nothing");
+	Step.ExpectedEvidence = {TEXT("unknown_key")};
+	Step.Args = MakeShared<FJsonObject>();
+	Step.Args->SetStringField(TEXT("directory"), TEXT("/Game/Temp"));
 
 	FHCIAbilityKitAgentPlanValidationResult Result;
 	TestFalse(TEXT("Unexpected expected_evidence value should fail"), FHCIAbilityKitAgentPlanValidator::ValidatePlan(Plan, Registry, Result));
 	TestEqual(TEXT("Error code"), Result.ErrorCode, FString(TEXT("E4009")));
-	TestEqual(TEXT("Reason"), Result.Reason, FString(TEXT("expected_evidence_not_allowed_for_tool")));
+	TestEqual(TEXT("Reason"), Result.Reason, FString(TEXT("Illegal evidence key \"unknown_key\" for tool \"ScanAssets\".")));
 	return true;
 }
 

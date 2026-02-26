@@ -15,10 +15,33 @@ struct FHCIAbilityKitAgentQuickCommand
 	FString Prompt;
 };
 
+UENUM()
+enum class EHCIAbilityKitAgentSessionState : uint8
+{
+	Idle,
+	Thinking,
+	PlanReady,
+	AutoExecuteReadOnly,
+	AwaitUserConfirm,
+	Executing,
+	Summarizing,
+	Completed,
+	Failed,
+	Cancelled
+};
+
+UENUM()
+enum class EHCIAbilityKitAgentPlanExecutionBranch : uint8
+{
+	AutoExecuteReadOnly,
+	AwaitUserConfirm
+};
+
 DECLARE_MULTICAST_DELEGATE_OneParam(FHCIAbilityKitAgentChatLineEvent, const FString& /*Line*/);
 DECLARE_MULTICAST_DELEGATE_OneParam(FHCIAbilityKitAgentStatusEvent, const FString& /*StatusText*/);
 DECLARE_MULTICAST_DELEGATE_OneParam(FHCIAbilityKitAgentSummaryEvent, const FString& /*SummaryText*/);
 DECLARE_MULTICAST_DELEGATE(FHCIAbilityKitAgentPlanReadyEvent);
+DECLARE_MULTICAST_DELEGATE_OneParam(FHCIAbilityKitAgentSessionStateEvent, EHCIAbilityKitAgentSessionState /*State*/);
 
 /**
  * Agent 聊天编排入口：统一受理 UI 输入并分发命令。
@@ -35,6 +58,9 @@ public:
 	bool SubmitChatInput(const FString& UserInput, const FString& SourceTag = TEXT("AgentChatUI"));
 	bool IsBusy() const;
 	bool HasLastPlan() const;
+	EHCIAbilityKitAgentSessionState GetCurrentState() const;
+	FString GetCurrentStateLabel() const;
+	bool CanCommitLastPlanFromChat() const;
 	bool BuildLastPlanCardLines(TArray<FString>& OutLines) const;
 	bool OpenLastPlanPreview();
 	bool CommitLastPlanFromChat();
@@ -47,11 +73,18 @@ public:
 	FHCIAbilityKitAgentStatusEvent OnStatusChanged;
 	FHCIAbilityKitAgentSummaryEvent OnSummaryReceived;
 	FHCIAbilityKitAgentPlanReadyEvent OnPlanReady;
+	FHCIAbilityKitAgentSessionStateEvent OnSessionStateChanged;
+
+	static bool IsWriteLikePlan(const FHCIAbilityKitAgentPlan& Plan);
+	static EHCIAbilityKitAgentPlanExecutionBranch ClassifyPlanExecutionBranch(const FHCIAbilityKitAgentPlan& Plan);
 
 private:
 	void EmitUserLine(const FString& Text);
 	void EmitAssistantLine(const FString& Text);
 	void EmitStatus(const FString& Text);
+	void SetCurrentState(EHCIAbilityKitAgentSessionState NewState);
+	FString BuildStateStatusText(EHCIAbilityKitAgentSessionState State) const;
+	bool ExecuteLastPlan(EHCIAbilityKitAgentPlanExecutionBranch Branch, const TCHAR* TriggerTag);
 
 	void HandleCommandCompleted(const FHCIAbilityKitAgentCommandResult& Result);
 	bool ExecuteRegisteredCommand(const FName& CommandName, const FHCIAbilityKitAgentCommandContext& Context);
@@ -67,4 +100,5 @@ private:
 	FHCIAbilityKitAgentPlan LastPlan;
 	FString LastRouteReason;
 	FHCIAbilityKitAgentPlannerResultMetadata LastPlannerMetadata;
+	EHCIAbilityKitAgentSessionState CurrentState = EHCIAbilityKitAgentSessionState::Idle;
 };

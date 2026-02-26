@@ -1,12 +1,10 @@
 #include "Agent/Executor/HCIAbilityKitAgentExecutor.h"
 
 #include "Agent/Executor/HCIAbilityKitAgentExecutionGate.h"
-#include "AssetRegistry/AssetRegistryModule.h"
 #include "Common/HCIAbilityKitTimeFormat.h"
 #include "Dom/JsonObject.h"
 #include "Dom/JsonValue.h"
 #include "Internationalization/Regex.h"
-#include "Modules/ModuleManager.h"
 
 DEFINE_LOG_CATEGORY_STATIC(LogHCIAbilityKitAgentExecutor, Log, All);
 
@@ -637,31 +635,37 @@ static bool HCI_IsDirectoryLikeArgName(const FString& ArgName)
 		   ArgName.Equals(TEXT("target_path"), ESearchCase::CaseSensitive);
 }
 
-static bool HCI_DirectoryExistsInAssetRegistry(const FString& DirectoryPath)
+static bool HCI_SearchStepHasConsumableDirectoryEvidence(const TMap<FString, FString>& Evidence)
 {
-	if (!DirectoryPath.StartsWith(TEXT("/Game/")))
+	const FString* BestDirectory = Evidence.Find(TEXT("best_directory"));
+	if (BestDirectory != nullptr)
 	{
-		return false;
-	}
-
-	FAssetRegistryModule* AssetRegistryModule =
-		FModuleManager::GetModulePtr<FAssetRegistryModule>(TEXT("AssetRegistry"));
-	if (AssetRegistryModule == nullptr)
-	{
-		AssetRegistryModule = &FModuleManager::LoadModuleChecked<FAssetRegistryModule>(TEXT("AssetRegistry"));
-	}
-	if (AssetRegistryModule == nullptr)
-	{
-		return false;
-	}
-
-	TArray<FString> CachedPaths;
-	AssetRegistryModule->Get().GetAllCachedPaths(CachedPaths);
-	return CachedPaths.ContainsByPredicate(
-		[&DirectoryPath](const FString& Path)
+		const FString BestTrimmed = BestDirectory->TrimStartAndEnd();
+		if (!BestTrimmed.IsEmpty() && !BestTrimmed.Equals(TEXT("-"), ESearchCase::IgnoreCase))
 		{
-			return Path.Equals(DirectoryPath, ESearchCase::IgnoreCase);
-		});
+			return true;
+		}
+	}
+
+	const FString* MatchedDirectories = Evidence.Find(TEXT("matched_directories"));
+	if (MatchedDirectories != nullptr && !MatchedDirectories->TrimStartAndEnd().IsEmpty())
+	{
+		return true;
+	}
+
+	for (const TPair<FString, FString>& Pair : Evidence)
+	{
+		if (!Pair.Key.StartsWith(TEXT("matched_directories["), ESearchCase::CaseSensitive))
+		{
+			continue;
+		}
+		if (!Pair.Value.TrimStartAndEnd().IsEmpty())
+		{
+			return true;
+		}
+	}
+
+	return false;
 }
 
 static bool HCI_TryDetectPipelineBypassWarning(
@@ -694,8 +698,7 @@ static bool HCI_TryDetectPipelineBypassWarning(
 		return false;
 	}
 
-	const FString* MatchedDirectoriesValue = PrevEvidence->Find(TEXT("matched_directories"));
-	if (MatchedDirectoriesValue == nullptr || MatchedDirectoriesValue->IsEmpty())
+	if (!HCI_SearchStepHasConsumableDirectoryEvidence(*PrevEvidence))
 	{
 		return false;
 	}
@@ -711,31 +714,39 @@ static bool HCI_TryDetectPipelineBypassWarning(
 			continue;
 		}
 
-		const FString ResolvedPath = ResolvedArg.Value->AsString().TrimStartAndEnd();
-		if (!ResolvedPath.StartsWith(TEXT("/Game/")))
-		{
-			continue;
-		}
-		if (HCI_DirectoryExistsInAssetRegistry(ResolvedPath))
+		const TSharedPtr<FJsonValue>* RawArgValue = OriginalStep.Args->Values.Find(ResolvedArg.Key);
+		const FString RawText = (RawArgValue != nullptr && RawArgValue->IsValid() && (*RawArgValue)->Type == EJson::String)
+			? (*RawArgValue)->AsString().TrimStartAndEnd()
+			: FString();
+		if (RawText.IsEmpty())
 		{
 			continue;
 		}
 
-		const TSharedPtr<FJsonValue>* RawArgValue = OriginalStep.Args->Values.Find(ResolvedArg.Key);
-		const FString RawText = (RawArgValue != nullptr && RawArgValue->IsValid() && (*RawArgValue)->Type == EJson::String)
-			? (*RawArgValue)->AsString()
-			: FString();
 		const bool bUsesPipelineTemplate = HCI_StringMayContainVariableTemplate(RawText);
 		if (bUsesPipelineTemplate)
 		{
-			continue;
+			FString SourceStepId;
+			FString SourceEvidenceKey;
+			bool bHasIndex = false;
+			int32 SourceIndex = INDEX_NONE;
+			if (HCI_ParseVariableTemplate(RawText, SourceStepId, SourceEvidenceKey, bHasIndex, SourceIndex) &&
+				SourceStepId.Equals(PrevStep.StepId, ESearchCase::CaseSensitive) &&
+				(SourceEvidenceKey.Equals(TEXT("matched_directories"), ESearchCase::CaseSensitive) ||
+				 SourceEvidenceKey.Equals(TEXT("best_directory"), ESearchCase::CaseSensitive)))
+			{
+				continue;
+			}
 		}
 
+		const FString ExpectedTemplate = FString::Printf(TEXT("{{%s.matched_directories[0]}}"), *PrevStep.StepId);
+		const int32 PrevStepNumber = StepIndex; // current StepIndex is 0-based, previous step number is StepIndex (1-based).
 		OutDetail = FString::Printf(
-			TEXT("规划器未正确使用管道变量 arg=%s resolved_path=%s expected_template={{%s.matched_directories[0]}}"),
+			TEXT("Pipe variable from Step %d (SearchPath) is defined but not consumed by subsequent steps. arg=%s expected_template=%s raw_value=%s"),
+			PrevStepNumber,
 			*ResolvedArg.Key,
-			*ResolvedPath,
-			*PrevStep.StepId);
+			*ExpectedTemplate,
+			*RawText);
 		return true;
 	}
 
@@ -927,7 +938,9 @@ bool FHCIAbilityKitAgentExecutor::ExecutePlan(
 				StepResult.Evidence.Add(TEXT("planning_warning_reason"), TEXT("planner_pipeline_variable_not_used_after_search"));
 				StepResult.Evidence.Add(
 					TEXT("planning_warning_detail"),
-					PipelineBypassWarningDetail.IsEmpty() ? TEXT("规划器未正确使用管道变量") : PipelineBypassWarningDetail);
+					PipelineBypassWarningDetail.IsEmpty()
+						? TEXT("Pipe variable from previous SearchPath step is defined but not consumed.")
+						: PipelineBypassWarningDetail);
 				if (StepResult.bSucceeded)
 				{
 					StepResult.bSucceeded = false;
@@ -942,7 +955,9 @@ bool FHCIAbilityKitAgentExecutor::ExecutePlan(
 					TEXT("[HCIAbilityKit][AgentExecutor] error_code=E4009 warning_code=W5101 step_id=%s tool=%s reason=planner_pipeline_variable_not_used_after_search detail=%s"),
 					*StepResult.StepId,
 					*StepResult.ToolName,
-					PipelineBypassWarningDetail.IsEmpty() ? TEXT("规划器未正确使用管道变量") : *PipelineBypassWarningDetail);
+					PipelineBypassWarningDetail.IsEmpty()
+						? TEXT("Pipe variable from previous SearchPath step is defined but not consumed.")
+						: *PipelineBypassWarningDetail);
 			}
 
 			if (StepResult.bSucceeded)

@@ -655,6 +655,17 @@ bool FHCIAbilityKitAgentExecutorPipelineBypassBlockedTest::RunTest(const FString
 	TestEqual(TEXT("Top-level error code"), RunResult.ErrorCode, FString(TEXT("E4009")));
 	TestEqual(TEXT("Top-level reason"), RunResult.Reason, FString(TEXT("planner_pipeline_variable_not_used_after_search")));
 	TestEqual(TEXT("Failed step index should be scan step"), RunResult.FailedStepIndex, 1);
+	if (RunResult.StepResults.Num() > 1)
+	{
+		const FString* WarningDetail = RunResult.StepResults[1].Evidence.Find(TEXT("planning_warning_detail"));
+		TestNotNull(TEXT("Planning warning detail should exist"), WarningDetail);
+		if (WarningDetail != nullptr)
+		{
+			TestTrue(
+				TEXT("Planning warning detail should mention unconsumed pipe variable"),
+				WarningDetail->Contains(TEXT("Pipe variable from Step 1 (SearchPath) is defined but not consumed by subsequent steps")));
+		}
+	}
 	return true;
 }
 

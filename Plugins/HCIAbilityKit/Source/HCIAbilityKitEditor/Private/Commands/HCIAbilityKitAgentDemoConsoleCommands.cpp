@@ -1849,6 +1849,25 @@ static FHCIAbilityKitAgentPlan HCI_MakeAgentPlanValidateTexturePlan(const TCHAR*
 	return Plan;
 }
 
+static FHCIAbilityKitAgentPlan HCI_MakeAgentPlanValidateScanAssetsPlan(const TCHAR* RequestId)
+{
+	FHCIAbilityKitAgentPlan Plan;
+	Plan.PlanVersion = 1;
+	Plan.RequestId = RequestId;
+	Plan.Intent = TEXT("inspect_folder_contents");
+
+	FHCIAbilityKitAgentPlanStep& Step = Plan.Steps.AddDefaulted_GetRef();
+	Step.StepId = TEXT("s1");
+	Step.ToolName = TEXT("ScanAssets");
+	Step.RiskLevel = EHCIAbilityKitAgentPlanRiskLevel::ReadOnly;
+	Step.bRequiresConfirm = false;
+	Step.RollbackStrategy = TEXT("all_or_nothing");
+	Step.ExpectedEvidence = {TEXT("scan_root"), TEXT("asset_count"), TEXT("asset_paths"), TEXT("result")};
+	Step.Args = MakeShared<FJsonObject>();
+	Step.Args->SetStringField(TEXT("directory"), TEXT("/Game/Temp"));
+	return Plan;
+}
+
 static bool HCI_BuildAgentPlanValidateDemoCase(
 	const FString& CaseKey,
 	FHCIAbilityKitAgentPlan& OutPlan,
@@ -1902,6 +1921,18 @@ static bool HCI_BuildAgentPlanValidateDemoCase(
 		if (OutPlan.Steps.Num() > 0 && OutPlan.Steps[0].Args.IsValid())
 		{
 			OutPlan.Steps[0].Args->SetNumberField(TEXT("max_size"), 123);
+		}
+		return true;
+	}
+
+	if (CaseKey.Equals(TEXT("fail_illegal_evidence_key"), ESearchCase::IgnoreCase))
+	{
+		OutDescription = TEXT("illegal_expected_evidence_key_for_tool");
+		OutExpectedCode = TEXT("E4009");
+		OutPlan = HCI_MakeAgentPlanValidateScanAssetsPlan(TEXT("req_demo_f2_e4009_illegal_evidence"));
+		if (OutPlan.Steps.Num() > 0)
+		{
+			OutPlan.Steps[0].ExpectedEvidence = {TEXT("unknown_key")};
 		}
 		return true;
 	}
@@ -2033,6 +2064,7 @@ void HCI_RunAbilityKitAgentPlanValidateDemoCommand(const TArray<FString>& Args)
 			TEXT("fail_missing_tool"),
 			TEXT("fail_unknown_tool"),
 			TEXT("fail_invalid_enum"),
+			TEXT("fail_illegal_evidence_key"),
 			TEXT("fail_over_limit"),
 			TEXT("fail_level_scope"),
 			TEXT("fail_naming_metadata")};
@@ -2087,7 +2119,7 @@ void HCI_RunAbilityKitAgentPlanValidateDemoCommand(const TArray<FString>& Args)
 		UE_LOG(
 			LogHCIAbilityKitAgentDemo,
 			Display,
-			TEXT("[HCIAbilityKit][AgentPlanValidate] hint=也可运行 HCIAbilityKit.AgentPlanValidateDemo [ok_naming|fail_missing_tool|fail_unknown_tool|fail_invalid_enum|fail_over_limit|fail_level_scope|fail_naming_metadata]"));
+			TEXT("[HCIAbilityKit][AgentPlanValidate] hint=也可运行 HCIAbilityKit.AgentPlanValidateDemo [ok_naming|fail_missing_tool|fail_unknown_tool|fail_invalid_enum|fail_illegal_evidence_key|fail_over_limit|fail_level_scope|fail_naming_metadata]"));
 		return;
 	}
 

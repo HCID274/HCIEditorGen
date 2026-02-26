@@ -254,7 +254,7 @@ public:
 		const int32 RestoredCount = LoadHistoryFromDisk();
 		if (RestoredCount <= 0)
 		{
-			AppendAssistantLine(TEXT("聊天入口已就绪。发送后将走真实 LLM 规划链路，并自动弹出 PlanPreview。"));
+			AppendAssistantLine(TEXT("聊天入口已就绪。发送后将走真实 LLM 规划链路，由状态机自动分支执行。"));
 		}
 		else
 		{
@@ -295,6 +295,7 @@ private:
 			ChatLineHandle = AgentSubsystem->OnChatLine.AddSP(this, &SHCIAbilityKitAgentChatWindow::HandleSubsystemChatLine);
 			StatusChangedHandle = AgentSubsystem->OnStatusChanged.AddSP(this, &SHCIAbilityKitAgentChatWindow::HandleSubsystemStatusChanged);
 			PlanReadyHandle = AgentSubsystem->OnPlanReady.AddSP(this, &SHCIAbilityKitAgentChatWindow::HandleSubsystemPlanReady);
+			SessionStateHandle = AgentSubsystem->OnSessionStateChanged.AddSP(this, &SHCIAbilityKitAgentChatWindow::HandleSubsystemSessionStateChanged);
 		}
 	}
 
@@ -316,6 +317,11 @@ private:
 			{
 				AgentSubsystem->OnPlanReady.Remove(PlanReadyHandle);
 				PlanReadyHandle.Reset();
+			}
+			if (SessionStateHandle.IsValid())
+			{
+				AgentSubsystem->OnSessionStateChanged.Remove(SessionStateHandle);
+				SessionStateHandle.Reset();
 			}
 		}
 	}
@@ -397,10 +403,15 @@ private:
 		SetStatus(StatusText);
 	}
 
+	void HandleSubsystemSessionStateChanged(EHCIAbilityKitAgentSessionState)
+	{
+		RefreshPlanCardFromSubsystem();
+	}
+
 	void HandleSubsystemPlanReady()
 	{
 		RefreshPlanCardFromSubsystem();
-		AppendAssistantLine(TEXT("计划卡片已更新，可直接点击“打开预览”或“确认并执行”。"));
+		AppendAssistantLine(TEXT("计划卡片已更新。只读计划将自动执行；写计划需确认后执行。"));
 	}
 
 	void RefreshPlanCardFromSubsystem()
@@ -416,7 +427,7 @@ private:
 		{
 			if (!bHasPlan || CardLines.Num() <= 0)
 			{
-				PlanCardTextBox->SetText(FText::FromString(TEXT("暂无计划。发送请求后将自动展示 intent/steps/risk。")));
+				PlanCardTextBox->SetText(FText::FromString(TEXT("暂无计划。发送请求后将展示状态、意图和步骤摘要。")));
 			}
 			else
 			{
@@ -439,7 +450,12 @@ private:
 		}
 		if (CommitPlanButton.IsValid())
 		{
-			CommitPlanButton->SetEnabled(bHasPlan);
+			bool bCanCommit = false;
+			if (UHCIAbilityKitAgentSubsystem* AgentSubsystem = GetAgentSubsystem())
+			{
+				bCanCommit = AgentSubsystem->CanCommitLastPlanFromChat();
+			}
+			CommitPlanButton->SetEnabled(bHasPlan && bCanCommit);
 		}
 	}
 
@@ -588,6 +604,7 @@ private:
 	FDelegateHandle ChatLineHandle;
 	FDelegateHandle StatusChangedHandle;
 	FDelegateHandle PlanReadyHandle;
+	FDelegateHandle SessionStateHandle;
 };
 }
 

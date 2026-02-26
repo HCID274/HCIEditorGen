@@ -5,6 +5,8 @@
 #include "Dom/JsonValue.h"
 #include "Internationalization/Regex.h"
 
+DEFINE_LOG_CATEGORY_STATIC(LogHCIAbilityKitAgentPlanValidator, Log, All);
+
 namespace
 {
 static EHCIAbilityKitAgentPlanRiskLevel HCI_ToExpectedPlanRiskLevel(const EHCIAbilityKitToolCapability Capability)
@@ -295,11 +297,22 @@ static bool HCI_ValidateExpectedEvidence(
 
 		if (!AllowedEvidence.Contains(EvidenceKey))
 		{
+			const FString IllegalEvidenceDetail = FString::Printf(
+				TEXT("Illegal evidence key \"%s\" for tool \"%s\"."),
+				*EvidenceKey,
+				*Step.ToolName.ToString());
+			UE_LOG(
+				LogHCIAbilityKitAgentPlanValidator,
+				Warning,
+				TEXT("[HCIAbilityKit][AgentPlanValidator] error_code=E4009 field=steps[%d].expected_evidence[%d] reason=expected_evidence_not_allowed_for_tool detail=%s"),
+				StepIndex,
+				EvidenceIndex,
+				*IllegalEvidenceDetail);
 			return HCI_Fail(
 				OutResult,
 				TEXT("E4009"),
 				FString::Printf(TEXT("steps[%d].expected_evidence[%d]"), StepIndex, EvidenceIndex),
-				TEXT("expected_evidence_not_allowed_for_tool"),
+				IllegalEvidenceDetail,
 				StepIndex,
 				&Step);
 		}

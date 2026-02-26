@@ -110,6 +110,41 @@ static FHCIAbilityKitAgentPlanPreviewContext HCI_MakePreviewContext(
 	PreviewContext.EnvScannedAssetCount = PlannerMetadata.bEnvContextInjected ? PlannerMetadata.EnvContextAssetCount : INDEX_NONE;
 	return PreviewContext;
 }
+
+static bool HCI_IsWriteLikeRisk(const EHCIAbilityKitAgentPlanRiskLevel RiskLevel)
+{
+	return RiskLevel == EHCIAbilityKitAgentPlanRiskLevel::Write ||
+		RiskLevel == EHCIAbilityKitAgentPlanRiskLevel::Destructive;
+}
+
+static const TCHAR* HCI_SessionStateToLabel(const EHCIAbilityKitAgentSessionState State)
+{
+	switch (State)
+	{
+	case EHCIAbilityKitAgentSessionState::Idle:
+		return TEXT("Idle");
+	case EHCIAbilityKitAgentSessionState::Thinking:
+		return TEXT("Thinking");
+	case EHCIAbilityKitAgentSessionState::PlanReady:
+		return TEXT("PlanReady");
+	case EHCIAbilityKitAgentSessionState::AutoExecuteReadOnly:
+		return TEXT("AutoExecuteReadOnly");
+	case EHCIAbilityKitAgentSessionState::AwaitUserConfirm:
+		return TEXT("AwaitUserConfirm");
+	case EHCIAbilityKitAgentSessionState::Executing:
+		return TEXT("Executing");
+	case EHCIAbilityKitAgentSessionState::Summarizing:
+		return TEXT("Summarizing");
+	case EHCIAbilityKitAgentSessionState::Completed:
+		return TEXT("Completed");
+	case EHCIAbilityKitAgentSessionState::Failed:
+		return TEXT("Failed");
+	case EHCIAbilityKitAgentSessionState::Cancelled:
+		return TEXT("Cancelled");
+	default:
+		return TEXT("Unknown");
+	}
+}
 }
 
 void UHCIAbilityKitAgentSubsystem::Initialize(FSubsystemCollectionBase& Collection)
@@ -120,6 +155,7 @@ void UHCIAbilityKitAgentSubsystem::Initialize(FSubsystemCollectionBase& Collecti
 	CommandRegistry.Add(TEXT("chat_submit"), UHCIAbilityKitAgentCommand_ChatPlanAndSummary::StaticClass());
 
 	ReloadQuickCommands();
+	SetCurrentState(EHCIAbilityKitAgentSessionState::Idle);
 }
 
 void UHCIAbilityKitAgentSubsystem::Deinitialize()
@@ -132,6 +168,7 @@ void UHCIAbilityKitAgentSubsystem::Deinitialize()
 	LastPlan = FHCIAbilityKitAgentPlan();
 	LastRouteReason.Reset();
 	LastPlannerMetadata = FHCIAbilityKitAgentPlannerResultMetadata();
+	CurrentState = EHCIAbilityKitAgentSessionState::Idle;
 	Super::Deinitialize();
 }
 
@@ -153,14 +190,18 @@ bool UHCIAbilityKitAgentSubsystem::SubmitChatInput(const FString& UserInput, con
 
 	EmitUserLine(TrimmedInput);
 	EmitAssistantLine(TEXT("已发送，等待规划结果..."));
-	EmitStatus(TEXT("状态：发送中"));
+	bHasLastPlan = false;
+	LastPlan = FHCIAbilityKitAgentPlan();
+	LastRouteReason.Reset();
+	LastPlannerMetadata = FHCIAbilityKitAgentPlannerResultMetadata();
+	SetCurrentState(EHCIAbilityKitAgentSessionState::Thinking);
 
 	FHCIAbilityKitAgentCommandContext Context;
 	Context.InputParam = TrimmedInput;
 	Context.SourceTag = SourceTag;
 	if (!ExecuteRegisteredCommand(TEXT("chat_submit"), Context))
 	{
-		EmitStatus(TEXT("状态：空闲（上次失败）"));
+		SetCurrentState(EHCIAbilityKitAgentSessionState::Failed);
 		EmitAssistantLine(TEXT("命令未注册：chat_submit"));
 		return false;
 	}
@@ -177,6 +218,21 @@ bool UHCIAbilityKitAgentSubsystem::HasLastPlan() const
 	return bHasLastPlan;
 }
 
+EHCIAbilityKitAgentSessionState UHCIAbilityKitAgentSubsystem::GetCurrentState() const
+{
+	return CurrentState;
+}
+
+FString UHCIAbilityKitAgentSubsystem::GetCurrentStateLabel() const
+{
+	return HCI_SessionStateToLabel(CurrentState);
+}
+
+bool UHCIAbilityKitAgentSubsystem::CanCommitLastPlanFromChat() const
+{
+	return bHasLastPlan && CurrentState == EHCIAbilityKitAgentSessionState::AwaitUserConfirm;
+}
+
 bool UHCIAbilityKitAgentSubsystem::BuildLastPlanCardLines(TArray<FString>& OutLines) const
 {
 	OutLines.Reset();
@@ -186,7 +242,8 @@ bool UHCIAbilityKitAgentSubsystem::BuildLastPlanCardLines(TArray<FString>& OutLi
 	}
 
 	OutLines.Add(FString::Printf(
-		TEXT("request_id=%s | intent=%s | steps=%d"),
+		TEXT("state=%s | request_id=%s | intent=%s | steps=%d"),
+		*GetCurrentStateLabel(),
 		LastPlan.RequestId.IsEmpty() ? TEXT("-") : *LastPlan.RequestId,
 		LastPlan.Intent.IsEmpty() ? TEXT("-") : *LastPlan.Intent,
 		LastPlan.Steps.Num()));
@@ -240,22 +297,22 @@ bool UHCIAbilityKitAgentSubsystem::CommitLastPlanFromChat()
 		return false;
 	}
 
+	if (!CanCommitLastPlanFromChat())
+	{
+		EmitAssistantLine(TEXT("当前计划无需确认执行，或尚未进入可确认状态。"));
+		return false;
+	}
+
 	const FString ConfirmText = FHCIAbilityKitAgentPlanPreviewWindow::BuildCommitConfirmMessage(LastPlan);
 	const EAppReturnType::Type UserDecision = FMessageDialog::Open(EAppMsgType::YesNo, FText::FromString(ConfirmText));
 	if (UserDecision != EAppReturnType::Yes)
 	{
 		EmitAssistantLine(TEXT("Commit 已取消（未触发真实写操作）。"));
-		EmitStatus(TEXT("状态：空闲"));
+		SetCurrentState(EHCIAbilityKitAgentSessionState::Cancelled);
 		return false;
 	}
 
-	EmitStatus(TEXT("状态：执行中"));
-	FHCIAbilityKitAgentPlanExecutionReport Report;
-	FHCIAbilityKitAgentPlanPreviewWindow::ExecutePlan(LastPlan, false, true, Report);
-	EmitAssistantLine(Report.SummaryText);
-	EmitAssistantLine(Report.SearchPathEvidenceText);
-	EmitStatus(TEXT("状态：空闲"));
-	return Report.bRunOk;
+	return ExecuteLastPlan(EHCIAbilityKitAgentPlanExecutionBranch::AwaitUserConfirm, TEXT("manual_commit"));
 }
 
 void UHCIAbilityKitAgentSubsystem::ReloadQuickCommands()
@@ -296,35 +353,149 @@ void UHCIAbilityKitAgentSubsystem::EmitStatus(const FString& Text)
 	OnStatusChanged.Broadcast(Text);
 }
 
+bool UHCIAbilityKitAgentSubsystem::IsWriteLikePlan(const FHCIAbilityKitAgentPlan& Plan)
+{
+	for (const FHCIAbilityKitAgentPlanStep& Step : Plan.Steps)
+	{
+		if (Step.bRequiresConfirm || HCI_IsWriteLikeRisk(Step.RiskLevel))
+		{
+			return true;
+		}
+	}
+	return false;
+}
+
+EHCIAbilityKitAgentPlanExecutionBranch UHCIAbilityKitAgentSubsystem::ClassifyPlanExecutionBranch(const FHCIAbilityKitAgentPlan& Plan)
+{
+	return IsWriteLikePlan(Plan)
+		? EHCIAbilityKitAgentPlanExecutionBranch::AwaitUserConfirm
+		: EHCIAbilityKitAgentPlanExecutionBranch::AutoExecuteReadOnly;
+}
+
+void UHCIAbilityKitAgentSubsystem::SetCurrentState(const EHCIAbilityKitAgentSessionState NewState)
+{
+	CurrentState = NewState;
+	OnSessionStateChanged.Broadcast(CurrentState);
+	EmitStatus(BuildStateStatusText(CurrentState));
+}
+
+FString UHCIAbilityKitAgentSubsystem::BuildStateStatusText(const EHCIAbilityKitAgentSessionState State) const
+{
+	switch (State)
+	{
+	case EHCIAbilityKitAgentSessionState::Idle:
+		return TEXT("状态：空闲");
+	case EHCIAbilityKitAgentSessionState::Thinking:
+		return TEXT("状态：思考中");
+	case EHCIAbilityKitAgentSessionState::PlanReady:
+		return TEXT("状态：计划已就绪");
+	case EHCIAbilityKitAgentSessionState::AutoExecuteReadOnly:
+		return TEXT("状态：只读计划自动执行");
+	case EHCIAbilityKitAgentSessionState::AwaitUserConfirm:
+		return TEXT("状态：等待用户确认");
+	case EHCIAbilityKitAgentSessionState::Executing:
+		return TEXT("状态：执行中");
+	case EHCIAbilityKitAgentSessionState::Summarizing:
+		return TEXT("状态：结果整理中");
+	case EHCIAbilityKitAgentSessionState::Completed:
+		return TEXT("状态：已完成");
+	case EHCIAbilityKitAgentSessionState::Failed:
+		return TEXT("状态：执行失败");
+	case EHCIAbilityKitAgentSessionState::Cancelled:
+		return TEXT("状态：已取消");
+	default:
+		return TEXT("状态：未知");
+	}
+}
+
+bool UHCIAbilityKitAgentSubsystem::ExecuteLastPlan(
+	const EHCIAbilityKitAgentPlanExecutionBranch Branch,
+	const TCHAR* TriggerTag)
+{
+	if (!bHasLastPlan)
+	{
+		SetCurrentState(EHCIAbilityKitAgentSessionState::Failed);
+		EmitAssistantLine(TEXT("执行失败：未找到可执行计划。"));
+		return false;
+	}
+
+	SetCurrentState(EHCIAbilityKitAgentSessionState::Executing);
+	FHCIAbilityKitAgentPlanExecutionReport Report;
+	const bool bRunOk = FHCIAbilityKitAgentPlanPreviewWindow::ExecutePlan(
+		LastPlan,
+		false,
+		Branch == EHCIAbilityKitAgentPlanExecutionBranch::AwaitUserConfirm,
+		Report);
+
+	SetCurrentState(EHCIAbilityKitAgentSessionState::Summarizing);
+	EmitAssistantLine(Report.SummaryText);
+	if (!Report.SearchPathEvidenceText.IsEmpty())
+	{
+		EmitAssistantLine(Report.SearchPathEvidenceText);
+	}
+
+	UE_LOG(
+		LogTemp,
+		Display,
+		TEXT("[HCIAbilityKit][AgentChatStateMachine] trigger=%s branch=%s run_ok=%s terminal=%s reason=%s"),
+		TriggerTag == nullptr ? TEXT("-") : TriggerTag,
+		Branch == EHCIAbilityKitAgentPlanExecutionBranch::AwaitUserConfirm ? TEXT("await_user_confirm") : TEXT("auto_read_only"),
+		bRunOk ? TEXT("true") : TEXT("false"),
+		*Report.TerminalStatus,
+		*Report.TerminalReason);
+
+	SetCurrentState(bRunOk ? EHCIAbilityKitAgentSessionState::Completed : EHCIAbilityKitAgentSessionState::Failed);
+	return bRunOk;
+}
+
 void UHCIAbilityKitAgentSubsystem::HandleCommandCompleted(const FHCIAbilityKitAgentCommandResult& Result)
 {
 	ActiveCommand = nullptr;
+	bool bCanProcessPlanBranch = false;
 	if (Result.bHasPlanPayload)
 	{
 		bHasLastPlan = true;
 		LastPlan = Result.Plan;
 		LastRouteReason = Result.RouteReason;
 		LastPlannerMetadata = Result.PlannerMetadata;
+		SetCurrentState(EHCIAbilityKitAgentSessionState::PlanReady);
 		OnPlanReady.Broadcast();
+		bCanProcessPlanBranch = true;
 	}
 
 	if (Result.bSuccess)
 	{
 		EmitAssistantLine(Result.Message);
-		EmitStatus(TEXT("状态：空闲"));
 		OnSummaryReceived.Broadcast(Result.Message);
-		return;
 	}
-
-	if (Result.bSummaryFailure)
+	else if (Result.bSummaryFailure)
 	{
 		EmitAssistantLine(FString::Printf(TEXT("摘要生成失败：%s"), *Result.Message));
-		EmitStatus(TEXT("状态：空闲（摘要失败）"));
+	}
+	else
+	{
+		EmitAssistantLine(Result.Message);
+		SetCurrentState(EHCIAbilityKitAgentSessionState::Failed);
 		return;
 	}
 
-	EmitAssistantLine(Result.Message);
-	EmitStatus(TEXT("状态：空闲（上次失败）"));
+	if (!bCanProcessPlanBranch)
+	{
+		SetCurrentState(EHCIAbilityKitAgentSessionState::Completed);
+		return;
+	}
+
+	const EHCIAbilityKitAgentPlanExecutionBranch Branch = ClassifyPlanExecutionBranch(LastPlan);
+	if (Branch == EHCIAbilityKitAgentPlanExecutionBranch::AutoExecuteReadOnly)
+	{
+		SetCurrentState(EHCIAbilityKitAgentSessionState::AutoExecuteReadOnly);
+		EmitAssistantLine(TEXT("检测到只读计划，正在自动执行并更新证据链..."));
+		ExecuteLastPlan(Branch, TEXT("auto_read_only"));
+		return;
+	}
+
+	SetCurrentState(EHCIAbilityKitAgentSessionState::AwaitUserConfirm);
+	EmitAssistantLine(TEXT("计划包含写操作，请在聊天窗口点击“确认并执行”继续。"));
 }
 
 bool UHCIAbilityKitAgentSubsystem::ExecuteRegisteredCommand(

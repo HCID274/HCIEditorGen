@@ -114,7 +114,7 @@ static FHCIAbilityKitAgentPlanPreviewContext HCI_MakePreviewContext(
 	return PreviewContext;
 }
 
-static bool HCI_IsWriteLikeRisk(const EHCIAbilityKitAgentPlanRiskLevel RiskLevel)
+static bool HCI_Subsystem_IsWriteLikeRisk(const EHCIAbilityKitAgentPlanRiskLevel RiskLevel)
 {
 	return RiskLevel == EHCIAbilityKitAgentPlanRiskLevel::Write ||
 		RiskLevel == EHCIAbilityKitAgentPlanRiskLevel::Destructive;
@@ -408,7 +408,7 @@ static FHCIAbilityKitAgentUiProgressState HCI_BuildProgressStateForSessionState(
 	}
 }
 
-static bool HCI_TryLocateActorByPathCameraFocus(const FString& ActorPath, FString& OutReason)
+static bool HCI_Subsystem_TryLocateActorByPathCameraFocus(const FString& ActorPath, FString& OutReason)
 {
 	if (!GEditor)
 	{
@@ -443,7 +443,7 @@ static bool HCI_TryLocateActorByPathCameraFocus(const FString& ActorPath, FStrin
 	return false;
 }
 
-static bool HCI_TryLocateAssetSyncBrowser(const FString& AssetPath, FString& OutReason)
+static bool HCI_Subsystem_TryLocateAssetSyncBrowser(const FString& AssetPath, FString& OutReason)
 {
 	if (!GEditor)
 	{
@@ -603,7 +603,7 @@ bool UHCIAbilityKitAgentSubsystem::BuildLastPlanCardLines(TArray<FString>& OutLi
 		int32 ReadOnlyPrepCount = 0;
 		for (const FHCIAbilityKitAgentPlanStep& Step : LastPlan.Steps)
 		{
-			if (Step.bRequiresConfirm || HCI_IsWriteLikeRisk(Step.RiskLevel))
+			if (Step.bRequiresConfirm || HCI_Subsystem_IsWriteLikeRisk(Step.RiskLevel))
 			{
 				++WriteStepCount;
 				if (Step.RiskLevel == EHCIAbilityKitAgentPlanRiskLevel::Destructive)
@@ -634,7 +634,7 @@ bool UHCIAbilityKitAgentSubsystem::BuildLastPlanCardLines(TArray<FString>& OutLi
 		int32 ReviewIndex = 0;
 		for (const FHCIAbilityKitAgentPlanStep& Step : LastPlan.Steps)
 		{
-			if (!(Step.bRequiresConfirm || HCI_IsWriteLikeRisk(Step.RiskLevel)))
+			if (!(Step.bRequiresConfirm || HCI_Subsystem_IsWriteLikeRisk(Step.RiskLevel)))
 			{
 				continue;
 			}
@@ -786,11 +786,11 @@ bool UHCIAbilityKitAgentSubsystem::TryLocateLastExecutionTargetByIndex(const int
 	bool bLocateOk = false;
 	if (Target.Kind == EHCIAbilityKitAgentUiLocateTargetKind::Actor)
 	{
-		bLocateOk = HCI_TryLocateActorByPathCameraFocus(Target.TargetPath, LocateReason);
+		bLocateOk = HCI_Subsystem_TryLocateActorByPathCameraFocus(Target.TargetPath, LocateReason);
 	}
 	else
 	{
-		bLocateOk = HCI_TryLocateAssetSyncBrowser(Target.TargetPath, LocateReason);
+		bLocateOk = HCI_Subsystem_TryLocateAssetSyncBrowser(Target.TargetPath, LocateReason);
 	}
 
 	UE_LOG(
@@ -851,7 +851,7 @@ bool UHCIAbilityKitAgentSubsystem::IsWriteLikePlan(const FHCIAbilityKitAgentPlan
 {
 	for (const FHCIAbilityKitAgentPlanStep& Step : Plan.Steps)
 	{
-		if (Step.bRequiresConfirm || HCI_IsWriteLikeRisk(Step.RiskLevel))
+		if (Step.bRequiresConfirm || HCI_Subsystem_IsWriteLikeRisk(Step.RiskLevel))
 		{
 			return true;
 		}
@@ -1015,7 +1015,8 @@ void UHCIAbilityKitAgentSubsystem::HandleCommandCompleted(const FHCIAbilityKitAg
 {
 	ActiveCommand = nullptr;
 	bool bCanProcessPlanBranch = false;
-	if (Result.bHasPlanPayload)
+	const bool bHasExecutablePlanPayload = Result.bHasPlanPayload && Result.Plan.Steps.Num() > 0;
+	if (bHasExecutablePlanPayload)
 	{
 		bHasLastPlan = true;
 		LastPlan = Result.Plan;

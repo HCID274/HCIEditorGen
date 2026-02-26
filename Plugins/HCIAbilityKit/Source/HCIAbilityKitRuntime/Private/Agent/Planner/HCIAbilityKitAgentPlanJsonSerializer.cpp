@@ -13,6 +13,10 @@ bool FHCIAbilityKitAgentPlanJsonSerializer::SerializeToJsonString(const FHCIAbil
 	Root->SetNumberField(TEXT("plan_version"), Plan.PlanVersion);
 	Root->SetStringField(TEXT("request_id"), Plan.RequestId);
 	Root->SetStringField(TEXT("intent"), Plan.Intent);
+	if (!Plan.AssistantMessage.IsEmpty())
+	{
+		Root->SetStringField(TEXT("assistant_message"), Plan.AssistantMessage);
+	}
 
 	TArray<TSharedPtr<FJsonValue>> StepsJson;
 	StepsJson.Reserve(Plan.Steps.Num());

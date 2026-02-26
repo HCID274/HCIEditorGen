@@ -1743,71 +1743,95 @@ bool HCI_RequestAgentPlanPreviewFromUi(
 				return;
 			}
 
+			const bool bMessageOnlyPlan = Plan.Steps.Num() <= 0 && !Plan.AssistantMessage.TrimStartAndEnd().IsEmpty();
 			FHCIAbilityKitAgentPlanValidationResult Validation;
-			FHCIAbilityKitAgentPlanValidationContext ValidationContext;
-			ValidationContext.bRequireWriteStepForModifyIntent = true;
-			ValidationContext.bRequirePipelineInputs = true;
-			if (!FHCIAbilityKitAgentPlanValidator::ValidatePlan(Plan, *ToolRegistryPtr, ValidationContext, Validation))
+			if (!bMessageOnlyPlan)
 			{
-				const FString ValidationError = FString::Printf(
-					TEXT("plan_validation_failed code=%s field=%s reason=%s"),
-					Validation.ErrorCode.IsEmpty() ? TEXT("-") : *Validation.ErrorCode,
-					Validation.Field.IsEmpty() ? TEXT("-") : *Validation.Field,
-					Validation.Reason.IsEmpty() ? TEXT("-") : *Validation.Reason);
-				UE_LOG(
-					LogHCIAbilityKitAgentDemo,
-					Error,
-					TEXT("[HCIAbilityKit][AgentPlanPreviewUI] build_failed input=%s provider=%s provider_mode=%s fallback_used=%s fallback_reason=%s error_code=%s reason=%s source=%s"),
-					*SafeUserText,
-					*PlannerMetadata.PlannerProvider,
-					*PlannerMetadata.ProviderMode,
-					PlannerMetadata.bFallbackUsed ? TEXT("true") : TEXT("false"),
-					*PlannerMetadata.FallbackReason,
-					PlannerMetadata.ErrorCode.IsEmpty() ? TEXT("-") : *PlannerMetadata.ErrorCode,
-					*ValidationError,
-					*SafeSourceTag);
-				if (OnComplete)
+				FHCIAbilityKitAgentPlanValidationContext ValidationContext;
+				ValidationContext.bRequireWriteStepForModifyIntent = true;
+				ValidationContext.bRequirePipelineInputs = true;
+				if (!FHCIAbilityKitAgentPlanValidator::ValidatePlan(Plan, *ToolRegistryPtr, ValidationContext, Validation))
 				{
-					OnComplete(false, SafeUserText, Plan, RouteReason, PlannerMetadata, ValidationError);
+					const FString ValidationError = FString::Printf(
+						TEXT("plan_validation_failed code=%s field=%s reason=%s"),
+						Validation.ErrorCode.IsEmpty() ? TEXT("-") : *Validation.ErrorCode,
+						Validation.Field.IsEmpty() ? TEXT("-") : *Validation.Field,
+						Validation.Reason.IsEmpty() ? TEXT("-") : *Validation.Reason);
+					UE_LOG(
+						LogHCIAbilityKitAgentDemo,
+						Error,
+						TEXT("[HCIAbilityKit][AgentPlanPreviewUI] build_failed input=%s provider=%s provider_mode=%s fallback_used=%s fallback_reason=%s error_code=%s reason=%s source=%s"),
+						*SafeUserText,
+						*PlannerMetadata.PlannerProvider,
+						*PlannerMetadata.ProviderMode,
+						PlannerMetadata.bFallbackUsed ? TEXT("true") : TEXT("false"),
+						*PlannerMetadata.FallbackReason,
+						PlannerMetadata.ErrorCode.IsEmpty() ? TEXT("-") : *PlannerMetadata.ErrorCode,
+						*ValidationError,
+						*SafeSourceTag);
+					if (OnComplete)
+					{
+						OnComplete(false, SafeUserText, Plan, RouteReason, PlannerMetadata, ValidationError);
+					}
+					return;
 				}
-				return;
+			}
+			else
+			{
+				Validation = FHCIAbilityKitAgentPlanValidationResult();
+				Validation.bValid = true;
+				Validation.ErrorCode = TEXT("-");
+				Validation.Field = TEXT("-");
+				Validation.Reason = TEXT("ok");
 			}
 
-				HCI_State().AgentPlanPreviewState = Plan;
-				HCI_LogAgentPlanWithProviderSummary(TEXT("preview_ui_real_http"), SafeUserText, RouteReason, Plan, PlannerMetadata, Validation);
-				HCI_LogAgentPlanRows(TEXT("preview_ui_real_http"), SafeUserText, RouteReason, Plan);
-				if (bAutoOpenPreviewWindow)
-				{
-					const FHCIAbilityKitAgentPlanPreviewContext PreviewContext = HCI_MakePlanPreviewContext(RouteReason, PlannerMetadata);
-					FHCIAbilityKitAgentPlanPreviewWindow::OpenWindow(
-						Plan,
-						PreviewContext);
+			HCI_State().AgentPlanPreviewState = Plan;
+			HCI_LogAgentPlanWithProviderSummary(TEXT("preview_ui_real_http"), SafeUserText, RouteReason, Plan, PlannerMetadata, Validation);
+			HCI_LogAgentPlanRows(TEXT("preview_ui_real_http"), SafeUserText, RouteReason, Plan);
+			if (bAutoOpenPreviewWindow && !bMessageOnlyPlan)
+			{
+				const FHCIAbilityKitAgentPlanPreviewContext PreviewContext = HCI_MakePlanPreviewContext(RouteReason, PlannerMetadata);
+				FHCIAbilityKitAgentPlanPreviewWindow::OpenWindow(
+					Plan,
+					PreviewContext);
 
-					UE_LOG(
-						LogHCIAbilityKitAgentDemo,
-						Display,
-						TEXT("[HCIAbilityKit][AgentPlanPreviewUI] opened request_id=%s intent=%s route_reason=%s steps=%d source=%s"),
-						*Plan.RequestId,
-						*Plan.Intent,
-						*RouteReason,
-						Plan.Steps.Num(),
-						*SafeSourceTag);
-				}
-				else
-				{
-					UE_LOG(
-						LogHCIAbilityKitAgentDemo,
-						Display,
-						TEXT("[HCIAbilityKit][AgentPlanPreviewUI] prepared request_id=%s intent=%s route_reason=%s steps=%d source=%s auto_open=false"),
-						*Plan.RequestId,
-						*Plan.Intent,
-						*RouteReason,
-						Plan.Steps.Num(),
-						*SafeSourceTag);
-				}
-				if (OnComplete)
-				{
-					OnComplete(true, SafeUserText, Plan, RouteReason, PlannerMetadata, FString());
+				UE_LOG(
+					LogHCIAbilityKitAgentDemo,
+					Display,
+					TEXT("[HCIAbilityKit][AgentPlanPreviewUI] opened request_id=%s intent=%s route_reason=%s steps=%d source=%s"),
+					*Plan.RequestId,
+					*Plan.Intent,
+					*RouteReason,
+					Plan.Steps.Num(),
+					*SafeSourceTag);
+			}
+			else if (bMessageOnlyPlan)
+			{
+				UE_LOG(
+					LogHCIAbilityKitAgentDemo,
+					Display,
+					TEXT("[HCIAbilityKit][AgentPlanPreviewUI] prepared_message_only request_id=%s intent=%s route_reason=%s source=%s assistant_message=%s"),
+					*Plan.RequestId,
+					*Plan.Intent,
+					*RouteReason,
+					*SafeSourceTag,
+					*Plan.AssistantMessage);
+			}
+			else
+			{
+				UE_LOG(
+					LogHCIAbilityKitAgentDemo,
+					Display,
+					TEXT("[HCIAbilityKit][AgentPlanPreviewUI] prepared request_id=%s intent=%s route_reason=%s steps=%d source=%s auto_open=false"),
+					*Plan.RequestId,
+					*Plan.Intent,
+					*RouteReason,
+					Plan.Steps.Num(),
+					*SafeSourceTag);
+			}
+			if (OnComplete)
+			{
+				OnComplete(true, SafeUserText, Plan, RouteReason, PlannerMetadata, FString());
 			}
 		});
 	return true;

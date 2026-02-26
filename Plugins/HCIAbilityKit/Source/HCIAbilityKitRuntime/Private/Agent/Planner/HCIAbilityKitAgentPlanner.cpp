@@ -1005,8 +1005,17 @@ static bool HCI_TryBuildPlanFromLlmPlanJson(
 		OutRouteReason = TEXT("llm_real_http_route");
 	}
 
+	LlmPlanObject->TryGetStringField(TEXT("assistant_message"), OutPlan.AssistantMessage);
+	OutPlan.AssistantMessage.TrimStartAndEndInline();
+
+	TArray<TSharedPtr<FJsonValue>> EmptySteps;
 	const TArray<TSharedPtr<FJsonValue>>* Steps = nullptr;
-	if (!LlmPlanObject->TryGetArrayField(TEXT("steps"), Steps) || Steps == nullptr || Steps->Num() <= 0)
+	if (!LlmPlanObject->TryGetArrayField(TEXT("steps"), Steps) || Steps == nullptr)
+	{
+		Steps = &EmptySteps;
+	}
+
+	if (Steps->Num() <= 0 && OutPlan.AssistantMessage.IsEmpty())
 	{
 		OutError = TEXT("llm_plan.steps missing");
 		return false;
@@ -1040,40 +1049,40 @@ static bool HCI_TryBuildPlanFromLlmPlanJson(
 		{
 			ArgsObject = MakeShared<FJsonObject>();
 		}
-			else
-			{
-				ArgsObject = *ArgsObjectPtr;
-			}
-			ArgsObject = HCI_NormalizeStepArgsBySchema(ToolRegistry, FName(*ToolName), ArgsObject);
+		else
+		{
+			ArgsObject = *ArgsObjectPtr;
+		}
+		ArgsObject = HCI_NormalizeStepArgsBySchema(ToolRegistry, FName(*ToolName), ArgsObject);
 
-			TArray<FString> ExpectedEvidence;
-			if (!StepObject->HasField(TEXT("expected_evidence")))
-			{
-				OutError = FString::Printf(
-					TEXT("Missing required field: expected_evidence (llm_plan.steps[%d])"),
-					Index);
-				return false;
-			}
-			if (!HCI_TryGetStringArrayField(StepObject, TEXT("expected_evidence"), ExpectedEvidence))
-			{
-				OutError = FString::Printf(
-					TEXT("Invalid field type: expected_evidence (llm_plan.steps[%d])"),
-					Index);
-				return false;
-			}
-			if (ExpectedEvidence.Num() <= 0)
-			{
-				OutError = FString::Printf(
-					TEXT("Invalid field value: expected_evidence must not be empty (llm_plan.steps[%d])"),
-					Index);
-				return false;
-			}
+		TArray<FString> ExpectedEvidence;
+		if (!StepObject->HasField(TEXT("expected_evidence")))
+		{
+			OutError = FString::Printf(
+				TEXT("Missing required field: expected_evidence (llm_plan.steps[%d])"),
+				Index);
+			return false;
+		}
+		if (!HCI_TryGetStringArrayField(StepObject, TEXT("expected_evidence"), ExpectedEvidence))
+		{
+			OutError = FString::Printf(
+				TEXT("Invalid field type: expected_evidence (llm_plan.steps[%d])"),
+				Index);
+			return false;
+		}
+		if (ExpectedEvidence.Num() <= 0)
+		{
+			OutError = FString::Printf(
+				TEXT("Invalid field value: expected_evidence must not be empty (llm_plan.steps[%d])"),
+				Index);
+			return false;
+		}
 
-			FHCIAbilityKitAgentPlanStep::FUiPresentation UiPresentation;
-			if (!HCI_TryParseOptionalUiPresentation(StepObject, Index, UiPresentation, OutError))
-			{
-				return false;
-			}
+		FHCIAbilityKitAgentPlanStep::FUiPresentation UiPresentation;
+		if (!HCI_TryParseOptionalUiPresentation(StepObject, Index, UiPresentation, OutError))
+		{
+			return false;
+		}
 
 		FHCIAbilityKitAgentPlanStep& Step = OutPlan.Steps.AddDefaulted_GetRef();
 		if (!HCI_StepFromTool(

@@ -38,8 +38,13 @@ bool FHCIAbilityKitAgentPlanContract::ValidateMinimalContract(const FHCIAbilityK
 	}
 	if (Plan.Steps.Num() <= 0)
 	{
-		OutError = TEXT("steps must not be empty");
-		return false;
+		const FString AssistantMessage = Plan.AssistantMessage.TrimStartAndEnd();
+		if (AssistantMessage.IsEmpty())
+		{
+			OutError = TEXT("steps must not be empty when assistant_message is empty");
+			return false;
+		}
+		return true;
 	}
 
 	for (int32 Index = 0; Index < Plan.Steps.Num(); ++Index)

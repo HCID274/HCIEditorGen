@@ -98,7 +98,7 @@ static bool HCI_TryFormatSummaryTextFromLlmOutput(const FString& RawOutput, FStr
 	return true;
 }
 
-static bool HCI_IsWriteLikeRisk(const EHCIAbilityKitAgentPlanRiskLevel RiskLevel)
+static bool HCI_ChatSummary_IsWriteLikeRisk(const EHCIAbilityKitAgentPlanRiskLevel RiskLevel)
 {
 	return RiskLevel == EHCIAbilityKitAgentPlanRiskLevel::Write ||
 		RiskLevel == EHCIAbilityKitAgentPlanRiskLevel::Destructive;
@@ -114,7 +114,7 @@ static FString HCI_BuildLocalSummaryFallbackText(
 	int32 WriteLikeSteps = 0;
 	for (const FHCIAbilityKitAgentPlanStep& Step : Plan.Steps)
 	{
-		if (Step.bRequiresConfirm || HCI_IsWriteLikeRisk(Step.RiskLevel))
+		if (Step.bRequiresConfirm || HCI_ChatSummary_IsWriteLikeRisk(Step.RiskLevel))
 		{
 			++WriteLikeSteps;
 		}
@@ -138,6 +138,23 @@ static FString HCI_BuildLocalSummaryFallbackText(
 		*RouteLabel,
 		*ProviderLabel,
 		*ReasonLabel);
+}
+
+static FString HCI_ComposeChatReplyWithAssistantLeadIn(
+	const FHCIAbilityKitAgentPlan& Plan,
+	const FString& MainMessage)
+{
+	const FString LeadIn = Plan.AssistantMessage.TrimStartAndEnd();
+	const FString Body = MainMessage.TrimStartAndEnd();
+	if (LeadIn.IsEmpty())
+	{
+		return MainMessage;
+	}
+	if (Body.IsEmpty())
+	{
+		return LeadIn;
+	}
+	return FString::Printf(TEXT("%s\n%s"), *LeadIn, *Body);
 }
 
 static void HCI_RequestChatSummaryFromPromptAsync(
@@ -369,8 +386,24 @@ void UHCIAbilityKitAgentCommand_ChatPlanAndSummary::ExecuteAsync(
 				return;
 			}
 
+			const FString AssistantMessage = Plan.AssistantMessage.TrimStartAndEnd();
+			const bool bMessageOnlyPlan = Plan.Steps.Num() <= 0 && !AssistantMessage.IsEmpty();
+			if (bMessageOnlyPlan)
+			{
+				FHCIAbilityKitAgentCommandResult Result;
+				Result.bSuccess = true;
+				Result.bSummaryFailure = false;
+				Result.bHasPlanPayload = false;
+				Result.Plan = Plan;
+				Result.RouteReason = RouteReason;
+				Result.PlannerMetadata = PlannerMetadata;
+				Result.Message = AssistantMessage;
+				Complete(MoveTemp(Result));
+				return;
+			}
+
 			FHCIAbilityKitAgentCommandResult BaseResult;
-			BaseResult.bHasPlanPayload = true;
+			BaseResult.bHasPlanPayload = Plan.Steps.Num() > 0;
 			BaseResult.Plan = Plan;
 			BaseResult.RouteReason = RouteReason;
 			BaseResult.PlannerMetadata = PlannerMetadata;
@@ -387,7 +420,7 @@ void UHCIAbilityKitAgentCommand_ChatPlanAndSummary::ExecuteAsync(
 					{
 						Result.bSuccess = true;
 						Result.bSummaryFailure = false;
-						Result.Message = SummaryMessage;
+						Result.Message = HCI_ComposeChatReplyWithAssistantLeadIn(Result.Plan, SummaryMessage);
 						Complete(MoveTemp(Result));
 						return;
 					}
@@ -399,12 +432,12 @@ void UHCIAbilityKitAgentCommand_ChatPlanAndSummary::ExecuteAsync(
 						*SummaryMessage);
 					Result.bSuccess = true;
 					Result.bSummaryFailure = false;
-					Result.Message = HCI_BuildLocalSummaryFallbackText(
+					Result.Message = HCI_ComposeChatReplyWithAssistantLeadIn(Result.Plan, HCI_BuildLocalSummaryFallbackText(
 						RequestText,
 						Result.Plan,
 						Result.RouteReason,
 						Result.PlannerMetadata,
-						SummaryMessage);
+						SummaryMessage));
 					Complete(MoveTemp(Result));
 				});
 		});

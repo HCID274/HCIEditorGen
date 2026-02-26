@@ -148,6 +148,25 @@ bool FHCIAbilityKitAgentPlanMeshTriangleCountIntentTest::RunTest(const FString& 
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FHCIAbilityKitAgentPlanMinimalContractAllowsAssistantMessageOnlyTest,
+	"HCIAbilityKit.Editor.AgentPlan.ContractAllowsAssistantMessageOnlyPlan",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FHCIAbilityKitAgentPlanMinimalContractAllowsAssistantMessageOnlyTest::RunTest(const FString& Parameters)
+{
+	FHCIAbilityKitAgentPlan Plan;
+	Plan.PlanVersion = 1;
+	Plan.RequestId = TEXT("req_contract_text_only_01");
+	Plan.Intent = TEXT("chat_answer_only");
+	Plan.AssistantMessage = TEXT("这是一个无需工具执行的直接回复。");
+
+	FString Error;
+	TestTrue(TEXT("Minimal contract should allow assistant_message-only plan"), FHCIAbilityKitAgentPlanContract::ValidateMinimalContract(Plan, Error));
+	TestTrue(TEXT("Contract error should be empty"), Error.IsEmpty());
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FHCIAbilityKitAgentPlanJsonSerializerCoreFieldsTest,
 	"HCIAbilityKit.Editor.AgentPlan.JsonSerializerIncludesCoreContractFields",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
@@ -184,6 +203,25 @@ bool FHCIAbilityKitAgentPlanJsonSerializerCoreFieldsTest::RunTest(const FString&
 	TestTrue(TEXT("JSON should include rollback_strategy"), JsonText.Contains(TEXT("\"rollback_strategy\"")));
 	TestTrue(TEXT("JSON should include expected_evidence"), JsonText.Contains(TEXT("\"expected_evidence\"")));
 
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FHCIAbilityKitAgentPlanJsonSerializerAssistantMessageTest,
+	"HCIAbilityKit.Editor.AgentPlan.JsonSerializerIncludesAssistantMessageWhenPresent",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FHCIAbilityKitAgentPlanJsonSerializerAssistantMessageTest::RunTest(const FString& Parameters)
+{
+	FHCIAbilityKitAgentPlan Plan;
+	Plan.PlanVersion = 1;
+	Plan.RequestId = TEXT("req_contract_text_only_serialize_01");
+	Plan.Intent = TEXT("chat_answer_only");
+	Plan.AssistantMessage = TEXT("这是一条直接回复。");
+
+	FString JsonText;
+	TestTrue(TEXT("Serializer should succeed"), FHCIAbilityKitAgentPlanJsonSerializer::SerializeToJsonString(Plan, JsonText));
+	TestTrue(TEXT("JSON should include assistant_message"), JsonText.Contains(TEXT("\"assistant_message\"")));
 	return true;
 }
 

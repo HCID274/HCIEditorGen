@@ -26,6 +26,8 @@ Step 5 - JSON Generation:
 ## HARD CONSTRAINTS
 - Return EXACTLY ONE valid JSON object.
 - No markdown fences, no prose, no explanation text.
+- If no tool execution is needed, return `steps: []` with a non-empty `assistant_message`.
+- If both `assistant_message` and non-empty `steps` are present, treat `assistant_message` as short lead-in and keep actionable `steps`.
 - `tool_name` MUST be in allowed tools.
 - `args` MUST satisfy the chosen tool schema.
 - `args` MUST NOT include undeclared fields (`additionalProperties=false`).

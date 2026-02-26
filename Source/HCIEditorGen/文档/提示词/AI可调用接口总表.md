@@ -26,7 +26,11 @@
 - 顶层：
   - `intent: string`
   - `route_reason: string`
+  - `assistant_message?: string`（可选；用于无需工具时直接回复用户）
   - `steps: Step[]`
+- 语义规则（冻结）：
+  - 若 `steps=[]` 且 `assistant_message` 非空：视为“语义直接回复”（不进入执行链路）。
+  - 若同时存在 `steps` 与 `assistant_message`：按“行动优先”，优先执行 `steps`；`assistant_message`仅作前导说明。
 - `Step`：
   - `step_id: string`
   - `tool_name: enum`

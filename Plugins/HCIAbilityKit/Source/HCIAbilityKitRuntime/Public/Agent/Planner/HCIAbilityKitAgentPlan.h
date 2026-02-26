@@ -43,6 +43,7 @@ struct HCIABILITYKITRUNTIME_API FHCIAbilityKitAgentPlan
 	int32 PlanVersion = 1;
 	FString RequestId;
 	FString Intent;
+	FString AssistantMessage;
 	TArray<FHCIAbilityKitAgentPlanStep> Steps;
 };
 

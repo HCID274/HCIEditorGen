@@ -197,7 +197,7 @@ static FString HCI_GetEvidenceValue(
 	return Found != nullptr && !Found->IsEmpty() ? *Found : FString(DefaultValue);
 }
 
-static bool HCI_IsWriteLikeRisk(const EHCIAbilityKitAgentPlanRiskLevel RiskLevel)
+static bool HCI_Preview_IsWriteLikeRisk(const EHCIAbilityKitAgentPlanRiskLevel RiskLevel)
 {
 	return RiskLevel == EHCIAbilityKitAgentPlanRiskLevel::Write ||
 		   RiskLevel == EHCIAbilityKitAgentPlanRiskLevel::Destructive;
@@ -631,7 +631,7 @@ FHCIAbilityKitAgentPlanCommitRiskSummary FHCIAbilityKitAgentPlanPreviewWindow::B
 	Summary.TotalSteps = Plan.Steps.Num();
 	for (const FHCIAbilityKitAgentPlanStep& Step : Plan.Steps)
 	{
-		if (!HCI_IsWriteLikeRisk(Step.RiskLevel))
+		if (!HCI_Preview_IsWriteLikeRisk(Step.RiskLevel))
 		{
 			continue;
 		}

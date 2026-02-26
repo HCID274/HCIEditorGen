@@ -1,7 +1,7 @@
 # HCIAbilityKit Schema v1 与错误契约
 
 > 状态：冻结（M0-V5）
-> 更新时间：2026-02-24
+> 更新时间：2026-02-26
 
 ## 1. SourceData 输入契约
 
@@ -33,6 +33,7 @@
   "plan_version": 1,
   "request_id": "req_20260224_0001",
   "intent": "normalize_temp_assets_by_metadata",
+  "assistant_message": "先给你结论，再继续执行计划。",
   "steps": [
     {
       "step_id": "s1",
@@ -49,6 +50,10 @@
 ```
 
 - 顶层必填：`plan_version/request_id/intent/steps`
+- 顶层可选：`assistant_message`
+- 语义规则：
+  - `steps=[]` 且 `assistant_message` 非空时，表示“语义直接回复”（不执行工具）。
+  - `steps` 非空时，执行链路优先处理步骤；`assistant_message`仅作为前导说明。
 - 步骤必填：`step_id/tool_name/args/risk_level/requires_confirm/rollback_strategy`
 - `risk_level` 枚举：`read_only/write/destructive`
 

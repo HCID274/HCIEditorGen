@@ -140,8 +140,13 @@
   - `metadata_source: string`（`auto|UAssetImportData|AssetUserData`）
   - `prefix_mode: string`（`auto_by_asset_class`）
   - `target_root: string`（`/Game/...`）
-- `执行接线状态`: `未实接（当前走 Executor simulated）`
-- `说明`: 允许规划与校验；当前 Stage I ToolAction 未绑定真实执行器。
+- `执行接线状态`: `已实接可执行`
+- `DryRun/Execute`: 已接线真实实现（按资产类型前缀生成规范命名，输出提案并执行真实改名/移动到 `target_root`）。
+- `关键 evidence`:
+  - `result`
+  - `proposed_renames`
+  - `proposed_moves`
+  - `affected_count`
 
 ### 4.7 RenameAsset
 
@@ -176,11 +181,11 @@
 ## 5. 当前接线结论（给提示词维护者）
 
 - 当前可规划：8/8（由 `tools_schema.json` 与 ToolRegistry 支持）
-- 当前已实接可执行：7/8（除 `NormalizeAssetNamingByMetadata` 外均已接线）
-- 当前未实接会模拟：1/8（`NormalizeAssetNamingByMetadata`）
+- 当前已实接可执行：8/8
+- 当前未实接会模拟：0/8
 - 因此提示词写法要求：
   - 可以规划全部 8 个工具；
-  - 但在“真实执行承诺”描述中，必须按实接状态区分，不得把 `NormalizeAssetNamingByMetadata` 表述为已真实执行。
+  - 8 个工具均已具备真实执行接线，仍需遵循既有确认门禁与风险分级。
 
 ## 6. UE 入口接口（人工触发）
 

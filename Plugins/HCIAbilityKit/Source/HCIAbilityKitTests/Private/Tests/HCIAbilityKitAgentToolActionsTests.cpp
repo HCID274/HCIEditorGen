@@ -66,9 +66,9 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FHCIAbilityKitSearchPathFuzzyMatchTest::RunTest(const FString& Parameters)
 {
-	const FString RootDir = TEXT("/Game/__HCI_Auto");
-	const FString ProbeDir = TEXT("/Game/__HCI_Auto/M_New");
-	const FString ProbeAssetPath = TEXT("/Game/__HCI_Auto/M_New/SM_HCI_SearchProbe");
+	const FString RootDir = TEXT("/Game/__HCI_Auto/Test_SearchPathFuzzy");
+	const FString ProbeDir = TEXT("/Game/__HCI_Auto/Test_SearchPathFuzzy/M_New");
+	const FString ProbeAssetPath = TEXT("/Game/__HCI_Auto/Test_SearchPathFuzzy/M_New/SM_HCI_SearchProbe");
 
 	if (UEditorAssetLibrary::DoesAssetExist(ProbeAssetPath))
 	{
@@ -138,9 +138,9 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 
 bool FHCIAbilityKitSearchPathSemanticKeywordAliasTest::RunTest(const FString& Parameters)
 {
-	const FString RootDir = TEXT("/Game/__HCI_Auto");
-	const FString ProbeDir = TEXT("/Game/__HCI_Auto/Temp_AliasCase");
-	const FString ProbeAssetPath = TEXT("/Game/__HCI_Auto/Temp_AliasCase/SM_HCI_SearchAliasProbe");
+	const FString RootDir = TEXT("/Game/__HCI_Auto/Test_SearchPathAlias");
+	const FString ProbeDir = TEXT("/Game/__HCI_Auto/Test_SearchPathAlias/Temp_AliasCase");
+	const FString ProbeAssetPath = TEXT("/Game/__HCI_Auto/Test_SearchPathAlias/Temp_AliasCase/SM_HCI_SearchAliasProbe");
 
 	HCI_DeleteAssetIfExists(ProbeAssetPath);
 	UEditorAssetLibrary::DeleteDirectory(ProbeDir);
@@ -229,6 +229,16 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FHCIAbilityKitSetMeshLODGroupNaniteBlockedTest,
 	"HCIAbilityKit.Editor.AgentTools.SetMeshLODGroupExecuteBlocksNaniteMesh",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FHCIAbilityKitNormalizeNamingDryRunTest,
+	"HCIAbilityKit.Editor.AgentTools.NormalizeAssetNamingByMetadataDryRunBuildsProposals",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FHCIAbilityKitNormalizeNamingExecuteTest,
+	"HCIAbilityKit.Editor.AgentTools.NormalizeAssetNamingByMetadataExecuteRenamesAndMovesAssets",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 bool FHCIAbilityKitScanLevelMeshRisksSelectedWithoutSelectionFailsTest::RunTest(const FString& Parameters)
@@ -400,6 +410,151 @@ bool FHCIAbilityKitSetMeshLODGroupExecuteTest::RunTest(const FString& Parameters
 
 	HCI_DeleteAssetIfExists(MeshAssetPath);
 	UEditorAssetLibrary::DeleteDirectory(RootDir);
+	return true;
+}
+
+bool FHCIAbilityKitNormalizeNamingDryRunTest::RunTest(const FString& Parameters)
+{
+	const FString SourceRoot = TEXT("/Game/__HCI_Auto/J3_DryRun");
+	const FString TargetRoot = TEXT("/Game/__HCI_Auto/J3_DryRun_Organized");
+	const FString MeshAssetPath = TEXT("/Game/__HCI_Auto/J3_DryRun/RawMeshJ3");
+	const FString MeshObjectPath = TEXT("/Game/__HCI_Auto/J3_DryRun/RawMeshJ3.RawMeshJ3");
+
+	HCI_DeleteAssetIfExists(MeshAssetPath);
+	UEditorAssetLibrary::DeleteDirectory(SourceRoot);
+	UEditorAssetLibrary::DeleteDirectory(TargetRoot);
+	UEditorAssetLibrary::MakeDirectory(SourceRoot);
+	if (!HCI_TryDuplicateProbeAsset(MeshAssetPath))
+	{
+		UEditorAssetLibrary::DeleteDirectory(SourceRoot);
+		AddError(TEXT("Failed to prepare probe static mesh for NormalizeAssetNamingByMetadata dry-run test."));
+		return false;
+	}
+
+	TMap<FName, TSharedPtr<IHCIAbilityKitAgentToolAction>> Actions;
+	HCIAbilityKitAgentToolActions::BuildStageIDraftActions(Actions);
+	const TSharedPtr<IHCIAbilityKitAgentToolAction>* NamingAction = Actions.Find(TEXT("NormalizeAssetNamingByMetadata"));
+	if (NamingAction == nullptr || !NamingAction->IsValid())
+	{
+		HCI_DeleteAssetIfExists(MeshAssetPath);
+		UEditorAssetLibrary::DeleteDirectory(SourceRoot);
+		AddError(TEXT("NormalizeAssetNamingByMetadata action is not registered."));
+		return false;
+	}
+
+	FHCIAbilityKitAgentToolActionRequest Request;
+	Request.RequestId = TEXT("req_test_j3_naming_dryrun");
+	Request.StepId = TEXT("step_naming_dryrun");
+	Request.ToolName = TEXT("NormalizeAssetNamingByMetadata");
+	Request.Args = MakeShared<FJsonObject>();
+	TArray<TSharedPtr<FJsonValue>> AssetPaths;
+	AssetPaths.Add(MakeShared<FJsonValueString>(MeshObjectPath));
+	Request.Args->SetArrayField(TEXT("asset_paths"), AssetPaths);
+	Request.Args->SetStringField(TEXT("metadata_source"), TEXT("auto"));
+	Request.Args->SetStringField(TEXT("prefix_mode"), TEXT("auto_by_asset_class"));
+	Request.Args->SetStringField(TEXT("target_root"), TargetRoot);
+
+	FHCIAbilityKitAgentToolActionResult Result;
+	const bool bCallOk = (*NamingAction)->DryRun(Request, Result);
+
+	TestTrue(TEXT("Normalize naming dry-run call should succeed"), bCallOk);
+	TestTrue(TEXT("Normalize naming dry-run result should succeed"), Result.bSucceeded);
+	TestEqual(
+		TEXT("Normalize naming dry-run reason"),
+		Result.Reason,
+		FString(TEXT("normalize_asset_naming_by_metadata_dry_run_ok")));
+	TestTrue(
+		TEXT("Dry-run should produce at least one affected proposal"),
+		FCString::Atoi(*Result.Evidence.FindRef(TEXT("affected_count"))) > 0);
+	TestTrue(
+		TEXT("proposed_renames should include class prefix"),
+		Result.Evidence.FindRef(TEXT("proposed_renames")).Contains(TEXT("SM_")));
+
+	HCI_DeleteAssetIfExists(MeshAssetPath);
+	UEditorAssetLibrary::DeleteDirectory(SourceRoot);
+	UEditorAssetLibrary::DeleteDirectory(TargetRoot);
+	return true;
+}
+
+bool FHCIAbilityKitNormalizeNamingExecuteTest::RunTest(const FString& Parameters)
+{
+	const FString SourceRoot = TEXT("/Game/__HCI_Auto/J3_Execute");
+	const FString TargetRoot = TEXT("/Game/__HCI_Auto/J3_Execute_Organized");
+	const FString MeshAssetPath = TEXT("/Game/__HCI_Auto/J3_Execute/RawMeshJ3");
+	const FString MeshObjectPath = TEXT("/Game/__HCI_Auto/J3_Execute/RawMeshJ3.RawMeshJ3");
+	const FString TextureAssetPath = TEXT("/Game/__HCI_Auto/J3_Execute/RawTextureJ3");
+	const FString TextureObjectPath = TEXT("/Game/__HCI_Auto/J3_Execute/RawTextureJ3.RawTextureJ3");
+
+	HCI_DeleteAssetIfExists(MeshAssetPath);
+	HCI_DeleteAssetIfExists(TextureAssetPath);
+	UEditorAssetLibrary::DeleteDirectory(SourceRoot);
+	UEditorAssetLibrary::DeleteDirectory(TargetRoot);
+	UEditorAssetLibrary::MakeDirectory(SourceRoot);
+	if (!HCI_TryDuplicateProbeAsset(MeshAssetPath) || !HCI_TryDuplicateProbeTexture(TextureAssetPath))
+	{
+		HCI_DeleteAssetIfExists(MeshAssetPath);
+		HCI_DeleteAssetIfExists(TextureAssetPath);
+		UEditorAssetLibrary::DeleteDirectory(SourceRoot);
+		AddError(TEXT("Failed to prepare probe assets for NormalizeAssetNamingByMetadata execute test."));
+		return false;
+	}
+
+	TMap<FName, TSharedPtr<IHCIAbilityKitAgentToolAction>> Actions;
+	HCIAbilityKitAgentToolActions::BuildStageIDraftActions(Actions);
+	const TSharedPtr<IHCIAbilityKitAgentToolAction>* NamingAction = Actions.Find(TEXT("NormalizeAssetNamingByMetadata"));
+	if (NamingAction == nullptr || !NamingAction->IsValid())
+	{
+		HCI_DeleteAssetIfExists(MeshAssetPath);
+		HCI_DeleteAssetIfExists(TextureAssetPath);
+		UEditorAssetLibrary::DeleteDirectory(SourceRoot);
+		AddError(TEXT("NormalizeAssetNamingByMetadata action is not registered."));
+		return false;
+	}
+
+	FHCIAbilityKitAgentToolActionRequest Request;
+	Request.RequestId = TEXT("req_test_j3_naming_execute");
+	Request.StepId = TEXT("step_naming_execute");
+	Request.ToolName = TEXT("NormalizeAssetNamingByMetadata");
+	Request.Args = MakeShared<FJsonObject>();
+	TArray<TSharedPtr<FJsonValue>> AssetPaths;
+	AssetPaths.Add(MakeShared<FJsonValueString>(MeshObjectPath));
+	AssetPaths.Add(MakeShared<FJsonValueString>(TextureObjectPath));
+	Request.Args->SetArrayField(TEXT("asset_paths"), AssetPaths);
+	Request.Args->SetStringField(TEXT("metadata_source"), TEXT("auto"));
+	Request.Args->SetStringField(TEXT("prefix_mode"), TEXT("auto_by_asset_class"));
+	Request.Args->SetStringField(TEXT("target_root"), TargetRoot);
+
+	FHCIAbilityKitAgentToolActionResult Result;
+	const bool bCallOk = (*NamingAction)->Execute(Request, Result);
+	const TArray<FString> TargetAssets = UEditorAssetLibrary::ListAssets(TargetRoot, true, false);
+	const bool bHasMeshPrefix = TargetAssets.ContainsByPredicate(
+		[](const FString& Path)
+		{
+			return Path.Contains(TEXT("/SM_"));
+		});
+	const bool bHasTexturePrefix = TargetAssets.ContainsByPredicate(
+		[](const FString& Path)
+		{
+			return Path.Contains(TEXT("/T_"));
+		});
+
+	TestTrue(TEXT("Normalize naming execute call should succeed"), bCallOk);
+	TestTrue(TEXT("Normalize naming execute result should succeed"), Result.bSucceeded);
+	TestEqual(
+		TEXT("Normalize naming execute reason"),
+		Result.Reason,
+		FString(TEXT("normalize_asset_naming_by_metadata_execute_ok")));
+	TestTrue(
+		TEXT("Execute should move at least one asset"),
+		FCString::Atoi(*Result.Evidence.FindRef(TEXT("affected_count"))) > 0);
+	TestTrue(TEXT("Organized root should contain a SM_ asset"), bHasMeshPrefix);
+	TestTrue(TEXT("Organized root should contain a T_ asset"), bHasTexturePrefix);
+	TestFalse(TEXT("Original mesh path should no longer exist"), UEditorAssetLibrary::DoesAssetExist(MeshAssetPath));
+	TestFalse(TEXT("Original texture path should no longer exist"), UEditorAssetLibrary::DoesAssetExist(TextureAssetPath));
+
+	UEditorAssetLibrary::DeleteDirectory(SourceRoot);
+	UEditorAssetLibrary::DeleteDirectory(TargetRoot);
+	UEditorAssetLibrary::DeleteDirectory(TEXT("/Game/__HCI_Auto"));
 	return true;
 }
 
@@ -581,7 +736,6 @@ bool FHCIAbilityKitMoveAssetExecuteTest::RunTest(const FString& Parameters)
 	HCI_DeleteAssetIfExists(DestAssetPath);
 	UEditorAssetLibrary::DeleteDirectory(SourceDir);
 	UEditorAssetLibrary::DeleteDirectory(TargetDir);
-	UEditorAssetLibrary::DeleteDirectory(TEXT("/Game/__HCI_Auto"));
 	return true;
 }
 

@@ -3,6 +3,7 @@
 #include "AssetToolsModule.h"
 #include "AssetRegistry/AssetRegistryModule.h"
 #include "Dom/JsonObject.h"
+#include "EditorFramework/AssetImportData.h"
 #include "EditorAssetLibrary.h"
 #include "Editor.h"
 #include "Engine/Selection.h"
@@ -10,9 +11,11 @@
 #include "Engine/StaticMeshActor.h"
 #include "Engine/Texture2D.h"
 #include "EngineUtils.h"
+#include "Misc/Paths.h"
 #include "Modules/ModuleManager.h"
 #include "PhysicsEngine/BodySetup.h"
 #include "UObject/ObjectRedirector.h"
+#include "UObject/UnrealType.h"
 
 DEFINE_LOG_CATEGORY_STATIC(LogHCIAbilityKitAgentToolActions, Log, All);
 
@@ -79,6 +82,234 @@ static FString HCI_GetDirectoryFromPackagePath(const FString& PackagePath)
 		return FString();
 	}
 	return PackagePath.Left(LastSlash);
+}
+
+static FString HCI_TrimTrailingSlash(const FString& InPath)
+{
+	FString Out = InPath;
+	while (Out.EndsWith(TEXT("/")))
+	{
+		Out.LeftChopInline(1, false);
+	}
+	return Out;
+}
+
+static FString HCI_SanitizeIdentifier(const FString& InText)
+{
+	FString Out;
+	Out.Reserve(InText.Len());
+	bool bPrevUnderscore = false;
+	for (TCHAR Ch : InText)
+	{
+		if (FChar::IsAlnum(Ch))
+		{
+			Out.AppendChar(Ch);
+			bPrevUnderscore = false;
+			continue;
+		}
+
+		if (!bPrevUnderscore)
+		{
+			Out.AppendChar(TEXT('_'));
+			bPrevUnderscore = true;
+		}
+	}
+
+	while (Out.StartsWith(TEXT("_")))
+	{
+		Out.RightChopInline(1, false);
+	}
+	while (Out.EndsWith(TEXT("_")))
+	{
+		Out.LeftChopInline(1, false);
+	}
+
+	if (Out.IsEmpty())
+	{
+		return FString();
+	}
+
+	if (FChar::IsDigit(Out[0]))
+	{
+		Out = FString::Printf(TEXT("A_%s"), *Out);
+	}
+	return Out;
+}
+
+static FString HCI_RemoveKnownPrefixToken(const FString& InName)
+{
+	const int32 UnderscoreIndex = InName.Find(TEXT("_"), ESearchCase::CaseSensitive, ESearchDir::FromStart);
+	if (UnderscoreIndex <= 0 || UnderscoreIndex + 1 >= InName.Len())
+	{
+		return InName;
+	}
+
+	const FString PrefixToken = InName.Left(UnderscoreIndex).ToUpper();
+	static const TSet<FString> KnownPrefixes = {
+		TEXT("SM"),
+		TEXT("SK"),
+		TEXT("T"),
+		TEXT("M"),
+		TEXT("MI"),
+		TEXT("BP"),
+		TEXT("S"),
+		TEXT("FX")};
+	if (!KnownPrefixes.Contains(PrefixToken))
+	{
+		return InName;
+	}
+
+	return InName.Mid(UnderscoreIndex + 1);
+}
+
+static FString HCI_DeriveClassPrefix(const UObject* Asset)
+{
+	if (Asset == nullptr)
+	{
+		return TEXT("A");
+	}
+	if (Asset->IsA(UStaticMesh::StaticClass()))
+	{
+		return TEXT("SM");
+	}
+	if (Asset->IsA(UTexture2D::StaticClass()))
+	{
+		return TEXT("T");
+	}
+
+	const FString ClassName = Asset->GetClass()->GetName();
+	if (ClassName.Contains(TEXT("MaterialInstance")))
+	{
+		return TEXT("MI");
+	}
+	if (ClassName.Contains(TEXT("Material")))
+	{
+		return TEXT("M");
+	}
+	if (ClassName.Contains(TEXT("SkeletalMesh")))
+	{
+		return TEXT("SK");
+	}
+	return TEXT("A");
+}
+
+static bool HCI_TryGetAssetImportData(UObject* Asset, UAssetImportData*& OutImportData)
+{
+	OutImportData = nullptr;
+	if (Asset == nullptr)
+	{
+		return false;
+	}
+
+	const FObjectProperty* ImportDataProperty = FindFProperty<FObjectProperty>(Asset->GetClass(), TEXT("AssetImportData"));
+	if (ImportDataProperty == nullptr)
+	{
+		return false;
+	}
+
+	UObject* ValueObject = ImportDataProperty->GetObjectPropertyValue_InContainer(Asset);
+	OutImportData = Cast<UAssetImportData>(ValueObject);
+	return OutImportData != nullptr;
+}
+
+static bool HCI_TryExtractImportSourceStem(UObject* Asset, FString& OutStem)
+{
+	OutStem.Reset();
+	UAssetImportData* ImportData = nullptr;
+	if (!HCI_TryGetAssetImportData(Asset, ImportData) || ImportData == nullptr)
+	{
+		return false;
+	}
+
+	TArray<FString> SourceFiles;
+	ImportData->ExtractFilenames(SourceFiles);
+	for (const FString& SourceFile : SourceFiles)
+	{
+		const FString Trimmed = SourceFile.TrimStartAndEnd();
+		if (Trimmed.IsEmpty())
+		{
+			continue;
+		}
+
+		const FString Base = FPaths::GetBaseFilename(Trimmed);
+		if (!Base.IsEmpty())
+		{
+			OutStem = Base;
+			return true;
+		}
+	}
+	return false;
+}
+
+static FString HCI_DeriveBaseNameFromCurrentName(const FString& CurrentAssetName, const FString& Prefix)
+{
+	FString Candidate = CurrentAssetName;
+	const FString PrefixWithUnderscore = Prefix + TEXT("_");
+	if (Candidate.StartsWith(PrefixWithUnderscore, ESearchCase::IgnoreCase))
+	{
+		Candidate.RightChopInline(PrefixWithUnderscore.Len(), false);
+	}
+	Candidate = HCI_RemoveKnownPrefixToken(Candidate);
+
+	FString Sanitized = HCI_SanitizeIdentifier(Candidate);
+	if (!Sanitized.IsEmpty())
+	{
+		return Sanitized;
+	}
+	return HCI_SanitizeIdentifier(CurrentAssetName);
+}
+
+static bool HCI_TryBuildNormalizedNameBase(
+	UObject* Asset,
+	const FString& MetadataSource,
+	const FString& Prefix,
+	const FString& CurrentAssetName,
+	FString& OutBaseName,
+	FString& OutFailureReason)
+{
+	OutBaseName.Reset();
+	OutFailureReason.Reset();
+
+	const bool bUseImportDataOnly = MetadataSource.Equals(TEXT("UAssetImportData"), ESearchCase::IgnoreCase);
+	const bool bUseAssetUserDataOnly = MetadataSource.Equals(TEXT("AssetUserData"), ESearchCase::IgnoreCase);
+	if (bUseAssetUserDataOnly)
+	{
+		OutFailureReason = TEXT("asset_user_data_metadata_not_supported");
+		return false;
+	}
+
+	FString SourceStem;
+	if (HCI_TryExtractImportSourceStem(Asset, SourceStem))
+	{
+		OutBaseName = HCI_SanitizeIdentifier(HCI_RemoveKnownPrefixToken(SourceStem));
+		if (!OutBaseName.IsEmpty())
+		{
+			if (OutBaseName.StartsWith(Prefix + TEXT("_"), ESearchCase::IgnoreCase))
+			{
+				OutBaseName.RightChopInline(Prefix.Len() + 1, false);
+				OutBaseName = HCI_SanitizeIdentifier(OutBaseName);
+			}
+			if (!OutBaseName.IsEmpty())
+			{
+				return true;
+			}
+		}
+	}
+
+	if (bUseImportDataOnly)
+	{
+		OutFailureReason = TEXT("import_metadata_missing");
+		return false;
+	}
+
+	OutBaseName = HCI_DeriveBaseNameFromCurrentName(CurrentAssetName, Prefix);
+	if (!OutBaseName.IsEmpty())
+	{
+		return true;
+	}
+
+	OutFailureReason = TEXT("name_sanitization_failed");
+	return false;
 }
 
 static bool HCI_TryReadRequiredStringArg(
@@ -1225,6 +1456,217 @@ public:
 	}
 };
 
+class FHCIAbilityKitNormalizeAssetNamingByMetadataToolAction final : public IHCIAbilityKitAgentToolAction
+{
+public:
+	virtual FName GetToolName() const override
+	{
+		return TEXT("NormalizeAssetNamingByMetadata");
+	}
+
+	virtual bool DryRun(
+		const FHCIAbilityKitAgentToolActionRequest& Request,
+		FHCIAbilityKitAgentToolActionResult& OutResult) const override
+	{
+		return RunInternal(Request, OutResult, true);
+	}
+
+	virtual bool Execute(
+		const FHCIAbilityKitAgentToolActionRequest& Request,
+		FHCIAbilityKitAgentToolActionResult& OutResult) const override
+	{
+		return RunInternal(Request, OutResult, false);
+	}
+
+private:
+	struct FHCINamingProposal
+	{
+		FString SourceAssetPath;
+		FString SourceObjectPath;
+		FString SourceAssetName;
+		FString SourceDirectory;
+		FString DestinationAssetPath;
+		FString DestinationObjectPath;
+		FString DestinationAssetName;
+		FString DestinationDirectory;
+		bool bNeedsRename = false;
+		bool bNeedsMove = false;
+	};
+
+	static bool RunInternal(
+		const FHCIAbilityKitAgentToolActionRequest& Request,
+		FHCIAbilityKitAgentToolActionResult& OutResult,
+		const bool bIsDryRun)
+	{
+		TArray<FString> AssetPaths;
+		FString MetadataSource;
+		FString PrefixMode;
+		FString TargetRoot;
+		if (!HCI_TryReadRequiredStringArrayArg(Request.Args, TEXT("asset_paths"), AssetPaths) ||
+			!HCI_TryReadRequiredStringArg(Request.Args, TEXT("metadata_source"), MetadataSource) ||
+			!HCI_TryReadRequiredStringArg(Request.Args, TEXT("prefix_mode"), PrefixMode) ||
+			!HCI_TryReadRequiredStringArg(Request.Args, TEXT("target_root"), TargetRoot))
+		{
+			OutResult = FHCIAbilityKitAgentToolActionResult();
+			OutResult.bSucceeded = false;
+			OutResult.ErrorCode = TEXT("E4001");
+			OutResult.Reason = TEXT("required_arg_missing");
+			return false;
+		}
+
+		if (!PrefixMode.Equals(TEXT("auto_by_asset_class"), ESearchCase::CaseSensitive))
+		{
+			OutResult = FHCIAbilityKitAgentToolActionResult();
+			OutResult.bSucceeded = false;
+			OutResult.ErrorCode = TEXT("E4011");
+			OutResult.Reason = TEXT("prefix_mode_not_supported");
+			return false;
+		}
+
+		TargetRoot = HCI_TrimTrailingSlash(TargetRoot);
+		if (TargetRoot.IsEmpty() || !TargetRoot.StartsWith(TEXT("/Game/")))
+		{
+			OutResult = FHCIAbilityKitAgentToolActionResult();
+			OutResult.bSucceeded = false;
+			OutResult.ErrorCode = TEXT("E4009");
+			OutResult.Reason = TEXT("target_root_must_start_with_game");
+			return false;
+		}
+
+		TArray<FHCINamingProposal> Proposals;
+		TSet<FString> ReservedDestinationObjects;
+		TArray<FString> ProposedRenameRows;
+		TArray<FString> ProposedMoveRows;
+		TArray<FString> FailedRows;
+
+		for (const FString& RawPath : AssetPaths)
+		{
+			FString SourceAssetPath;
+			FString SourceObjectPath;
+			HCI_NormalizeAssetPathVariants(RawPath, SourceAssetPath, SourceObjectPath);
+
+			if (!UEditorAssetLibrary::DoesAssetExist(SourceAssetPath))
+			{
+				FailedRows.Add(FString::Printf(TEXT("%s (not_found)"), *SourceAssetPath));
+				continue;
+			}
+
+			FString SourcePackagePath;
+			FString SourceAssetName;
+			if (!HCI_TrySplitObjectPath(SourceObjectPath, SourcePackagePath, SourceAssetName))
+			{
+				FailedRows.Add(FString::Printf(TEXT("%s (invalid_object_path)"), *SourceObjectPath));
+				continue;
+			}
+
+			UObject* Asset = LoadObject<UObject>(nullptr, *SourceObjectPath);
+			if (Asset == nullptr)
+			{
+				FailedRows.Add(FString::Printf(TEXT("%s (load_failed)"), *SourceObjectPath));
+				continue;
+			}
+
+			const FString Prefix = HCI_DeriveClassPrefix(Asset);
+			FString BaseName;
+			FString FailureReason;
+			if (!HCI_TryBuildNormalizedNameBase(Asset, MetadataSource, Prefix, SourceAssetName, BaseName, FailureReason))
+			{
+				FailedRows.Add(FString::Printf(TEXT("%s (%s)"), *SourceObjectPath, *FailureReason));
+				continue;
+			}
+
+			FString TargetAssetName = FString::Printf(TEXT("%s_%s"), *Prefix, *BaseName);
+			TargetAssetName = HCI_SanitizeIdentifier(TargetAssetName);
+			if (TargetAssetName.IsEmpty())
+			{
+				FailedRows.Add(FString::Printf(TEXT("%s (target_name_invalid)"), *SourceObjectPath));
+				continue;
+			}
+
+			const FString DestinationAssetPath = FString::Printf(TEXT("%s/%s"), *TargetRoot, *TargetAssetName);
+			const FString DestinationObjectPath = HCI_ToObjectPath(DestinationAssetPath, TargetAssetName);
+			if (DestinationObjectPath.Equals(SourceObjectPath, ESearchCase::CaseSensitive))
+			{
+				continue;
+			}
+
+			if (ReservedDestinationObjects.Contains(DestinationObjectPath))
+			{
+				FailedRows.Add(FString::Printf(TEXT("%s (duplicate_destination)"), *SourceObjectPath));
+				continue;
+			}
+
+			const bool bDestinationExists = UEditorAssetLibrary::DoesAssetExist(DestinationAssetPath);
+			if (bDestinationExists && !DestinationAssetPath.Equals(SourceAssetPath, ESearchCase::CaseSensitive))
+			{
+				FailedRows.Add(FString::Printf(TEXT("%s (destination_exists:%s)"), *SourceObjectPath, *DestinationObjectPath));
+				continue;
+			}
+
+			FHCINamingProposal& Proposal = Proposals.AddDefaulted_GetRef();
+			Proposal.SourceAssetPath = SourceAssetPath;
+			Proposal.SourceObjectPath = SourceObjectPath;
+			Proposal.SourceAssetName = SourceAssetName;
+			Proposal.SourceDirectory = HCI_GetDirectoryFromPackagePath(SourcePackagePath);
+			Proposal.DestinationAssetPath = DestinationAssetPath;
+			Proposal.DestinationObjectPath = DestinationObjectPath;
+			Proposal.DestinationAssetName = TargetAssetName;
+			Proposal.DestinationDirectory = TargetRoot;
+			Proposal.bNeedsRename = !SourceAssetName.Equals(TargetAssetName, ESearchCase::CaseSensitive);
+			Proposal.bNeedsMove = !Proposal.SourceDirectory.Equals(TargetRoot, ESearchCase::CaseSensitive);
+			ReservedDestinationObjects.Add(DestinationObjectPath);
+
+			if (Proposal.bNeedsRename)
+			{
+				ProposedRenameRows.Add(FString::Printf(TEXT("%s -> %s"), *Proposal.SourceAssetName, *Proposal.DestinationAssetName));
+			}
+			if (Proposal.bNeedsMove)
+			{
+				ProposedMoveRows.Add(FString::Printf(TEXT("%s -> %s"), *Proposal.SourceDirectory, *Proposal.DestinationDirectory));
+			}
+		}
+
+		int32 AppliedCount = 0;
+		if (!bIsDryRun && Proposals.Num() > 0)
+		{
+			UEditorAssetLibrary::MakeDirectory(TargetRoot);
+
+			for (const FHCINamingProposal& Proposal : Proposals)
+			{
+				if (!HCI_MoveAssetWithAssetTools(Proposal.SourceObjectPath, Proposal.DestinationObjectPath))
+				{
+					FailedRows.Add(FString::Printf(TEXT("%s (rename_move_failed)"), *Proposal.SourceObjectPath));
+					continue;
+				}
+				++AppliedCount;
+			}
+		}
+
+		OutResult = FHCIAbilityKitAgentToolActionResult();
+		const int32 AffectedCount = bIsDryRun ? Proposals.Num() : AppliedCount;
+		const bool bHasSuccess = AffectedCount > 0;
+		const bool bAllFailed = !bHasSuccess && FailedRows.Num() > 0;
+		OutResult.bSucceeded = !bAllFailed;
+		OutResult.ErrorCode = bAllFailed ? TEXT("E4012") : FString();
+		OutResult.Reason = bIsDryRun
+			? (bAllFailed ? TEXT("normalize_asset_naming_by_metadata_dry_run_failed") : TEXT("normalize_asset_naming_by_metadata_dry_run_ok"))
+			: (bAllFailed ? TEXT("normalize_asset_naming_by_metadata_execute_failed") : TEXT("normalize_asset_naming_by_metadata_execute_ok"));
+		OutResult.EstimatedAffectedCount = AffectedCount;
+
+		OutResult.Evidence.Add(TEXT("proposed_renames"), ProposedRenameRows.Num() > 0 ? FString::Join(ProposedRenameRows, TEXT(" | ")) : TEXT("none"));
+		OutResult.Evidence.Add(TEXT("proposed_moves"), ProposedMoveRows.Num() > 0 ? FString::Join(ProposedMoveRows, TEXT(" | ")) : TEXT("none"));
+		OutResult.Evidence.Add(TEXT("affected_count"), FString::FromInt(AffectedCount));
+		OutResult.Evidence.Add(TEXT("result"), OutResult.Reason);
+
+		if (FailedRows.Num() > 0)
+		{
+			OutResult.Evidence.Add(TEXT("failed_assets"), FString::Join(FailedRows, TEXT(" | ")));
+		}
+
+		return OutResult.bSucceeded;
+	}
+};
+
 class FHCIAbilityKitRenameAssetToolAction final : public IHCIAbilityKitAgentToolAction
 {
 public:
@@ -1449,6 +1891,7 @@ void HCIAbilityKitAgentToolActions::BuildStageIDraftActions(TMap<FName, TSharedP
 	OutActions.Add(TEXT("ScanLevelMeshRisks"), MakeShared<FHCIAbilityKitScanLevelMeshRisksToolAction>());
 	OutActions.Add(TEXT("SetTextureMaxSize"), MakeShared<FHCIAbilityKitSetTextureMaxSizeToolAction>());
 	OutActions.Add(TEXT("SetMeshLODGroup"), MakeShared<FHCIAbilityKitSetMeshLODGroupToolAction>());
+	OutActions.Add(TEXT("NormalizeAssetNamingByMetadata"), MakeShared<FHCIAbilityKitNormalizeAssetNamingByMetadataToolAction>());
 	OutActions.Add(TEXT("RenameAsset"), MakeShared<FHCIAbilityKitRenameAssetToolAction>());
 	OutActions.Add(TEXT("MoveAsset"), MakeShared<FHCIAbilityKitMoveAssetToolAction>());
 }

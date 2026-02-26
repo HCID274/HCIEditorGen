@@ -1,8 +1,8 @@
 # Stage J-SliceJ2 测试记录：资产合规自动化（SetTextureMaxSize & SetMeshLODGroup）
 
-- 测试日期：2026-02-25
-- 测试人：用户
-- 状态：**待验证**
+- 测试日期：2026-02-26
+- 测试人：助手（本地自动化）+ 用户（UE 手测）
+- 状态：**已通过**
 
 ## 1. 测试目标
 验证 `SetTextureMaxSize` 和 `SetMeshLODGroup` 工具的接入情况。通过在 Agent 中下达指令，它应该能扫描指定目录的贴图和模型资产，并在点击执行后，**真实修改**这些资产的 `MaxTextureSize` 或 `LODGroup` 属性。
@@ -29,5 +29,14 @@
   3. **验收**：双击模型资产，检查 Details 面板中的 `LOD Group` 是否已变为 `LevelArchitecture`。
 
 ## 4. 结论与证据
-- **结论**：待用户手测反馈（Pass / Fail）。
-- **执行证据（日志）**：（待用户测试后补充）
+- **本地自动化结论**：通过。
+- **本地自动化证据（2026-02-26）**：
+  1. 编译通过：`Build.bat HCIEditorGenEditor Win64 Development ... -NoHotReloadFromIDE`（ExitCode=0）。
+  2. 用例通过：`HCIAbilityKit.Editor.AgentTools.SetTextureMaxSizeExecuteModifiesRealTexture`。
+  3. 用例通过：`HCIAbilityKit.Editor.AgentTools.SetMeshLODGroupExecuteModifiesRealStaticMesh`。
+  4. 用例通过：`HCIAbilityKit.Editor.AgentTools.SetMeshLODGroupExecuteBlocksNaniteMesh`（拦截口径 `E4010 / lod_tool_nanite_enabled_blocked`）。
+- **UE 手测门禁结论**：通过（用户反馈 `Pass`）。
+- **UE 手测证据（2026-02-26）**：
+  1. 贴图链路：`ScanAssets -> SetTextureMaxSize`，执行后 `terminal=completed`、`succeeded=2 failed=0`，并出现资产保存日志（`LogSavePackage`）。
+  2. 模型链路：`ScanAssets -> SetMeshLODGroup`，执行后 `terminal=completed`、`succeeded=2 failed=0`，并出现 `LogSavePackage` 与 `LogContentValidation`。
+  3. 版本控制提示 `无法从版本控制检出` 未阻断本地保存，最终 `.uasset` 落盘成功。

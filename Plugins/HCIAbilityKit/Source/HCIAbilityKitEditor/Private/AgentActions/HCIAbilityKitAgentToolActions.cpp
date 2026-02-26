@@ -54,6 +54,23 @@ static FString HCI_ToObjectPath(const FString& PackagePath, const FString& Asset
 	return FString::Printf(TEXT("%s.%s"), *PackagePath, *AssetName);
 }
 
+static void HCI_NormalizeAssetPathVariants(
+	const FString& InPath,
+	FString& OutAssetPath,
+	FString& OutObjectPath)
+{
+	OutAssetPath = InPath;
+	OutObjectPath = InPath;
+
+	FString PackagePath;
+	FString AssetName;
+	if (HCI_TrySplitObjectPath(InPath, PackagePath, AssetName))
+	{
+		OutAssetPath = PackagePath;
+		OutObjectPath = HCI_ToObjectPath(PackagePath, AssetName);
+	}
+}
+
 static FString HCI_GetDirectoryFromPackagePath(const FString& PackagePath)
 {
 	int32 LastSlash = INDEX_NONE;
@@ -1000,37 +1017,41 @@ private:
 		TArray<FString> ModifiedAssets;
 		TArray<FString> FailedAssets;
 
-		for (const FString& Path : AssetPaths)
-		{
-			if (!UEditorAssetLibrary::DoesAssetExist(Path))
+			for (const FString& Path : AssetPaths)
 			{
-				FailedAssets.Add(FString::Printf(TEXT("%s (not_found)"), *Path));
-				continue;
-			}
+				FString AssetPath;
+				FString ObjectPath;
+				HCI_NormalizeAssetPathVariants(Path, AssetPath, ObjectPath);
 
-			UObject* Asset = LoadObject<UObject>(nullptr, *Path);
-			UTexture2D* Texture = Cast<UTexture2D>(Asset);
-			if (!Texture)
-			{
-				FailedAssets.Add(FString::Printf(TEXT("%s (not_texture2d)"), *Path));
-				continue;
-			}
+				if (!UEditorAssetLibrary::DoesAssetExist(AssetPath))
+				{
+					FailedAssets.Add(FString::Printf(TEXT("%s (not_found)"), *AssetPath));
+					continue;
+				}
+
+				UObject* Asset = LoadObject<UObject>(nullptr, *ObjectPath);
+				UTexture2D* Texture = Cast<UTexture2D>(Asset);
+				if (!Texture)
+				{
+					FailedAssets.Add(FString::Printf(TEXT("%s (not_texture2d)"), *AssetPath));
+					continue;
+				}
 
 			if (Texture->MaxTextureSize == MaxSize)
 			{
 				continue;
 			}
 
-			if (!bIsDryRun)
-			{
-				Texture->Modify();
-				Texture->MaxTextureSize = MaxSize;
-				Texture->PostEditChange();
-				UEditorAssetLibrary::SaveAsset(Path, false);
-			}
+				if (!bIsDryRun)
+				{
+					Texture->Modify();
+					Texture->MaxTextureSize = MaxSize;
+					Texture->PostEditChange();
+					UEditorAssetLibrary::SaveAsset(AssetPath, false);
+				}
 
-			ModifiedAssets.Add(Path);
-		}
+				ModifiedAssets.Add(AssetPath);
+			}
 
 		OutResult = FHCIAbilityKitAgentToolActionResult();
 		OutResult.bSucceeded = FailedAssets.Num() == 0 || ModifiedAssets.Num() > 0;
@@ -1078,7 +1099,7 @@ public:
 		return RunInternal(Request, OutResult, false);
 	}
 
-private:
+	private:
 	static bool RunInternal(
 		const FHCIAbilityKitAgentToolActionRequest& Request,
 		FHCIAbilityKitAgentToolActionResult& OutResult,
@@ -1098,22 +1119,40 @@ private:
 
 		TArray<FString> ModifiedAssets;
 		TArray<FString> FailedAssets;
+		bool bNaniteBlocked = false;
 
 		const FName LODGroupName(*LODGroup);
+		struct FHCIAbilityKitPendingLodUpdate
+		{
+			TObjectPtr<UStaticMesh> Mesh = nullptr;
+			FString AssetPath;
+		};
+		TArray<FHCIAbilityKitPendingLodUpdate> PendingUpdates;
 
 		for (const FString& Path : AssetPaths)
 		{
-			if (!UEditorAssetLibrary::DoesAssetExist(Path))
+			FString AssetPath;
+			FString ObjectPath;
+			HCI_NormalizeAssetPathVariants(Path, AssetPath, ObjectPath);
+
+			if (!UEditorAssetLibrary::DoesAssetExist(AssetPath))
 			{
-				FailedAssets.Add(FString::Printf(TEXT("%s (not_found)"), *Path));
+				FailedAssets.Add(FString::Printf(TEXT("%s (not_found)"), *AssetPath));
 				continue;
 			}
 
-			UObject* Asset = LoadObject<UObject>(nullptr, *Path);
+			UObject* Asset = LoadObject<UObject>(nullptr, *ObjectPath);
 			UStaticMesh* Mesh = Cast<UStaticMesh>(Asset);
 			if (!Mesh)
 			{
-				FailedAssets.Add(FString::Printf(TEXT("%s (not_staticmesh)"), *Path));
+				FailedAssets.Add(FString::Printf(TEXT("%s (not_staticmesh)"), *AssetPath));
+				continue;
+			}
+
+			if (Mesh->NaniteSettings.bEnabled)
+			{
+				bNaniteBlocked = true;
+				FailedAssets.Add(FString::Printf(TEXT("%s (nanite_enabled_blocked)"), *AssetPath));
 				continue;
 			}
 
@@ -1122,15 +1161,44 @@ private:
 				continue;
 			}
 
-			if (!bIsDryRun)
+			FHCIAbilityKitPendingLodUpdate& Update = PendingUpdates.AddDefaulted_GetRef();
+			Update.Mesh = Mesh;
+			Update.AssetPath = AssetPath;
+		}
+
+		if (bNaniteBlocked)
+		{
+			OutResult = FHCIAbilityKitAgentToolActionResult();
+			OutResult.bSucceeded = false;
+			OutResult.ErrorCode = TEXT("E4010");
+			OutResult.Reason = TEXT("lod_tool_nanite_enabled_blocked");
+			OutResult.EstimatedAffectedCount = 0;
+			OutResult.Evidence.Add(TEXT("target_lod_group"), LODGroup);
+			OutResult.Evidence.Add(TEXT("scanned_count"), FString::FromInt(AssetPaths.Num()));
+			OutResult.Evidence.Add(TEXT("modified_count"), TEXT("0"));
+			OutResult.Evidence.Add(TEXT("failed_count"), FString::FromInt(FailedAssets.Num()));
+			OutResult.Evidence.Add(TEXT("failed_assets"), FString::Join(FailedAssets, TEXT(" | ")));
+			OutResult.Evidence.Add(TEXT("result"), TEXT("lod_tool_nanite_enabled_blocked"));
+			return false;
+		}
+
+		for (const FHCIAbilityKitPendingLodUpdate& Update : PendingUpdates)
+		{
+			if (!Update.Mesh)
 			{
-				Mesh->Modify();
-				Mesh->LODGroup = LODGroupName;
-				Mesh->PostEditChange();
-				UEditorAssetLibrary::SaveAsset(Path, false);
+				FailedAssets.Add(TEXT("<invalid_mesh_ptr> (null_mesh_object)"));
+				continue;
 			}
 
-			ModifiedAssets.Add(Path);
+			if (!bIsDryRun)
+			{
+				Update.Mesh->Modify();
+				Update.Mesh->LODGroup = LODGroupName;
+				Update.Mesh->PostEditChange();
+				UEditorAssetLibrary::SaveAsset(Update.AssetPath, false);
+			}
+
+			ModifiedAssets.Add(Update.AssetPath);
 		}
 
 		OutResult = FHCIAbilityKitAgentToolActionResult();

@@ -5,6 +5,8 @@
 #include "Dom/JsonObject.h"
 #include "Editor.h"
 #include "EditorAssetLibrary.h"
+#include "Engine/StaticMesh.h"
+#include "Engine/Texture2D.h"
 #include "Misc/AutomationTest.h"
 
 namespace
@@ -14,6 +16,26 @@ static bool HCI_TryDuplicateProbeAsset(const FString& TargetAssetPath)
 	const TCHAR* CandidateSources[] = {
 		TEXT("/Engine/BasicShapes/Cube"),
 		TEXT("/Engine/EngineMeshes/Cube")};
+
+	for (const TCHAR* SourceAssetPath : CandidateSources)
+	{
+		if (UEditorAssetLibrary::DoesAssetExist(SourceAssetPath))
+		{
+			if (UEditorAssetLibrary::DuplicateAsset(SourceAssetPath, TargetAssetPath))
+			{
+				return true;
+			}
+		}
+	}
+	return false;
+}
+
+static bool HCI_TryDuplicateProbeTexture(const FString& TargetAssetPath)
+{
+	const TCHAR* CandidateSources[] = {
+		TEXT("/Engine/EngineResources/DefaultTexture"),
+		TEXT("/Engine/EngineResources/WhiteSquareTexture"),
+		TEXT("/Engine/EngineMaterials/DefaultDiffuse")};
 
 	for (const TCHAR* SourceAssetPath : CandidateSources)
 	{
@@ -194,6 +216,21 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	"HCIAbilityKit.Editor.AgentTools.ScanLevelMeshRisksSelectedWithoutSelectionFails",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FHCIAbilityKitSetTextureMaxSizeExecuteTest,
+	"HCIAbilityKit.Editor.AgentTools.SetTextureMaxSizeExecuteModifiesRealTexture",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FHCIAbilityKitSetMeshLODGroupExecuteTest,
+	"HCIAbilityKit.Editor.AgentTools.SetMeshLODGroupExecuteModifiesRealStaticMesh",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FHCIAbilityKitSetMeshLODGroupNaniteBlockedTest,
+	"HCIAbilityKit.Editor.AgentTools.SetMeshLODGroupExecuteBlocksNaniteMesh",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
 bool FHCIAbilityKitScanLevelMeshRisksSelectedWithoutSelectionFailsTest::RunTest(const FString& Parameters)
 {
 	if (GEditor != nullptr)
@@ -229,6 +266,207 @@ bool FHCIAbilityKitScanLevelMeshRisksSelectedWithoutSelectionFailsTest::RunTest(
 	TestFalse(TEXT("Result should be marked as failed"), Result.bSucceeded);
 	TestEqual(TEXT("ErrorCode"), Result.ErrorCode, FString(TEXT("no_actors_selected")));
 	TestEqual(TEXT("Reason"), Result.Reason, FString(TEXT("no_actors_selected")));
+	return true;
+}
+
+bool FHCIAbilityKitSetTextureMaxSizeExecuteTest::RunTest(const FString& Parameters)
+{
+	const FString RootDir = TEXT("/Game/__HCI_Auto/J2_Texture");
+	const FString TextureAssetPath = TEXT("/Game/__HCI_Auto/J2_Texture/T_J2_TextureSrc");
+	const FString TextureObjectPath = TEXT("/Game/__HCI_Auto/J2_Texture/T_J2_TextureSrc.T_J2_TextureSrc");
+
+	HCI_DeleteAssetIfExists(TextureAssetPath);
+	UEditorAssetLibrary::DeleteDirectory(RootDir);
+	UEditorAssetLibrary::MakeDirectory(RootDir);
+	if (!HCI_TryDuplicateProbeTexture(TextureAssetPath))
+	{
+		UEditorAssetLibrary::DeleteDirectory(RootDir);
+		AddError(TEXT("Failed to prepare probe texture asset for SetTextureMaxSize execute test."));
+		return false;
+	}
+
+	UTexture2D* TextureAsset = LoadObject<UTexture2D>(nullptr, *TextureObjectPath);
+	if (!TextureAsset)
+	{
+		HCI_DeleteAssetIfExists(TextureAssetPath);
+		UEditorAssetLibrary::DeleteDirectory(RootDir);
+		AddError(TEXT("Failed to load probe texture asset."));
+		return false;
+	}
+	if (TextureAsset->MaxTextureSize == 1024)
+	{
+		TextureAsset->Modify();
+		TextureAsset->MaxTextureSize = 512;
+		TextureAsset->PostEditChange();
+		UEditorAssetLibrary::SaveAsset(TextureAssetPath, false);
+	}
+
+	TMap<FName, TSharedPtr<IHCIAbilityKitAgentToolAction>> Actions;
+	HCIAbilityKitAgentToolActions::BuildStageIDraftActions(Actions);
+	const TSharedPtr<IHCIAbilityKitAgentToolAction>* TextureAction = Actions.Find(TEXT("SetTextureMaxSize"));
+	if (TextureAction == nullptr || !TextureAction->IsValid())
+	{
+		HCI_DeleteAssetIfExists(TextureAssetPath);
+		UEditorAssetLibrary::DeleteDirectory(RootDir);
+		AddError(TEXT("SetTextureMaxSize action is not registered."));
+		return false;
+	}
+
+	FHCIAbilityKitAgentToolActionRequest Request;
+	Request.RequestId = TEXT("req_test_j2_texture_execute");
+	Request.StepId = TEXT("step_texture");
+	Request.ToolName = TEXT("SetTextureMaxSize");
+	Request.Args = MakeShared<FJsonObject>();
+	TArray<TSharedPtr<FJsonValue>> AssetPaths;
+	AssetPaths.Add(MakeShared<FJsonValueString>(TextureObjectPath));
+	Request.Args->SetArrayField(TEXT("asset_paths"), AssetPaths);
+	Request.Args->SetNumberField(TEXT("max_size"), 1024);
+
+	FHCIAbilityKitAgentToolActionResult Result;
+	const bool bCallOk = (*TextureAction)->Execute(Request, Result);
+
+	TextureAsset = LoadObject<UTexture2D>(nullptr, *TextureObjectPath);
+	TestTrue(TEXT("SetTextureMaxSize execute call should succeed"), bCallOk);
+	TestTrue(TEXT("SetTextureMaxSize result should succeed"), Result.bSucceeded);
+	TestEqual(TEXT("SetTextureMaxSize reason"), Result.Reason, FString(TEXT("set_texture_max_size_execute_ok")));
+	TestEqual(TEXT("Texture MaxTextureSize should be updated to 1024"), TextureAsset ? TextureAsset->MaxTextureSize : -1, 1024);
+	TestEqual(TEXT("modified_count evidence"), Result.Evidence.FindRef(TEXT("modified_count")), FString(TEXT("1")));
+
+	HCI_DeleteAssetIfExists(TextureAssetPath);
+	UEditorAssetLibrary::DeleteDirectory(RootDir);
+	return true;
+}
+
+bool FHCIAbilityKitSetMeshLODGroupExecuteTest::RunTest(const FString& Parameters)
+{
+	const FString RootDir = TEXT("/Game/__HCI_Auto/J2_LOD");
+	const FString MeshAssetPath = TEXT("/Game/__HCI_Auto/J2_LOD/SM_J2_LODSrc");
+	const FString MeshObjectPath = TEXT("/Game/__HCI_Auto/J2_LOD/SM_J2_LODSrc.SM_J2_LODSrc");
+
+	HCI_DeleteAssetIfExists(MeshAssetPath);
+	UEditorAssetLibrary::DeleteDirectory(RootDir);
+	UEditorAssetLibrary::MakeDirectory(RootDir);
+	if (!HCI_TryDuplicateProbeAsset(MeshAssetPath))
+	{
+		UEditorAssetLibrary::DeleteDirectory(RootDir);
+		AddError(TEXT("Failed to prepare probe static mesh for SetMeshLODGroup execute test."));
+		return false;
+	}
+
+	UStaticMesh* MeshAsset = LoadObject<UStaticMesh>(nullptr, *MeshObjectPath);
+	if (!MeshAsset)
+	{
+		HCI_DeleteAssetIfExists(MeshAssetPath);
+		UEditorAssetLibrary::DeleteDirectory(RootDir);
+		AddError(TEXT("Failed to load probe static mesh asset."));
+		return false;
+	}
+	MeshAsset->Modify();
+	MeshAsset->NaniteSettings.bEnabled = false;
+	MeshAsset->LODGroup = TEXT("SmallProp");
+	MeshAsset->PostEditChange();
+	UEditorAssetLibrary::SaveAsset(MeshAssetPath, false);
+
+	TMap<FName, TSharedPtr<IHCIAbilityKitAgentToolAction>> Actions;
+	HCIAbilityKitAgentToolActions::BuildStageIDraftActions(Actions);
+	const TSharedPtr<IHCIAbilityKitAgentToolAction>* LodAction = Actions.Find(TEXT("SetMeshLODGroup"));
+	if (LodAction == nullptr || !LodAction->IsValid())
+	{
+		HCI_DeleteAssetIfExists(MeshAssetPath);
+		UEditorAssetLibrary::DeleteDirectory(RootDir);
+		AddError(TEXT("SetMeshLODGroup action is not registered."));
+		return false;
+	}
+
+	FHCIAbilityKitAgentToolActionRequest Request;
+	Request.RequestId = TEXT("req_test_j2_lod_execute");
+	Request.StepId = TEXT("step_lod");
+	Request.ToolName = TEXT("SetMeshLODGroup");
+	Request.Args = MakeShared<FJsonObject>();
+	TArray<TSharedPtr<FJsonValue>> AssetPaths;
+	AssetPaths.Add(MakeShared<FJsonValueString>(MeshObjectPath));
+	Request.Args->SetArrayField(TEXT("asset_paths"), AssetPaths);
+	Request.Args->SetStringField(TEXT("lod_group"), TEXT("LevelArchitecture"));
+
+	FHCIAbilityKitAgentToolActionResult Result;
+	const bool bCallOk = (*LodAction)->Execute(Request, Result);
+
+	MeshAsset = LoadObject<UStaticMesh>(nullptr, *MeshObjectPath);
+	TestTrue(TEXT("SetMeshLODGroup execute call should succeed"), bCallOk);
+	TestTrue(TEXT("SetMeshLODGroup result should succeed"), Result.bSucceeded);
+	TestEqual(TEXT("SetMeshLODGroup reason"), Result.Reason, FString(TEXT("set_mesh_lod_group_execute_ok")));
+	TestEqual(TEXT("StaticMesh LODGroup should be updated"), MeshAsset ? MeshAsset->LODGroup : FName(), FName(TEXT("LevelArchitecture")));
+	TestEqual(TEXT("modified_count evidence"), Result.Evidence.FindRef(TEXT("modified_count")), FString(TEXT("1")));
+
+	HCI_DeleteAssetIfExists(MeshAssetPath);
+	UEditorAssetLibrary::DeleteDirectory(RootDir);
+	return true;
+}
+
+bool FHCIAbilityKitSetMeshLODGroupNaniteBlockedTest::RunTest(const FString& Parameters)
+{
+	const FString RootDir = TEXT("/Game/__HCI_Auto/J2_LOD_Nanite");
+	const FString MeshAssetPath = TEXT("/Game/__HCI_Auto/J2_LOD_Nanite/SM_J2_LODNanite");
+	const FString MeshObjectPath = TEXT("/Game/__HCI_Auto/J2_LOD_Nanite/SM_J2_LODNanite.SM_J2_LODNanite");
+
+	HCI_DeleteAssetIfExists(MeshAssetPath);
+	UEditorAssetLibrary::DeleteDirectory(RootDir);
+	UEditorAssetLibrary::MakeDirectory(RootDir);
+	if (!HCI_TryDuplicateProbeAsset(MeshAssetPath))
+	{
+		UEditorAssetLibrary::DeleteDirectory(RootDir);
+		AddError(TEXT("Failed to prepare Nanite probe static mesh for SetMeshLODGroup execute test."));
+		return false;
+	}
+
+	UStaticMesh* MeshAsset = LoadObject<UStaticMesh>(nullptr, *MeshObjectPath);
+	if (!MeshAsset)
+	{
+		HCI_DeleteAssetIfExists(MeshAssetPath);
+		UEditorAssetLibrary::DeleteDirectory(RootDir);
+		AddError(TEXT("Failed to load Nanite probe static mesh asset."));
+		return false;
+	}
+
+	const FName BeforeLodGroup = MeshAsset->LODGroup;
+	MeshAsset->Modify();
+	MeshAsset->NaniteSettings.bEnabled = true;
+	MeshAsset->PostEditChange();
+	UEditorAssetLibrary::SaveAsset(MeshAssetPath, false);
+
+	TMap<FName, TSharedPtr<IHCIAbilityKitAgentToolAction>> Actions;
+	HCIAbilityKitAgentToolActions::BuildStageIDraftActions(Actions);
+	const TSharedPtr<IHCIAbilityKitAgentToolAction>* LodAction = Actions.Find(TEXT("SetMeshLODGroup"));
+	if (LodAction == nullptr || !LodAction->IsValid())
+	{
+		HCI_DeleteAssetIfExists(MeshAssetPath);
+		UEditorAssetLibrary::DeleteDirectory(RootDir);
+		AddError(TEXT("SetMeshLODGroup action is not registered."));
+		return false;
+	}
+
+	FHCIAbilityKitAgentToolActionRequest Request;
+	Request.RequestId = TEXT("req_test_j2_lod_nanite_block");
+	Request.StepId = TEXT("step_lod_nanite_block");
+	Request.ToolName = TEXT("SetMeshLODGroup");
+	Request.Args = MakeShared<FJsonObject>();
+	TArray<TSharedPtr<FJsonValue>> AssetPaths;
+	AssetPaths.Add(MakeShared<FJsonValueString>(MeshObjectPath));
+	Request.Args->SetArrayField(TEXT("asset_paths"), AssetPaths);
+	Request.Args->SetStringField(TEXT("lod_group"), TEXT("LevelArchitecture"));
+
+	FHCIAbilityKitAgentToolActionResult Result;
+	const bool bCallOk = (*LodAction)->Execute(Request, Result);
+
+	MeshAsset = LoadObject<UStaticMesh>(nullptr, *MeshObjectPath);
+	TestFalse(TEXT("SetMeshLODGroup execute call should fail on Nanite mesh"), bCallOk);
+	TestFalse(TEXT("SetMeshLODGroup result should fail on Nanite mesh"), Result.bSucceeded);
+	TestEqual(TEXT("Nanite block error code"), Result.ErrorCode, FString(TEXT("E4010")));
+	TestEqual(TEXT("Nanite block reason"), Result.Reason, FString(TEXT("lod_tool_nanite_enabled_blocked")));
+	TestEqual(TEXT("LODGroup should remain unchanged when Nanite blocked"), MeshAsset ? MeshAsset->LODGroup : FName(), BeforeLodGroup);
+
+	HCI_DeleteAssetIfExists(MeshAssetPath);
+	UEditorAssetLibrary::DeleteDirectory(RootDir);
 	return true;
 }
 

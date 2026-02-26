@@ -9,6 +9,29 @@
 
 class UHCIAbilityKitAgentCommandBase;
 
+struct FHCIAbilityKitAgentUiProgressState
+{
+	bool bVisible = false;
+	bool bIndeterminate = false;
+	float Percent01 = 0.0f;
+	FString Label;
+};
+
+enum class EHCIAbilityKitAgentUiLocateTargetKind : uint8
+{
+	Asset,
+	Actor
+};
+
+struct FHCIAbilityKitAgentUiLocateTarget
+{
+	EHCIAbilityKitAgentUiLocateTargetKind Kind = EHCIAbilityKitAgentUiLocateTargetKind::Asset;
+	FString DisplayLabel;
+	FString TargetPath;
+	FString SourceToolName;
+	FString SourceEvidenceKey;
+};
+
 struct FHCIAbilityKitAgentQuickCommand
 {
 	FString Label;
@@ -42,6 +65,8 @@ DECLARE_MULTICAST_DELEGATE_OneParam(FHCIAbilityKitAgentStatusEvent, const FStrin
 DECLARE_MULTICAST_DELEGATE_OneParam(FHCIAbilityKitAgentSummaryEvent, const FString& /*SummaryText*/);
 DECLARE_MULTICAST_DELEGATE(FHCIAbilityKitAgentPlanReadyEvent);
 DECLARE_MULTICAST_DELEGATE_OneParam(FHCIAbilityKitAgentSessionStateEvent, EHCIAbilityKitAgentSessionState /*State*/);
+DECLARE_MULTICAST_DELEGATE_OneParam(FHCIAbilityKitAgentProgressStateEvent, const FHCIAbilityKitAgentUiProgressState& /*Progress*/);
+DECLARE_MULTICAST_DELEGATE(FHCIAbilityKitAgentLocateTargetsChangedEvent);
 
 /**
  * Agent 聊天编排入口：统一受理 UI 输入并分发命令。
@@ -63,9 +88,12 @@ public:
 	bool CanCommitLastPlanFromChat() const;
 	bool CanCancelPendingPlanFromChat() const;
 	bool BuildLastPlanCardLines(TArray<FString>& OutLines) const;
+	void GetCurrentProgressState(FHCIAbilityKitAgentUiProgressState& OutState) const;
+	void GetLastExecutionLocateTargets(TArray<FHCIAbilityKitAgentUiLocateTarget>& OutTargets) const;
 	bool OpenLastPlanPreview();
 	bool CommitLastPlanFromChat();
 	bool CancelPendingPlanFromChat();
+	bool TryLocateLastExecutionTargetByIndex(int32 TargetIndex);
 
 	void ReloadQuickCommands();
 	const TArray<FHCIAbilityKitAgentQuickCommand>& GetQuickCommands() const;
@@ -76,6 +104,8 @@ public:
 	FHCIAbilityKitAgentSummaryEvent OnSummaryReceived;
 	FHCIAbilityKitAgentPlanReadyEvent OnPlanReady;
 	FHCIAbilityKitAgentSessionStateEvent OnSessionStateChanged;
+	FHCIAbilityKitAgentProgressStateEvent OnProgressStateChanged;
+	FHCIAbilityKitAgentLocateTargetsChangedEvent OnLocateTargetsChanged;
 
 	static bool IsWriteLikePlan(const FHCIAbilityKitAgentPlan& Plan);
 	static EHCIAbilityKitAgentPlanExecutionBranch ClassifyPlanExecutionBranch(const FHCIAbilityKitAgentPlan& Plan);
@@ -90,6 +120,9 @@ private:
 	void EmitStatus(const FString& Text);
 	void SetCurrentState(EHCIAbilityKitAgentSessionState NewState);
 	FString BuildStateStatusText(EHCIAbilityKitAgentSessionState State) const;
+	void SetProgressState(const FHCIAbilityKitAgentUiProgressState& InState);
+	void ClearLocateTargets();
+	void SetLocateTargetsFromExecutionReport(const struct FHCIAbilityKitAgentPlanExecutionReport& Report);
 	bool ExecuteLastPlan(EHCIAbilityKitAgentPlanExecutionBranch Branch, const TCHAR* TriggerTag);
 
 	void HandleCommandCompleted(const FHCIAbilityKitAgentCommandResult& Result);
@@ -107,4 +140,6 @@ private:
 	FString LastRouteReason;
 	FHCIAbilityKitAgentPlannerResultMetadata LastPlannerMetadata;
 	EHCIAbilityKitAgentSessionState CurrentState = EHCIAbilityKitAgentSessionState::Idle;
+	FHCIAbilityKitAgentUiProgressState CurrentProgressState;
+	TArray<FHCIAbilityKitAgentUiLocateTarget> LastExecutionLocateTargets;
 };

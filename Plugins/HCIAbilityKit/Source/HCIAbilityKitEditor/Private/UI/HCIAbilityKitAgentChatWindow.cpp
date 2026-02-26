@@ -15,11 +15,14 @@
 #include "Widgets/Input/SButton.h"
 #include "Widgets/Input/SEditableTextBox.h"
 #include "Widgets/Input/SMultiLineEditableTextBox.h"
+#include "Widgets/Images/SThrobber.h"
 #include "Widgets/Layout/SBorder.h"
 #include "Widgets/Layout/SBox.h"
+#include "Widgets/Layout/SScrollBox.h"
 #include "Widgets/SBoxPanel.h"
 #include "Widgets/SCompoundWidget.h"
 #include "Widgets/SWindow.h"
+#include "Widgets/Notifications/SProgressBar.h"
 #include "Widgets/Text/STextBlock.h"
 
 namespace
@@ -145,6 +148,39 @@ public:
 					.Text(FText::FromString(TEXT("状态：空闲")))
 				]
 				+ SVerticalBox::Slot()
+				.AutoHeight()
+				.Padding(0.0f, 6.0f, 0.0f, 0.0f)
+				[
+					SNew(SHorizontalBox)
+					+ SHorizontalBox::Slot()
+					.AutoWidth()
+					.VAlign(VAlign_Center)
+					[
+						SAssignNew(ProgressThrobber, SThrobber)
+						.Visibility(EVisibility::Collapsed)
+					]
+					+ SHorizontalBox::Slot()
+					.FillWidth(1.0f)
+					.Padding(8.0f, 0.0f, 0.0f, 0.0f)
+					.VAlign(VAlign_Center)
+					[
+						SNew(SVerticalBox)
+						+ SVerticalBox::Slot()
+						.AutoHeight()
+						[
+							SAssignNew(ProgressTextBlock, STextBlock)
+							.Text(FText::FromString(TEXT("进度：未开始")))
+						]
+						+ SVerticalBox::Slot()
+						.AutoHeight()
+						.Padding(0.0f, 4.0f, 0.0f, 0.0f)
+						[
+							SAssignNew(ProgressBar, SProgressBar)
+							.Visibility(EVisibility::Collapsed)
+						]
+					]
+				]
+				+ SVerticalBox::Slot()
 				.FillHeight(1.0f)
 				.Padding(0.0f, 8.0f, 0.0f, 8.0f)
 				[
@@ -204,6 +240,40 @@ public:
 								.Text(FText::FromString(TEXT("确认执行")))
 								.IsEnabled(false)
 								.OnClicked(this, &SHCIAbilityKitAgentChatWindow::HandleCommitLastPlanClicked)
+							]
+						]
+					]
+				]
+				+ SVerticalBox::Slot()
+				.AutoHeight()
+				.Padding(0.0f, 0.0f, 0.0f, 8.0f)
+				[
+					SNew(SBorder)
+					.BorderImage(FAppStyle::GetBrush("ToolPanel.GroupBorder"))
+					.Padding(8.0f)
+					[
+						SNew(SVerticalBox)
+						+ SVerticalBox::Slot()
+						.AutoHeight()
+						[
+							SNew(STextBlock)
+							.Text(FText::FromString(TEXT("结果定位（点击跳转）")))
+						]
+						+ SVerticalBox::Slot()
+						.AutoHeight()
+						.Padding(0.0f, 4.0f, 0.0f, 0.0f)
+						[
+							SAssignNew(ResultTargetsHintText, STextBlock)
+							.Text(FText::FromString(TEXT("暂无可定位结果。执行扫描后会在这里显示 Actor/Asset。")))
+						]
+						+ SVerticalBox::Slot()
+						.MaxHeight(140.0f)
+						.Padding(0.0f, 4.0f, 0.0f, 0.0f)
+						[
+							SNew(SScrollBox)
+							+ SScrollBox::Slot()
+							[
+								SAssignNew(ResultTargetsBox, SVerticalBox)
 							]
 						]
 					]
@@ -284,6 +354,8 @@ public:
 			}
 		}
 		RefreshPlanCardFromSubsystem();
+		RefreshProgressFromSubsystem();
+		RefreshLocateTargetsFromSubsystem();
 
 		if (!InitialInput.TrimStartAndEnd().IsEmpty() && InputTextBox.IsValid())
 		{
@@ -305,6 +377,8 @@ private:
 			StatusChangedHandle = AgentSubsystem->OnStatusChanged.AddSP(this, &SHCIAbilityKitAgentChatWindow::HandleSubsystemStatusChanged);
 			PlanReadyHandle = AgentSubsystem->OnPlanReady.AddSP(this, &SHCIAbilityKitAgentChatWindow::HandleSubsystemPlanReady);
 			SessionStateHandle = AgentSubsystem->OnSessionStateChanged.AddSP(this, &SHCIAbilityKitAgentChatWindow::HandleSubsystemSessionStateChanged);
+			ProgressStateHandle = AgentSubsystem->OnProgressStateChanged.AddSP(this, &SHCIAbilityKitAgentChatWindow::HandleSubsystemProgressStateChanged);
+			LocateTargetsChangedHandle = AgentSubsystem->OnLocateTargetsChanged.AddSP(this, &SHCIAbilityKitAgentChatWindow::HandleSubsystemLocateTargetsChanged);
 		}
 	}
 
@@ -331,6 +405,16 @@ private:
 			{
 				AgentSubsystem->OnSessionStateChanged.Remove(SessionStateHandle);
 				SessionStateHandle.Reset();
+			}
+			if (ProgressStateHandle.IsValid())
+			{
+				AgentSubsystem->OnProgressStateChanged.Remove(ProgressStateHandle);
+				ProgressStateHandle.Reset();
+			}
+			if (LocateTargetsChangedHandle.IsValid())
+			{
+				AgentSubsystem->OnLocateTargetsChanged.Remove(LocateTargetsChangedHandle);
+				LocateTargetsChangedHandle.Reset();
 			}
 		}
 	}
@@ -417,10 +501,127 @@ private:
 		RefreshPlanCardFromSubsystem();
 	}
 
+	void HandleSubsystemProgressStateChanged(const FHCIAbilityKitAgentUiProgressState&)
+	{
+		RefreshProgressFromSubsystem();
+	}
+
+	void HandleSubsystemLocateTargetsChanged()
+	{
+		RefreshLocateTargetsFromSubsystem();
+	}
+
 	void HandleSubsystemPlanReady()
 	{
 		RefreshPlanCardFromSubsystem();
 		AppendAssistantLine(TEXT("计划卡片已更新。只读计划自动执行；写计划会在聊天内显示审查卡并等待确认。"));
+	}
+
+	void RefreshProgressFromSubsystem()
+	{
+		FHCIAbilityKitAgentUiProgressState ProgressState;
+		if (UHCIAbilityKitAgentSubsystem* AgentSubsystem = GetAgentSubsystem())
+		{
+			AgentSubsystem->GetCurrentProgressState(ProgressState);
+		}
+
+		if (ProgressTextBlock.IsValid())
+		{
+			ProgressTextBlock->SetText(FText::FromString(
+				ProgressState.Label.IsEmpty() ? TEXT("进度：未开始") : ProgressState.Label));
+		}
+
+		if (ProgressBar.IsValid())
+		{
+			ProgressBar->SetVisibility(ProgressState.bVisible ? EVisibility::Visible : EVisibility::Collapsed);
+			if (ProgressState.bIndeterminate)
+			{
+				ProgressBar->SetPercent(TOptional<float>());
+			}
+			else
+			{
+				ProgressBar->SetPercent(ProgressState.Percent01);
+			}
+		}
+
+		if (ProgressThrobber.IsValid())
+		{
+			ProgressThrobber->SetVisibility(
+				(ProgressState.bVisible && ProgressState.bIndeterminate) ? EVisibility::Visible : EVisibility::Collapsed);
+		}
+	}
+
+	void RefreshLocateTargetsFromSubsystem()
+	{
+		ResultLocateTargets.Reset();
+		if (UHCIAbilityKitAgentSubsystem* AgentSubsystem = GetAgentSubsystem())
+		{
+			AgentSubsystem->GetLastExecutionLocateTargets(ResultLocateTargets);
+		}
+
+		if (ResultTargetsHintText.IsValid())
+		{
+			if (ResultLocateTargets.Num() <= 0)
+			{
+				ResultTargetsHintText->SetText(FText::FromString(TEXT("暂无可定位结果。执行扫描后会在这里显示 Actor/Asset。")));
+			}
+			else
+			{
+				ResultTargetsHintText->SetText(FText::FromString(FString::Printf(
+					TEXT("共 %d 项。点击按钮可在视口或内容浏览器定位。"),
+					ResultLocateTargets.Num())));
+			}
+		}
+
+		if (!ResultTargetsBox.IsValid())
+		{
+			return;
+		}
+
+		ResultTargetsBox->ClearChildren();
+		if (ResultLocateTargets.Num() <= 0)
+		{
+			ResultTargetsBox->AddSlot()
+			.AutoHeight()
+			[
+				SNew(STextBlock)
+				.Text(FText::FromString(TEXT("无结果项")))
+			];
+			return;
+		}
+
+		const int32 MaxButtons = FMath::Min(ResultLocateTargets.Num(), 16);
+		for (int32 Index = 0; Index < MaxButtons; ++Index)
+		{
+			const FString Label = ResultLocateTargets[Index].DisplayLabel;
+			ResultTargetsBox->AddSlot()
+			.AutoHeight()
+			.Padding(0.0f, 0.0f, 0.0f, 4.0f)
+			[
+				SNew(SButton)
+				.Text(FText::FromString(Label))
+				.ToolTipText(FText::FromString(ResultLocateTargets[Index].TargetPath))
+				.OnClicked_Lambda([WeakThis = TWeakPtr<SHCIAbilityKitAgentChatWindow>(SharedThis(this)), Index]()
+				{
+					const TSharedPtr<SHCIAbilityKitAgentChatWindow> Pinned = WeakThis.Pin();
+					if (!Pinned.IsValid())
+					{
+						return FReply::Handled();
+					}
+					return Pinned->HandleLocateResultTargetClicked(Index);
+				})
+			];
+		}
+
+		if (ResultLocateTargets.Num() > MaxButtons)
+		{
+			ResultTargetsBox->AddSlot()
+			.AutoHeight()
+			[
+				SNew(STextBlock)
+				.Text(FText::FromString(FString::Printf(TEXT("仅显示前 %d 项（总计 %d 项）"), MaxButtons, ResultLocateTargets.Num())))
+			];
+		}
 	}
 
 	void RefreshPlanCardFromSubsystem()
@@ -501,6 +702,15 @@ private:
 		if (UHCIAbilityKitAgentSubsystem* AgentSubsystem = GetAgentSubsystem())
 		{
 			AgentSubsystem->CancelPendingPlanFromChat();
+		}
+		return FReply::Handled();
+	}
+
+	FReply HandleLocateResultTargetClicked(const int32 TargetIndex)
+	{
+		if (UHCIAbilityKitAgentSubsystem* AgentSubsystem = GetAgentSubsystem())
+		{
+			AgentSubsystem->TryLocateLastExecutionTargetByIndex(TargetIndex);
 		}
 		return FReply::Handled();
 	}
@@ -622,10 +832,16 @@ private:
 	FString QuickCommandsLoadError;
 	TArray<FString> HistoryLines;
 	TArray<FHCIAbilityKitAgentQuickCommand> QuickCommands;
+	TArray<FHCIAbilityKitAgentUiLocateTarget> ResultLocateTargets;
 	TSharedPtr<SMultiLineEditableTextBox> HistoryTextBox;
 	TSharedPtr<SMultiLineEditableTextBox> PlanCardTextBox;
 	TSharedPtr<SEditableTextBox> InputTextBox;
 	TSharedPtr<STextBlock> StatusTextBlock;
+	TSharedPtr<STextBlock> ProgressTextBlock;
+	TSharedPtr<STextBlock> ResultTargetsHintText;
+	TSharedPtr<SProgressBar> ProgressBar;
+	TSharedPtr<SThrobber> ProgressThrobber;
+	TSharedPtr<SVerticalBox> ResultTargetsBox;
 	TSharedPtr<SHorizontalBox> QuickCommandsBox;
 	TSharedPtr<SButton> OpenPreviewButton;
 	TSharedPtr<SButton> CancelPlanButton;
@@ -634,6 +850,8 @@ private:
 	FDelegateHandle StatusChangedHandle;
 	FDelegateHandle PlanReadyHandle;
 	FDelegateHandle SessionStateHandle;
+	FDelegateHandle ProgressStateHandle;
+	FDelegateHandle LocateTargetsChangedHandle;
 };
 }
 

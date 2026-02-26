@@ -38,6 +38,21 @@ struct FHCIAbilityKitAgentPlanCommitRiskSummary
 	bool bRequiresConfirmDialog = false;
 };
 
+enum class EHCIAbilityKitAgentExecutionLocateTargetKind : uint8
+{
+	Asset,
+	Actor
+};
+
+struct FHCIAbilityKitAgentExecutionLocateTarget
+{
+	EHCIAbilityKitAgentExecutionLocateTargetKind Kind = EHCIAbilityKitAgentExecutionLocateTargetKind::Asset;
+	FString DisplayLabel;
+	FString TargetPath;
+	FString SourceToolName;
+	FString SourceEvidenceKey;
+};
+
 struct FHCIAbilityKitAgentPlanExecutionReport
 {
 	bool bRunOk = false;
@@ -50,6 +65,7 @@ struct FHCIAbilityKitAgentPlanExecutionReport
 	int32 ScannedAssets = 0;
 	FString SummaryText;
 	FString SearchPathEvidenceText;
+	TArray<FHCIAbilityKitAgentExecutionLocateTarget> LocateTargets;
 };
 
 class HCIABILITYKITEDITOR_API FHCIAbilityKitAgentPlanPreviewWindow
@@ -60,6 +76,9 @@ public:
 	static FHCIAbilityKitAgentPlanCommitRiskSummary BuildCommitRiskSummary(const FHCIAbilityKitAgentPlan& Plan);
 	static FString BuildCommitConfirmMessage(const FHCIAbilityKitAgentPlan& Plan);
 	static FString BuildSearchPathEvidenceSummary(const TArray<FHCIAbilityKitAgentExecutorStepResult>& StepResults);
+	static void BuildLocateTargetsFromStepResults(
+		const TArray<FHCIAbilityKitAgentExecutorStepResult>& StepResults,
+		TArray<FHCIAbilityKitAgentExecutionLocateTarget>& OutTargets);
 	static bool ExecutePlan(
 		const FHCIAbilityKitAgentPlan& Plan,
 		bool bDryRun,

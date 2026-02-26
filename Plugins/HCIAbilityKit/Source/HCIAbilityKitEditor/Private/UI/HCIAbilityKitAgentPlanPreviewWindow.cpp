@@ -203,6 +203,130 @@ static bool HCI_IsWriteLikeRisk(const EHCIAbilityKitAgentPlanRiskLevel RiskLevel
 		   RiskLevel == EHCIAbilityKitAgentPlanRiskLevel::Destructive;
 }
 
+static void HCI_SplitEvidenceList(
+	const FString& RawValue,
+	const TCHAR* Delimiter,
+	TArray<FString>& OutItems)
+{
+	OutItems.Reset();
+	if (RawValue.IsEmpty() || RawValue.Equals(TEXT("none"), ESearchCase::IgnoreCase) || RawValue.Equals(TEXT("-"), ESearchCase::CaseSensitive))
+	{
+		return;
+	}
+
+	RawValue.ParseIntoArray(OutItems, Delimiter, true);
+	for (FString& Item : OutItems)
+	{
+		Item.TrimStartAndEndInline();
+	}
+	OutItems.RemoveAll([](const FString& Item) { return Item.IsEmpty(); });
+}
+
+static FString HCI_SanitizeAssetPathLikeToken(FString InValue)
+{
+	InValue.TrimStartAndEndInline();
+	if (InValue.IsEmpty())
+	{
+		return FString();
+	}
+
+	const int32 ReasonSuffixIndex = InValue.Find(TEXT(" ("), ESearchCase::CaseSensitive, ESearchDir::FromStart);
+	if (ReasonSuffixIndex > 0)
+	{
+		InValue = InValue.Left(ReasonSuffixIndex);
+		InValue.TrimStartAndEndInline();
+	}
+
+	const int32 ColonIndex = InValue.Find(TEXT(":"), ESearchCase::CaseSensitive, ESearchDir::FromEnd);
+	if (ColonIndex > 0)
+	{
+		bool bAllDigitsAfterColon = true;
+		for (int32 Index = ColonIndex + 1; Index < InValue.Len(); ++Index)
+		{
+			if (!FChar::IsDigit(InValue[Index]))
+			{
+				bAllDigitsAfterColon = false;
+				break;
+			}
+		}
+		if (bAllDigitsAfterColon)
+		{
+			InValue = InValue.Left(ColonIndex);
+			InValue.TrimStartAndEndInline();
+		}
+	}
+
+	return InValue;
+}
+
+static FString HCI_BuildLocateTargetLabelFromPath(
+	const FString& TargetPath,
+	const bool bActor,
+	const FString& ToolName,
+	const FString& EvidenceKey)
+{
+	FString LabelCore = TargetPath;
+	int32 DotIndex = INDEX_NONE;
+	if (bActor)
+	{
+		if (TargetPath.FindLastChar(TEXT('.'), DotIndex) && DotIndex + 1 < TargetPath.Len())
+		{
+			LabelCore = TargetPath.Mid(DotIndex + 1);
+		}
+	}
+	else
+	{
+		FString PackagePath = TargetPath;
+		if (PackagePath.FindLastChar(TEXT('.'), DotIndex) && DotIndex > 0)
+		{
+			PackagePath = PackagePath.Left(DotIndex);
+		}
+		int32 LastSlash = INDEX_NONE;
+		if (PackagePath.FindLastChar(TEXT('/'), LastSlash) && LastSlash + 1 < PackagePath.Len())
+		{
+			LabelCore = PackagePath.Mid(LastSlash + 1);
+		}
+	}
+
+	const TCHAR* KindLabel = bActor ? TEXT("Actor") : TEXT("Asset");
+	const FString EvidenceLabel = EvidenceKey.IsEmpty() ? ToolName : FString::Printf(TEXT("%s/%s"), *ToolName, *EvidenceKey);
+	return FString::Printf(TEXT("%s: %s (%s)"), KindLabel, *LabelCore, *EvidenceLabel);
+}
+
+static void HCI_AddLocateTargetUnique(
+	const EHCIAbilityKitAgentExecutionLocateTargetKind Kind,
+	const FString& RawTargetPath,
+	const FString& ToolName,
+	const FString& EvidenceKey,
+	TSet<FString>& InOutKeys,
+	TArray<FHCIAbilityKitAgentExecutionLocateTarget>& OutTargets)
+{
+	FString TargetPath = RawTargetPath;
+	TargetPath.TrimStartAndEndInline();
+	if (TargetPath.IsEmpty() || !TargetPath.StartsWith(TEXT("/Game/")))
+	{
+		return;
+	}
+
+	const FString DedupKey = FString::Printf(TEXT("%d|%s"), static_cast<int32>(Kind), *TargetPath);
+	if (InOutKeys.Contains(DedupKey))
+	{
+		return;
+	}
+	InOutKeys.Add(DedupKey);
+
+	FHCIAbilityKitAgentExecutionLocateTarget& Target = OutTargets.AddDefaulted_GetRef();
+	Target.Kind = Kind;
+	Target.TargetPath = TargetPath;
+	Target.SourceToolName = ToolName;
+	Target.SourceEvidenceKey = EvidenceKey;
+	Target.DisplayLabel = HCI_BuildLocateTargetLabelFromPath(
+		TargetPath,
+		Kind == EHCIAbilityKitAgentExecutionLocateTargetKind::Actor,
+		ToolName,
+		EvidenceKey);
+}
+
 class SHCIAbilityKitAgentPlanPreviewWindow final : public SCompoundWidget
 {
 public:
@@ -575,6 +699,113 @@ FString FHCIAbilityKitAgentPlanPreviewWindow::BuildSearchPathEvidenceSummary(con
 	return TEXT("SearchPath证据: 本计划不含 SearchPath 步骤");
 }
 
+void FHCIAbilityKitAgentPlanPreviewWindow::BuildLocateTargetsFromStepResults(
+	const TArray<FHCIAbilityKitAgentExecutorStepResult>& StepResults,
+	TArray<FHCIAbilityKitAgentExecutionLocateTarget>& OutTargets)
+{
+	OutTargets.Reset();
+	TSet<FString> SeenKeys;
+	TArray<FString> Tokens;
+
+	for (const FHCIAbilityKitAgentExecutorStepResult& StepResult : StepResults)
+	{
+		auto AddActorEvidenceList = [&](const TCHAR* EvidenceKey)
+		{
+			const FString* Raw = StepResult.Evidence.Find(EvidenceKey);
+			if (Raw == nullptr)
+			{
+				return;
+			}
+
+			HCI_SplitEvidenceList(*Raw, TEXT(" | "), Tokens);
+			if (Tokens.Num() <= 0)
+			{
+				HCI_SplitEvidenceList(*Raw, TEXT("|"), Tokens);
+			}
+
+			for (const FString& ActorPath : Tokens)
+			{
+				HCI_AddLocateTargetUnique(
+					EHCIAbilityKitAgentExecutionLocateTargetKind::Actor,
+					ActorPath,
+					StepResult.ToolName,
+					EvidenceKey,
+					SeenKeys,
+					OutTargets);
+			}
+		};
+
+		auto AddAssetEvidenceList = [&](const TCHAR* EvidenceKey, const TCHAR* Delimiter = TEXT(" | "))
+		{
+			const FString* Raw = StepResult.Evidence.Find(EvidenceKey);
+			if (Raw == nullptr)
+			{
+				return;
+			}
+
+			HCI_SplitEvidenceList(*Raw, Delimiter, Tokens);
+			if (Tokens.Num() <= 0 && FCString::Strcmp(Delimiter, TEXT("|")) != 0)
+			{
+				HCI_SplitEvidenceList(*Raw, TEXT("|"), Tokens);
+			}
+
+			for (const FString& Token : Tokens)
+			{
+				HCI_AddLocateTargetUnique(
+					EHCIAbilityKitAgentExecutionLocateTargetKind::Asset,
+					HCI_SanitizeAssetPathLikeToken(Token),
+					StepResult.ToolName,
+					EvidenceKey,
+					SeenKeys,
+					OutTargets);
+			}
+		};
+
+		auto AddSingleAssetEvidence = [&](const TCHAR* EvidenceKey)
+		{
+			const FString* Raw = StepResult.Evidence.Find(EvidenceKey);
+			if (Raw == nullptr)
+			{
+				return;
+			}
+
+			HCI_AddLocateTargetUnique(
+				EHCIAbilityKitAgentExecutionLocateTargetKind::Asset,
+				HCI_SanitizeAssetPathLikeToken(*Raw),
+				StepResult.ToolName,
+				EvidenceKey,
+				SeenKeys,
+				OutTargets);
+		};
+
+		AddActorEvidenceList(TEXT("risky_actors"));
+		AddActorEvidenceList(TEXT("missing_collision_actors"));
+		AddActorEvidenceList(TEXT("default_material_actors"));
+		{
+			const FString* ActorPath = StepResult.Evidence.Find(TEXT("actor_path"));
+			if (ActorPath != nullptr)
+			{
+				HCI_AddLocateTargetUnique(
+					EHCIAbilityKitAgentExecutionLocateTargetKind::Actor,
+					*ActorPath,
+					StepResult.ToolName,
+					TEXT("actor_path"),
+					SeenKeys,
+					OutTargets);
+			}
+		}
+
+		AddAssetEvidenceList(TEXT("asset_paths"), TEXT("|"));
+		AddAssetEvidenceList(TEXT("modified_assets"));
+		AddAssetEvidenceList(TEXT("failed_assets"));
+		AddAssetEvidenceList(TEXT("top_meshes"));
+		AddSingleAssetEvidence(TEXT("asset_path"));
+		AddSingleAssetEvidence(TEXT("max_triangle_asset"));
+		AddSingleAssetEvidence(TEXT("before"));
+		AddSingleAssetEvidence(TEXT("after"));
+	}
+}
+
 bool FHCIAbilityKitAgentPlanPreviewWindow::ExecutePlan(
 	const FHCIAbilityKitAgentPlan& Plan,
 	const bool bDryRun,
@@ -646,6 +877,7 @@ bool FHCIAbilityKitAgentPlanPreviewWindow::ExecutePlan(
 		ScannedLevelActors,
 		RiskyLevelActors);
 	OutReport.SearchPathEvidenceText = BuildSearchPathEvidenceSummary(RunResult.StepResults);
+	BuildLocateTargetsFromStepResults(RunResult.StepResults, OutReport.LocateTargets);
 
 	UE_LOG(
 		LogHCIAbilityKitAgentPlanPreview,
@@ -662,6 +894,16 @@ bool FHCIAbilityKitAgentPlanPreviewWindow::ExecutePlan(
 		OutReport.ScannedAssets,
 		ScannedLevelActors,
 		RiskyLevelActors);
+
+	if (OutReport.LocateTargets.Num() > 0)
+	{
+		UE_LOG(
+			LogHCIAbilityKitAgentPlanPreview,
+			Display,
+			TEXT("[HCIAbilityKit][AgentPlanPreview] locate_targets=%d request_id=%s"),
+			OutReport.LocateTargets.Num(),
+			*Plan.RequestId);
+	}
 
 	return OutReport.bRunOk;
 }

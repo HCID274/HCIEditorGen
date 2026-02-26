@@ -3,12 +3,16 @@
 #include "Agent/LLM/HCIAbilityKitAgentPromptBuilder.h"
 #include "Async/Async.h"
 #include "Commands/HCIAbilityKitAgentCommand_ChatPlanAndSummary.h"
+#include "Editor.h"
 #include "Dom/JsonObject.h"
+#include "EngineUtils.h"
+#include "GameFramework/Actor.h"
 #include "Misc/FileHelper.h"
 #include "Misc/Paths.h"
 #include "Serialization/JsonReader.h"
 #include "Serialization/JsonSerializer.h"
 #include "UI/HCIAbilityKitAgentPlanPreviewWindow.h"
+#include "UObject/SoftObjectPath.h"
 
 namespace
 {
@@ -360,6 +364,123 @@ static FString HCI_BuildStepImpactHintFallback(const FHCIAbilityKitAgentPlanStep
 
 	return FString();
 }
+
+static FHCIAbilityKitAgentUiProgressState HCI_MakeProgressState(
+	const bool bVisible,
+	const bool bIndeterminate,
+	const float Percent01,
+	const FString& Label)
+{
+	FHCIAbilityKitAgentUiProgressState State;
+	State.bVisible = bVisible;
+	State.bIndeterminate = bIndeterminate;
+	State.Percent01 = FMath::Clamp(Percent01, 0.0f, 1.0f);
+	State.Label = Label;
+	return State;
+}
+
+static FHCIAbilityKitAgentUiProgressState HCI_BuildProgressStateForSessionState(const EHCIAbilityKitAgentSessionState State)
+{
+	switch (State)
+	{
+	case EHCIAbilityKitAgentSessionState::Idle:
+		return HCI_MakeProgressState(false, false, 0.0f, TEXT(""));
+	case EHCIAbilityKitAgentSessionState::Thinking:
+		return HCI_MakeProgressState(true, true, 0.10f, TEXT("进度：正在规划..."));
+	case EHCIAbilityKitAgentSessionState::PlanReady:
+		return HCI_MakeProgressState(true, false, 0.35f, TEXT("进度：计划已生成"));
+	case EHCIAbilityKitAgentSessionState::AutoExecuteReadOnly:
+		return HCI_MakeProgressState(true, false, 0.45f, TEXT("进度：只读计划准备执行"));
+	case EHCIAbilityKitAgentSessionState::AwaitUserConfirm:
+		return HCI_MakeProgressState(true, false, 0.40f, TEXT("进度：等待确认执行"));
+	case EHCIAbilityKitAgentSessionState::Executing:
+		return HCI_MakeProgressState(true, true, 0.65f, TEXT("进度：执行中..."));
+	case EHCIAbilityKitAgentSessionState::Summarizing:
+		return HCI_MakeProgressState(true, true, 0.90f, TEXT("进度：整理结果摘要..."));
+	case EHCIAbilityKitAgentSessionState::Completed:
+		return HCI_MakeProgressState(true, false, 1.0f, TEXT("进度：完成"));
+	case EHCIAbilityKitAgentSessionState::Failed:
+		return HCI_MakeProgressState(true, false, 1.0f, TEXT("进度：失败"));
+	case EHCIAbilityKitAgentSessionState::Cancelled:
+		return HCI_MakeProgressState(true, false, 0.0f, TEXT("进度：已取消"));
+	default:
+		return HCI_MakeProgressState(false, false, 0.0f, TEXT(""));
+	}
+}
+
+static bool HCI_TryLocateActorByPathCameraFocus(const FString& ActorPath, FString& OutReason)
+{
+	if (!GEditor)
+	{
+		OutReason = TEXT("g_editor_unavailable");
+		return false;
+	}
+
+	UWorld* EditorWorld = GEditor->GetEditorWorldContext().World();
+	if (!EditorWorld)
+	{
+		OutReason = TEXT("editor_world_unavailable");
+		return false;
+	}
+
+	for (TActorIterator<AActor> It(EditorWorld); It; ++It)
+	{
+		AActor* Actor = *It;
+		if (!Actor)
+		{
+			continue;
+		}
+
+		if (Actor->GetPathName().Equals(ActorPath, ESearchCase::CaseSensitive))
+		{
+			GEditor->MoveViewportCamerasToActor(*Actor, false);
+			OutReason = TEXT("ok");
+			return true;
+		}
+	}
+
+	OutReason = TEXT("actor_not_found");
+	return false;
+}
+
+static bool HCI_TryLocateAssetSyncBrowser(const FString& AssetPath, FString& OutReason)
+{
+	if (!GEditor)
+	{
+		OutReason = TEXT("g_editor_unavailable");
+		return false;
+	}
+
+	FString ObjectPath = AssetPath;
+	if (AssetPath.StartsWith(TEXT("/Game/")) && !AssetPath.Contains(TEXT(".")))
+	{
+		int32 LastSlash = INDEX_NONE;
+		if (AssetPath.FindLastChar(TEXT('/'), LastSlash) && LastSlash + 1 < AssetPath.Len())
+		{
+			const FString AssetName = AssetPath.Mid(LastSlash + 1);
+			ObjectPath = FString::Printf(TEXT("%s.%s"), *AssetPath, *AssetName);
+		}
+	}
+
+	FSoftObjectPath SoftPath(ObjectPath);
+	UObject* Object = SoftPath.ResolveObject();
+	if (!Object)
+	{
+		Object = SoftPath.TryLoad();
+	}
+
+	if (!Object)
+	{
+		OutReason = TEXT("asset_load_failed");
+		return false;
+	}
+
+	TArray<UObject*> Objects;
+	Objects.Add(Object);
+	GEditor->SyncBrowserToObjects(Objects);
+	OutReason = TEXT("ok");
+	return true;
+}
 }
 
 void UHCIAbilityKitAgentSubsystem::Initialize(FSubsystemCollectionBase& Collection)
@@ -371,6 +492,7 @@ void UHCIAbilityKitAgentSubsystem::Initialize(FSubsystemCollectionBase& Collecti
 
 	ReloadQuickCommands();
 	SetCurrentState(EHCIAbilityKitAgentSessionState::Idle);
+	ClearLocateTargets();
 }
 
 void UHCIAbilityKitAgentSubsystem::Deinitialize()
@@ -384,6 +506,8 @@ void UHCIAbilityKitAgentSubsystem::Deinitialize()
 	LastRouteReason.Reset();
 	LastPlannerMetadata = FHCIAbilityKitAgentPlannerResultMetadata();
 	CurrentState = EHCIAbilityKitAgentSessionState::Idle;
+	CurrentProgressState = FHCIAbilityKitAgentUiProgressState();
+	LastExecutionLocateTargets.Reset();
 	Super::Deinitialize();
 }
 
@@ -409,6 +533,7 @@ bool UHCIAbilityKitAgentSubsystem::SubmitChatInput(const FString& UserInput, con
 	LastPlan = FHCIAbilityKitAgentPlan();
 	LastRouteReason.Reset();
 	LastPlannerMetadata = FHCIAbilityKitAgentPlannerResultMetadata();
+	ClearLocateTargets();
 	SetCurrentState(EHCIAbilityKitAgentSessionState::Thinking);
 
 	FHCIAbilityKitAgentCommandContext Context;
@@ -451,6 +576,16 @@ bool UHCIAbilityKitAgentSubsystem::CanCommitLastPlanFromChat() const
 bool UHCIAbilityKitAgentSubsystem::CanCancelPendingPlanFromChat() const
 {
 	return bHasLastPlan && CurrentState == EHCIAbilityKitAgentSessionState::AwaitUserConfirm;
+}
+
+void UHCIAbilityKitAgentSubsystem::GetCurrentProgressState(FHCIAbilityKitAgentUiProgressState& OutState) const
+{
+	OutState = CurrentProgressState;
+}
+
+void UHCIAbilityKitAgentSubsystem::GetLastExecutionLocateTargets(TArray<FHCIAbilityKitAgentUiLocateTarget>& OutTargets) const
+{
+	OutTargets = LastExecutionLocateTargets;
 }
 
 bool UHCIAbilityKitAgentSubsystem::BuildLastPlanCardLines(TArray<FString>& OutLines) const
@@ -638,6 +773,42 @@ bool UHCIAbilityKitAgentSubsystem::CancelPendingPlanFromChat()
 	return true;
 }
 
+bool UHCIAbilityKitAgentSubsystem::TryLocateLastExecutionTargetByIndex(const int32 TargetIndex)
+{
+	if (!LastExecutionLocateTargets.IsValidIndex(TargetIndex))
+	{
+		EmitAssistantLine(TEXT("结果定位失败：目标索引无效。"));
+		return false;
+	}
+
+	const FHCIAbilityKitAgentUiLocateTarget& Target = LastExecutionLocateTargets[TargetIndex];
+	FString LocateReason;
+	bool bLocateOk = false;
+	if (Target.Kind == EHCIAbilityKitAgentUiLocateTargetKind::Actor)
+	{
+		bLocateOk = HCI_TryLocateActorByPathCameraFocus(Target.TargetPath, LocateReason);
+	}
+	else
+	{
+		bLocateOk = HCI_TryLocateAssetSyncBrowser(Target.TargetPath, LocateReason);
+	}
+
+	UE_LOG(
+		LogTemp,
+		Display,
+		TEXT("[HCIAbilityKit][AgentChatUI][Locate] ok=%s kind=%s target=%s reason=%s"),
+		bLocateOk ? TEXT("true") : TEXT("false"),
+		Target.Kind == EHCIAbilityKitAgentUiLocateTargetKind::Actor ? TEXT("actor") : TEXT("asset"),
+		*Target.TargetPath,
+		*LocateReason);
+
+	EmitAssistantLine(
+		bLocateOk
+			? FString::Printf(TEXT("已定位：%s"), *Target.DisplayLabel)
+			: FString::Printf(TEXT("定位失败：%s（%s）"), *Target.DisplayLabel, *LocateReason));
+	return bLocateOk;
+}
+
 void UHCIAbilityKitAgentSubsystem::ReloadQuickCommands()
 {
 	FString Error;
@@ -715,11 +886,44 @@ FString UHCIAbilityKitAgentSubsystem::BuildStepImpactHintForUi(const FHCIAbility
 	return HCI_BuildStepImpactHintFallback(Step);
 }
 
+void UHCIAbilityKitAgentSubsystem::SetProgressState(const FHCIAbilityKitAgentUiProgressState& InState)
+{
+	CurrentProgressState = InState;
+	OnProgressStateChanged.Broadcast(CurrentProgressState);
+}
+
+void UHCIAbilityKitAgentSubsystem::ClearLocateTargets()
+{
+	LastExecutionLocateTargets.Reset();
+	OnLocateTargetsChanged.Broadcast();
+}
+
+void UHCIAbilityKitAgentSubsystem::SetLocateTargetsFromExecutionReport(const FHCIAbilityKitAgentPlanExecutionReport& Report)
+{
+	LastExecutionLocateTargets.Reset();
+	LastExecutionLocateTargets.Reserve(Report.LocateTargets.Num());
+
+	for (const FHCIAbilityKitAgentExecutionLocateTarget& Target : Report.LocateTargets)
+	{
+		FHCIAbilityKitAgentUiLocateTarget& UiTarget = LastExecutionLocateTargets.AddDefaulted_GetRef();
+		UiTarget.Kind = (Target.Kind == EHCIAbilityKitAgentExecutionLocateTargetKind::Actor)
+			? EHCIAbilityKitAgentUiLocateTargetKind::Actor
+			: EHCIAbilityKitAgentUiLocateTargetKind::Asset;
+		UiTarget.DisplayLabel = Target.DisplayLabel;
+		UiTarget.TargetPath = Target.TargetPath;
+		UiTarget.SourceToolName = Target.SourceToolName;
+		UiTarget.SourceEvidenceKey = Target.SourceEvidenceKey;
+	}
+
+	OnLocateTargetsChanged.Broadcast();
+}
+
 void UHCIAbilityKitAgentSubsystem::SetCurrentState(const EHCIAbilityKitAgentSessionState NewState)
 {
 	CurrentState = NewState;
 	OnSessionStateChanged.Broadcast(CurrentState);
 	EmitStatus(BuildStateStatusText(CurrentState));
+	SetProgressState(HCI_BuildProgressStateForSessionState(CurrentState));
 }
 
 FString UHCIAbilityKitAgentSubsystem::BuildStateStatusText(const EHCIAbilityKitAgentSessionState State) const
@@ -763,6 +967,11 @@ bool UHCIAbilityKitAgentSubsystem::ExecuteLastPlan(
 	}
 
 	SetCurrentState(EHCIAbilityKitAgentSessionState::Executing);
+	SetProgressState(HCI_MakeProgressState(
+		true,
+		true,
+		0.60f,
+		FString::Printf(TEXT("进度：执行计划（0/%d 步）..."), LastPlan.Steps.Num())));
 	FHCIAbilityKitAgentPlanExecutionReport Report;
 	const bool bRunOk = FHCIAbilityKitAgentPlanPreviewWindow::ExecutePlan(
 		LastPlan,
@@ -770,11 +979,22 @@ bool UHCIAbilityKitAgentSubsystem::ExecuteLastPlan(
 		Branch == EHCIAbilityKitAgentPlanExecutionBranch::AwaitUserConfirm,
 		Report);
 
+	SetLocateTargetsFromExecutionReport(Report);
+	const int32 ExecutedSteps = Report.SucceededSteps + Report.FailedSteps;
+	SetProgressState(HCI_MakeProgressState(
+		true,
+		false,
+		0.88f,
+		FString::Printf(TEXT("进度：执行完成（%d/%d 步），正在整理结果..."), ExecutedSteps, LastPlan.Steps.Num())));
 	SetCurrentState(EHCIAbilityKitAgentSessionState::Summarizing);
 	EmitAssistantLine(Report.SummaryText);
 	if (!Report.SearchPathEvidenceText.IsEmpty())
 	{
 		EmitAssistantLine(Report.SearchPathEvidenceText);
+	}
+	if (Report.LocateTargets.Num() > 0)
+	{
+		EmitAssistantLine(FString::Printf(TEXT("已生成 %d 个可定位结果项，可在结果面板点击定位。"), Report.LocateTargets.Num()));
 	}
 
 	UE_LOG(

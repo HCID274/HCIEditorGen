@@ -6,9 +6,11 @@
 #include "Agent/Planner/HCIAbilityKitAgentPlanner.h"
 #include "Agent/LLM/HCIAbilityKitAgentPromptBuilder.h"
 #include "Commands/HCIAbilityKitAgentCommandHandlers.h"
+#include "Containers/Ticker.h"
 #include "Dom/JsonObject.h"
 #include "Interfaces/IHttpRequest.h"
 #include "Interfaces/IHttpResponse.h"
+#include "Misc/ScopeLock.h"
 #include "Policies/CondensedJsonPrintPolicy.h"
 #include "Serialization/JsonReader.h"
 #include "Serialization/JsonSerializer.h"
@@ -96,6 +98,48 @@ static bool HCI_TryFormatSummaryTextFromLlmOutput(const FString& RawOutput, FStr
 	return true;
 }
 
+static bool HCI_IsWriteLikeRisk(const EHCIAbilityKitAgentPlanRiskLevel RiskLevel)
+{
+	return RiskLevel == EHCIAbilityKitAgentPlanRiskLevel::Write ||
+		RiskLevel == EHCIAbilityKitAgentPlanRiskLevel::Destructive;
+}
+
+static FString HCI_BuildLocalSummaryFallbackText(
+	const FString& UserText,
+	const FHCIAbilityKitAgentPlan& Plan,
+	const FString& RouteReason,
+	const FHCIAbilityKitAgentPlannerResultMetadata& PlannerMetadata,
+	const FString& SummaryFailureReason)
+{
+	int32 WriteLikeSteps = 0;
+	for (const FHCIAbilityKitAgentPlanStep& Step : Plan.Steps)
+	{
+		if (Step.bRequiresConfirm || HCI_IsWriteLikeRisk(Step.RiskLevel))
+		{
+			++WriteLikeSteps;
+		}
+	}
+
+	const bool bHasWrite = WriteLikeSteps > 0;
+	const FString ProviderLabel = PlannerMetadata.PlannerProvider.IsEmpty() ? TEXT("-") : PlannerMetadata.PlannerProvider;
+	const FString ReasonLabel = SummaryFailureReason.IsEmpty() ? TEXT("summary_failed") : SummaryFailureReason;
+	const FString RouteLabel = RouteReason.IsEmpty() ? TEXT("-") : RouteReason;
+	const FString UserLabel = UserText.TrimStartAndEnd().IsEmpty() ? TEXT("（未提供）") : UserText.TrimStartAndEnd();
+	const FString PlanActionLabel = bHasWrite
+		? TEXT("我已生成含写操作的执行计划，等待你在聊天内确认执行。")
+		: TEXT("我已生成只读计划并将自动执行以更新证据链。");
+
+	return FString::Printf(
+		TEXT("摘要（本地降级）：已收到你的请求“%s”。%s 当前计划共 %d 步（写步骤 %d）。route=%s，planner=%s。摘要服务暂不可用（%s），已切换本地模板输出。"),
+		*UserLabel,
+		*PlanActionLabel,
+		Plan.Steps.Num(),
+		WriteLikeSteps,
+		*RouteLabel,
+		*ProviderLabel,
+		*ReasonLabel);
+}
+
 static void HCI_RequestChatSummaryFromPromptAsync(
 	const FString& UserText,
 	const FHCIAbilityKitAgentPlan& Plan,
@@ -108,6 +152,31 @@ static void HCI_RequestChatSummaryFromPromptAsync(
 		if (OnComplete)
 		{
 			OnComplete(bOk, Message);
+		}
+	};
+	struct FHCIChatSummaryRaceState
+	{
+		FCriticalSection Mutex;
+		bool bCompleted = false;
+		TSharedPtr<IHttpRequest, ESPMode::ThreadSafe> Request;
+	};
+	const TSharedRef<FHCIChatSummaryRaceState, ESPMode::ThreadSafe> RaceState = MakeShared<FHCIChatSummaryRaceState, ESPMode::ThreadSafe>();
+	const TSharedRef<TFunction<void(bool, const FString&)>, ESPMode::ThreadSafe> CompleteRef =
+		MakeShared<TFunction<void(bool, const FString&)>, ESPMode::ThreadSafe>(MoveTemp(Complete));
+	auto CompleteOnce = [RaceState, CompleteRef](const bool bOk, const FString& Message) mutable
+	{
+		{
+			FScopeLock Lock(&RaceState->Mutex);
+			if (RaceState->bCompleted)
+			{
+				return;
+			}
+			RaceState->bCompleted = true;
+		}
+
+		if (*CompleteRef)
+		{
+			(*CompleteRef)(bOk, Message);
 		}
 	};
 
@@ -160,6 +229,7 @@ static void HCI_RequestChatSummaryFromPromptAsync(
 		Complete(false, TEXT("summary_create_request_failed"));
 		return;
 	}
+	RaceState->Request = Request;
 
 	UE_LOG(
 		LogTemp,
@@ -169,14 +239,14 @@ static void HCI_RequestChatSummaryFromPromptAsync(
 		*BundleOptions.SkillBundleRelativeDir);
 
 	Request->OnProcessRequestComplete().BindLambda(
-		[Complete = MoveTemp(Complete)](
+		[CompleteOnce](
 			const FHttpRequestPtr,
 			const FHttpResponsePtr HttpResponse,
 			const bool bRequestSuccess) mutable
 		{
 			if (!bRequestSuccess || !HttpResponse.IsValid())
 			{
-				Complete(false, TEXT("summary_http_failed"));
+				CompleteOnce(false, TEXT("summary_http_failed"));
 				return;
 			}
 
@@ -187,7 +257,7 @@ static void HCI_RequestChatSummaryFromPromptAsync(
 					Warning,
 					TEXT("[HCIAbilityKit][AgentChatUI][Summary] done success=false status=%d"),
 					HttpResponse->GetResponseCode());
-				Complete(false, FString::Printf(TEXT("summary_http_status_%d"), HttpResponse->GetResponseCode()));
+				CompleteOnce(false, FString::Printf(TEXT("summary_http_status_%d"), HttpResponse->GetResponseCode()));
 				return;
 			}
 
@@ -205,7 +275,7 @@ static void HCI_RequestChatSummaryFromPromptAsync(
 					Warning,
 					TEXT("[HCIAbilityKit][AgentChatUI][Summary] done success=false reason=extract_failed error_code=%s"),
 					*LlmErrorCode);
-				Complete(false, FString::Printf(TEXT("summary_extract_failed:%s:%s"), *LlmErrorCode, *LlmError));
+				CompleteOnce(false, FString::Printf(TEXT("summary_extract_failed:%s:%s"), *LlmErrorCode, *LlmError));
 				return;
 			}
 
@@ -216,17 +286,41 @@ static void HCI_RequestChatSummaryFromPromptAsync(
 					LogTemp,
 					Warning,
 					TEXT("[HCIAbilityKit][AgentChatUI][Summary] done success=false reason=output_empty"));
-				Complete(false, TEXT("summary_output_empty"));
+				CompleteOnce(false, TEXT("summary_output_empty"));
 				return;
 			}
 
 			UE_LOG(LogTemp, Display, TEXT("[HCIAbilityKit][AgentChatUI][Summary] done success=true status=200"));
-			Complete(true, SummaryText);
+			CompleteOnce(true, SummaryText);
 		});
+
+	constexpr float SummaryTimeoutSeconds = 3.0f;
+	FTSTicker::GetCoreTicker().AddTicker(
+		FTickerDelegate::CreateLambda([RaceState, CompleteOnce](float) mutable
+		{
+			bool bShouldTimeout = false;
+			{
+				FScopeLock Lock(&RaceState->Mutex);
+				bShouldTimeout = !RaceState->bCompleted;
+			}
+			if (!bShouldTimeout)
+			{
+				return false;
+			}
+
+			if (RaceState->Request.IsValid())
+			{
+				RaceState->Request->CancelRequest();
+			}
+			UE_LOG(LogTemp, Warning, TEXT("[HCIAbilityKit][AgentChatUI][Summary] timeout seconds=3.0"));
+			CompleteOnce(false, TEXT("summary_timeout"));
+			return false;
+		}),
+		SummaryTimeoutSeconds);
 
 	if (!Request->ProcessRequest())
 	{
-		Complete(false, TEXT("summary_process_request_failed"));
+		CompleteOnce(false, TEXT("summary_process_request_failed"));
 	}
 }
 }
@@ -286,7 +380,7 @@ void UHCIAbilityKitAgentCommand_ChatPlanAndSummary::ExecuteAsync(
 				Plan,
 				RouteReason,
 				PlannerMetadata,
-				[Complete, BaseResult = MoveTemp(BaseResult)](const bool bSummaryOk, const FString& SummaryMessage) mutable
+				[Complete, BaseResult = MoveTemp(BaseResult), RequestText](const bool bSummaryOk, const FString& SummaryMessage) mutable
 				{
 					FHCIAbilityKitAgentCommandResult Result = BaseResult;
 					if (bSummaryOk)
@@ -298,9 +392,19 @@ void UHCIAbilityKitAgentCommand_ChatPlanAndSummary::ExecuteAsync(
 						return;
 					}
 
-					Result.bSuccess = false;
-					Result.bSummaryFailure = true;
-					Result.Message = SummaryMessage;
+					UE_LOG(
+						LogTemp,
+						Warning,
+						TEXT("[HCIAbilityKit][AgentChatUI][Summary] fallback reason=%s"),
+						*SummaryMessage);
+					Result.bSuccess = true;
+					Result.bSummaryFailure = false;
+					Result.Message = HCI_BuildLocalSummaryFallbackText(
+						RequestText,
+						Result.Plan,
+						Result.RouteReason,
+						Result.PlannerMetadata,
+						SummaryMessage);
 					Complete(MoveTemp(Result));
 				});
 		});

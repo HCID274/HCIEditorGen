@@ -7,6 +7,7 @@
 #include "Dom/JsonObject.h"
 #include "EngineUtils.h"
 #include "Ingest/HCIAbilityKitIngestManifest.h"
+#include "AssetRegistry/AssetRegistryModule.h"
 #include "GameFramework/Actor.h"
 #include "HAL/FileManager.h"
 #include "Misc/FileHelper.h"
@@ -697,6 +698,330 @@ static bool HCI_TryAugmentChatInputWithLatestIngestRoot(const FString& UserText,
 	OutAugmented = FString::Printf(TEXT("最近导入批次目录：%s。%s"), *Root, *UserText);
 	return true;
 }
+
+static bool HCI_IsGamePathTerminalCharForChat(const TCHAR Ch)
+{
+	return FChar::IsWhitespace(Ch) ||
+		   Ch == TCHAR('"') ||
+		   Ch == TCHAR('\'') ||
+		   Ch == TCHAR(',') ||
+		   Ch == TCHAR(0xFF0C) || // '，'
+		   Ch == TCHAR('.') ||
+		   Ch == TCHAR('!') ||
+		   Ch == TCHAR('?') ||
+		   Ch == TCHAR(';') ||
+		   Ch == TCHAR(0xFF1B) || // '；'
+		   Ch == TCHAR(':') ||
+		   Ch == TCHAR(0xFF1A) || // '：'
+		   Ch == TCHAR(0x3002) || // '。'
+		   Ch == TCHAR(')') ||
+		   Ch == TCHAR('(') ||
+		   Ch == TCHAR(']') ||
+		   Ch == TCHAR('[');
+}
+
+static FString HCI_NormalizeUserInputPathsForPlanner(const FString& InText, bool& bOutChanged)
+{
+	bOutChanged = false;
+
+	FString Out = InText;
+	auto Replace = [&Out, &bOutChanged](const TCHAR* From, const TCHAR* To)
+	{
+		// FString::ReplaceInline returns the number of replacements performed.
+		if (Out.ReplaceInline(From, To) > 0)
+		{
+			bOutChanged = true;
+		}
+	};
+	Replace(TEXT("/Game/_HCI_Test/"), TEXT("/Game/__HCI_Test/"));
+	Replace(TEXT("Game/_HCI_Test/"), TEXT("/Game/__HCI_Test/"));
+	Replace(TEXT("Game/__HCI_Test/"), TEXT("/Game/__HCI_Test/"));
+	// Common sticky input: "扫描/Game/..." (missing space) or "扫描Game/..." (missing slash+space).
+	Replace(TEXT("扫描/Game/"), TEXT("扫描 /Game/"));
+	Replace(TEXT("扫描Game/"), TEXT("扫描 /Game/"));
+
+	// Insert missing leading slash for path-like "Game/..." tokens.
+	{
+		FString Fixed;
+		Fixed.Reserve(Out.Len() + 8);
+		for (int32 i = 0; i < Out.Len();)
+		{
+			if (i + 5 <= Out.Len() && Out.Mid(i, 5).Equals(TEXT("Game/"), ESearchCase::IgnoreCase))
+			{
+				const TCHAR Prev = (i <= 0) ? 0 : Out[i - 1];
+				const bool bHasLeadingSlash = (Prev == TCHAR('/'));
+				if (!bHasLeadingSlash)
+				{
+					Fixed.Append(TEXT("/Game/"));
+					i += 5;
+					bOutChanged = true;
+					continue;
+				}
+			}
+			Fixed.AppendChar(Out[i]);
+			++i;
+		}
+		Out = MoveTemp(Fixed);
+	}
+
+	// Remove spaces inside /Game/... tokens (common artist input: "/Game/.../ Organized/...").
+	{
+		FString Fixed;
+		Fixed.Reserve(Out.Len());
+		for (int32 i = 0; i < Out.Len();)
+		{
+			const int32 Start = Out.Find(TEXT("/Game/"), ESearchCase::IgnoreCase, ESearchDir::FromStart, i);
+			if (Start == INDEX_NONE)
+			{
+				Fixed += Out.Mid(i);
+				break;
+			}
+
+			Fixed += Out.Mid(i, Start - i);
+			int32 End = Start;
+			while (End < Out.Len() && !HCI_IsGamePathTerminalCharForChat(Out[End]))
+			{
+				++End;
+			}
+
+			FString Token = Out.Mid(Start, End - Start);
+			Token.ReplaceInline(TEXT(" "), TEXT(""));
+			Token.ReplaceInline(TEXT("\t"), TEXT(""));
+			Token.ReplaceInline(TEXT("\r"), TEXT(""));
+			Token.ReplaceInline(TEXT("\n"), TEXT(""));
+			if (Token != Out.Mid(Start, End - Start))
+			{
+				bOutChanged = true;
+			}
+
+			Fixed += Token;
+			i = End;
+		}
+		Out = MoveTemp(Fixed);
+	}
+
+	return Out;
+}
+}
+
+static void HCI_ExtractGamePathTokensForChat(const FString& Text, TArray<FString>& OutTokens)
+{
+	OutTokens.Reset();
+	for (int32 i = 0; i < Text.Len();)
+	{
+		const int32 Start = Text.Find(TEXT("/Game/"), ESearchCase::IgnoreCase, ESearchDir::FromStart, i);
+		if (Start == INDEX_NONE)
+		{
+			break;
+		}
+		int32 End = Start;
+		while (End < Text.Len() && !HCI_IsGamePathTerminalCharForChat(Text[End]))
+		{
+			++End;
+		}
+		FString Token = Text.Mid(Start, End - Start);
+		Token.TrimStartAndEndInline();
+		if (!Token.IsEmpty())
+		{
+			OutTokens.Add(Token);
+		}
+		i = End;
+	}
+}
+
+static FString HCI_GetPathLeafNameForMatch(const FString& InPath)
+{
+	FString Path = InPath;
+	Path.TrimStartAndEndInline();
+	while (Path.EndsWith(TEXT("/")))
+	{
+		Path.LeftChopInline(1);
+	}
+	int32 SlashIndex = INDEX_NONE;
+	if (Path.FindLastChar(TEXT('/'), SlashIndex))
+	{
+		return Path.Mid(SlashIndex + 1);
+	}
+	return Path;
+}
+
+static int32 HCI_ScoreCandidatePath(const FString& Candidate, const FString& RawLeaf, const FString& RawToken)
+{
+	int32 Score = 0;
+	const FString Leaf = HCI_GetPathLeafNameForMatch(Candidate);
+
+	if (Leaf.Equals(RawLeaf, ESearchCase::IgnoreCase))
+	{
+		Score += 120;
+	}
+	if (Candidate.EndsWith(RawLeaf, ESearchCase::IgnoreCase))
+	{
+		Score += 80;
+	}
+	if (Candidate.Contains(RawLeaf, ESearchCase::IgnoreCase))
+	{
+		Score += 40;
+	}
+	// Prefer same higher-level segments when possible (cheap heuristic).
+	if (RawToken.Contains(TEXT("Incoming"), ESearchCase::IgnoreCase) && Candidate.Contains(TEXT("Incoming"), ESearchCase::IgnoreCase))
+	{
+		Score += 10;
+	}
+	if (RawToken.Contains(TEXT("Organized"), ESearchCase::IgnoreCase) && Candidate.Contains(TEXT("Organized"), ESearchCase::IgnoreCase))
+	{
+		Score += 10;
+	}
+	if (Candidate.StartsWith(TEXT("/Game/__HCI_Test/")))
+	{
+		Score += 3;
+	}
+	return Score;
+}
+
+static int32 HCI_CountAssetsUnderPath(IAssetRegistry& AssetRegistry, const FString& Directory)
+{
+	TArray<FAssetData> Assets;
+	AssetRegistry.GetAssetsByPath(FName(*Directory), Assets, true);
+	return Assets.Num();
+}
+
+static FString HCI_BuildValidatedPathCandidatesEnvBlock(const TArray<FString>& RawTokens)
+{
+	TArray<FString> Tokens = RawTokens;
+	for (FString& Token : Tokens)
+	{
+		Token.ReplaceInline(TEXT(" "), TEXT(""));
+		Token.ReplaceInline(TEXT("\t"), TEXT(""));
+		Token.ReplaceInline(TEXT("\r"), TEXT(""));
+		Token.ReplaceInline(TEXT("\n"), TEXT(""));
+	}
+	Tokens.RemoveAll([](const FString& S) { return S.TrimStartAndEnd().IsEmpty(); });
+	{
+		TArray<FString> UniqueTokens;
+		UniqueTokens.Reserve(Tokens.Num());
+		TSet<FString> Seen;
+		for (const FString& Token : Tokens)
+		{
+			if (Seen.Contains(Token))
+			{
+				continue;
+			}
+			Seen.Add(Token);
+			UniqueTokens.Add(Token);
+		}
+		Tokens = MoveTemp(UniqueTokens);
+	}
+
+	if (Tokens.Num() <= 0)
+	{
+		return FString();
+	}
+
+	FAssetRegistryModule& AssetRegistryModule = FModuleManager::LoadModuleChecked<FAssetRegistryModule>(TEXT("AssetRegistry"));
+	IAssetRegistry& AssetRegistry = AssetRegistryModule.Get();
+
+	TArray<FString> CachedPaths;
+	AssetRegistry.GetAllCachedPaths(CachedPaths);
+
+	FString Block;
+	Block += TEXT("validated_path_candidates: |\n");
+	Block += TEXT("  note: 下列候选路径已通过 UE AssetRegistry 校验；当用户输入路径拼写不规范时，你必须优先从候选中选择合法路径，并在计划中使用候选路径的原样字符串。\n");
+
+	const int32 MaxCandidatesPerToken = 10;
+	for (const FString& Token : Tokens)
+	{
+		const FString Leaf = HCI_GetPathLeafNameForMatch(Token);
+		Block += FString::Printf(TEXT("  - raw: %s\n"), *Token);
+
+		const bool bPathExists = AssetRegistry.PathExists(FName(*Token));
+		const int32 AssetCount = bPathExists ? HCI_CountAssetsUnderPath(AssetRegistry, Token) : 0;
+		Block += FString::Printf(TEXT("    status: %s\n"), bPathExists ? (AssetCount > 0 ? TEXT("exists_with_assets") : TEXT("exists_but_empty")) : TEXT("not_found"));
+		Block += FString::Printf(TEXT("    asset_count: %d\n"), AssetCount);
+		Block += TEXT("    candidates:\n");
+
+		struct FCandidateRow
+		{
+			FString Path;
+			int32 Score = 0;
+			int32 Count = 0;
+		};
+		TArray<FCandidateRow> Scored;
+		Scored.Reserve(CachedPaths.Num());
+
+		// First: try a few cheap deterministic corrections.
+		{
+			FString Corrected = Token;
+			Corrected.ReplaceInline(TEXT("/Game/_HCI_Test/"), TEXT("/Game/__HCI_Test/"));
+			if (!Corrected.Equals(Token, ESearchCase::CaseSensitive) && AssetRegistry.PathExists(FName(*Corrected)))
+			{
+				FCandidateRow Row;
+				Row.Path = Corrected;
+				Row.Score = 999;
+				Row.Count = HCI_CountAssetsUnderPath(AssetRegistry, Corrected);
+				Scored.Add(MoveTemp(Row));
+			}
+		}
+
+		for (const FString& Path : CachedPaths)
+		{
+			// Quick pruning: only consider paths that share the leaf or contain at least one key segment.
+			if (!Path.Contains(Leaf, ESearchCase::IgnoreCase) && Leaf.Len() >= 3)
+			{
+				continue;
+			}
+			FCandidateRow Row;
+			Row.Path = Path;
+			Row.Score = HCI_ScoreCandidatePath(Path, Leaf, Token);
+			if (Row.Score <= 0)
+			{
+				continue;
+			}
+			Row.Count = HCI_CountAssetsUnderPath(AssetRegistry, Path);
+			Scored.Add(MoveTemp(Row));
+		}
+
+		Scored.Sort([](const FCandidateRow& A, const FCandidateRow& B)
+		{
+			if (A.Score != B.Score)
+			{
+				return A.Score > B.Score;
+			}
+			return A.Count > B.Count;
+		});
+
+		int32 Added = 0;
+		TSet<FString> Seen;
+		for (const FCandidateRow& Row : Scored)
+		{
+			if (Added >= MaxCandidatesPerToken)
+			{
+				break;
+			}
+			if (Seen.Contains(Row.Path))
+			{
+				continue;
+			}
+			Seen.Add(Row.Path);
+			++Added;
+			Block += FString::Printf(TEXT("      - %s (asset_count=%d)\n"), *Row.Path, Row.Count);
+		}
+
+		if (Added <= 0)
+		{
+			Block += TEXT("      - (no_candidates_found)\n");
+		}
+	}
+
+	// Keep injection bounded; do not explode prompt size.
+	const int32 MaxChars = 6000;
+	if (Block.Len() > MaxChars)
+	{
+		Block.LeftInline(MaxChars);
+		Block += TEXT("\n  (truncated)\n");
+	}
+
+	Block.TrimStartAndEndInline();
+	return Block;
 }
 
 void UHCIAbilityKitAgentSubsystem::Initialize(FSubsystemCollectionBase& Collection)
@@ -752,6 +1077,16 @@ bool UHCIAbilityKitAgentSubsystem::SubmitChatInput(const FString& UserInput, con
 		UE_LOG(LogTemp, Display, TEXT("[HCIAbilityKit][AgentChatUI][Env] detected_latest_ingest_root=%s"), *DetectedIngestRoot);
 	}
 
+	{
+		bool bChanged = false;
+		const FString Normalized = HCI_NormalizeUserInputPathsForPlanner(EffectiveInput, bChanged);
+		if (bChanged)
+		{
+			UE_LOG(LogTemp, Display, TEXT("[HCIAbilityKit][AgentChatUI][NormalizeInput] before=%s after=%s"), *EffectiveInput, *Normalized);
+			EffectiveInput = Normalized;
+		}
+	}
+
 	EmitUserLine(TrimmedInput);
 	EmitAssistantLine(TEXT("已发送，等待规划结果..."));
 	bHasLastPlan = false;
@@ -765,7 +1100,33 @@ bool UHCIAbilityKitAgentSubsystem::SubmitChatInput(const FString& UserInput, con
 	FHCIAbilityKitAgentCommandContext Context;
 	Context.InputParam = EffectiveInput;
 	Context.SourceTag = SourceTag;
-	Context.ExtraEnvContextText = HCI_BuildStageNExtraEnvContextText();
+	{
+		// Base env context: project rules + latest ingest manifest (Stage N).
+		FString Extra = HCI_BuildStageNExtraEnvContextText();
+
+		// Per-request validated path candidates: feed LLM the "known-good" paths from AssetRegistry so it can pick legal ones
+		// instead of hallucinating or trusting dirty artist input.
+		TArray<FString> PathTokens;
+		HCI_ExtractGamePathTokensForChat(EffectiveInput, PathTokens);
+		const FString ValidatedBlock = HCI_BuildValidatedPathCandidatesEnvBlock(PathTokens);
+		if (!ValidatedBlock.IsEmpty())
+		{
+			if (!Extra.IsEmpty())
+			{
+				Extra += TEXT("\n");
+			}
+			Extra += ValidatedBlock;
+		}
+		Context.ExtraEnvContextText = Extra;
+	}
+
+	// Snapshot last request for one-shot auto-repair retry when ScanAssets turns out empty due to dirty paths.
+	LastChatTrimmedUserInput = TrimmedInput;
+	LastChatEffectiveInput = EffectiveInput;
+	LastChatSourceTag = SourceTag;
+	LastChatExtraEnvContextText = Context.ExtraEnvContextText;
+	LastChatAutoRepairAttempts = 0;
+
 	if (!ExecuteRegisteredCommand(TEXT("chat_submit"), Context))
 	{
 		SetCurrentState(EHCIAbilityKitAgentSessionState::Failed);
@@ -993,6 +1354,165 @@ bool UHCIAbilityKitAgentSubsystem::BuildLastPlanApprovalCard(FHCIAbilityKitAgent
 	OutCard.Title = TEXT("请确认修改");
 	OutCard.KeyAction = HCI_SanitizeUiTextForArtist(BuildStepDisplaySummaryForUi(*BestStep));
 	OutCard.ImpactHint = HCI_SanitizeUiTextForArtist(BuildStepImpactHintForUi(*BestStep));
+
+	// Enrich naming/archive approval with concrete routing proposals from the cached dry-run step results.
+	if (bHasApprovalPreview && BestStep->ToolName == TEXT("NormalizeAssetNamingByMetadata"))
+	{
+		const FHCIAbilityKitAgentExecutorStepResult* Matched = nullptr;
+		const FHCIAbilityKitAgentExecutorStepResult* ScanStep = nullptr;
+		for (const FHCIAbilityKitAgentExecutorStepResult& StepResult : ApprovalPreviewStepResults)
+		{
+			if (StepResult.ToolName.Equals(TEXT("ScanAssets"), ESearchCase::CaseSensitive))
+			{
+				ScanStep = &StepResult;
+			}
+			if (StepResult.StepId.Equals(BestStep->StepId, ESearchCase::CaseSensitive) &&
+				StepResult.ToolName.Equals(TEXT("NormalizeAssetNamingByMetadata"), ESearchCase::CaseSensitive))
+			{
+				Matched = &StepResult;
+				break;
+			}
+		}
+
+		// If preview failed before producing normalize proposals, still show scan count and failure reason.
+		if (!Matched || !Matched->bSucceeded)
+		{
+			FString Preview;
+			Preview = TEXT("预览（DryRun）：");
+			if (ScanStep)
+			{
+				const FString Count = ScanStep->Evidence.FindRef(TEXT("asset_count"));
+				if (!Count.IsEmpty())
+				{
+					Preview += FString::Printf(TEXT("\n扫描到资产数：%s"), *Count);
+				}
+			}
+			if (Matched && !Matched->Reason.IsEmpty())
+			{
+				Preview += FString::Printf(TEXT("\n预览失败原因：%s"), *Matched->Reason);
+			}
+			else
+			{
+				Preview += TEXT("\n预览失败原因：未能生成命名/目录分发提案（可能目录为空或管道输入为空）。");
+			}
+			Preview.TrimStartAndEndInline();
+
+			if (!OutCard.ImpactHint.IsEmpty())
+			{
+				OutCard.ImpactHint += TEXT("\n");
+			}
+			OutCard.ImpactHint += Preview;
+		}
+
+		if (Matched)
+		{
+			auto SplitEvidenceRows = [](const FString& Joined, TArray<FString>& OutRows)
+			{
+				OutRows.Reset();
+				if (Joined.IsEmpty() || Joined == TEXT("none"))
+				{
+					return;
+				}
+
+				TArray<FString> Parts;
+				Joined.ParseIntoArray(Parts, TEXT("|"), true);
+				for (FString Part : Parts)
+				{
+					Part.TrimStartAndEndInline();
+					if (!Part.IsEmpty())
+					{
+						OutRows.Add(MoveTemp(Part));
+					}
+				}
+			};
+
+			TArray<FString> RenameRows;
+			TArray<FString> MoveRows;
+			SplitEvidenceRows(Matched->Evidence.FindRef(TEXT("proposed_renames")), RenameRows);
+			SplitEvidenceRows(Matched->Evidence.FindRef(TEXT("proposed_moves")), MoveRows);
+
+			TSet<FString> DestDirs;
+			for (const FString& Row : MoveRows)
+			{
+				FString Left;
+				FString Right;
+				if (Row.Split(TEXT("->"), &Left, &Right))
+				{
+					Right.TrimStartAndEndInline();
+					if (!Right.IsEmpty() && Right.StartsWith(TEXT("/Game/")))
+					{
+						// Row is "source_asset_path -> dest_asset_path". Collect destination directory.
+						int32 LastSlash = INDEX_NONE;
+						if (Right.FindLastChar(TEXT('/'), LastSlash) && LastSlash > 0)
+						{
+							DestDirs.Add(Right.Left(LastSlash));
+						}
+						else
+						{
+							DestDirs.Add(Right);
+						}
+					}
+				}
+			}
+
+			auto AppendPreviewSection = [](FString& InOutText, const FString& Title, const TArray<FString>& Rows, const int32 MaxRows)
+			{
+				if (Rows.Num() <= 0)
+				{
+					return;
+				}
+
+				InOutText += TEXT("\n");
+				InOutText += Title;
+				InOutText += TEXT("\n");
+				const int32 Count = FMath::Min(MaxRows, Rows.Num());
+				for (int32 Index = 0; Index < Count; ++Index)
+				{
+					InOutText += FString::Printf(TEXT(" - %s\n"), *Rows[Index]);
+				}
+				if (Rows.Num() > Count)
+				{
+					InOutText += FString::Printf(TEXT(" - ...以及 %d 条\n"), Rows.Num() - Count);
+				}
+			};
+
+			FString Preview;
+			if (DestDirs.Num() > 0 || RenameRows.Num() > 0 || MoveRows.Num() > 0)
+			{
+				Preview = TEXT("预览（DryRun，仅用于确认目录与命名，不会修改资产）：");
+			}
+
+			if (DestDirs.Num() > 0)
+			{
+				TArray<FString> SortedDirs = DestDirs.Array();
+				SortedDirs.Sort();
+				AppendPreviewSection(Preview, TEXT("将分发到目录："), SortedDirs, 6);
+			}
+
+			AppendPreviewSection(Preview, TEXT("重命名清单（示例）："), RenameRows, 8);
+			AppendPreviewSection(Preview, TEXT("目录迁移清单（示例）："), MoveRows, 8);
+
+			{
+				const FString FailedAssets = Matched->Evidence.FindRef(TEXT("failed_assets"));
+				if (!FailedAssets.IsEmpty())
+				{
+					TArray<FString> FailedRows;
+					SplitEvidenceRows(FailedAssets, FailedRows);
+					AppendPreviewSection(Preview, TEXT("失败项（示例）："), FailedRows, 6);
+				}
+			}
+
+			Preview.TrimStartAndEndInline();
+			if (!Preview.IsEmpty())
+			{
+				if (!OutCard.ImpactHint.IsEmpty())
+				{
+					OutCard.ImpactHint += TEXT("\n");
+				}
+				OutCard.ImpactHint += Preview;
+			}
+		}
+	}
 
 	// Only show warning for write-like steps; hide read-only warnings (no decision value).
 	const bool bWriteLike = BestStep->bRequiresConfirm || HCI_Subsystem_IsWriteLikeRisk(BestStep->RiskLevel);
@@ -1379,6 +1899,8 @@ bool UHCIAbilityKitAgentSubsystem::ExecuteLastPlan(
 void UHCIAbilityKitAgentSubsystem::HandleCommandCompleted(const FHCIAbilityKitAgentCommandResult& Result)
 {
 	ActiveCommand = nullptr;
+	bHasApprovalPreview = false;
+	ApprovalPreviewStepResults.Reset();
 	bool bCanProcessPlanBranch = false;
 	const bool bHasExecutablePlanPayload = Result.bHasPlanPayload && Result.Plan.Steps.Num() > 0;
 	if (bHasExecutablePlanPayload)
@@ -1431,9 +1953,114 @@ void UHCIAbilityKitAgentSubsystem::HandleCommandCompleted(const FHCIAbilityKitAg
 		return;
 	}
 
+	// For write-like plans, run a dry-run preview first so the approval card can show concrete rename/move/routing proposals.
+	{
+		SetCurrentState(EHCIAbilityKitAgentSessionState::Executing);
+		SetActivityHint(TEXT("正在生成写操作预览..."));
+		SetProgressState(HCI_MakeProgressState(true, true, 0.45f, TEXT("进度：生成写操作预览...")));
+
+		FHCIAbilityKitAgentPlanExecutionReport PreviewReport;
+		const bool bPreviewOk = FHCIAbilityKitAgentPlanPreviewWindow::ExecutePlan(
+			LastPlan,
+			true,
+			true,
+			PreviewReport,
+			nullptr);
+		// Even when preview fails (e.g. empty scan result), keep step results so the approval card can show
+		// a concrete reason + whatever evidence was produced.
+		bHasApprovalPreview = PreviewReport.StepResults.Num() > 0;
+		ApprovalPreviewStepResults = PreviewReport.StepResults;
+
+		UE_LOG(
+			LogTemp,
+			Display,
+			TEXT("[HCIAbilityKit][AgentChatUI][ApprovalPreview] ok=%s steps=%d terminal=%s reason=%s"),
+			bPreviewOk ? TEXT("true") : TEXT("false"),
+			PreviewReport.StepResults.Num(),
+			*PreviewReport.TerminalStatus,
+			*PreviewReport.TerminalReason);
+
+		for (const FHCIAbilityKitAgentExecutorStepResult& StepResult : PreviewReport.StepResults)
+		{
+			UE_LOG(
+				LogTemp,
+				Display,
+				TEXT("[HCIAbilityKit][AgentChatUI][ApprovalPreviewStep] step_id=%s tool=%s ok=%s error=%s reason=%s evidence_keys=%s"),
+				*StepResult.StepId,
+				*StepResult.ToolName,
+				StepResult.bSucceeded ? TEXT("true") : TEXT("false"),
+				StepResult.ErrorCode.IsEmpty() ? TEXT("-") : *StepResult.ErrorCode,
+				StepResult.Reason.IsEmpty() ? TEXT("-") : *StepResult.Reason,
+				*FString::Join(StepResult.EvidenceKeys, TEXT("|")));
+		}
+
+		// Auto-repair: if ScanAssets returns empty, assume dirty path input and retry once with validated candidates injected.
+		if (!bPreviewOk && LastChatAutoRepairAttempts <= 0)
+		{
+			FString ScanRoot;
+			for (const FHCIAbilityKitAgentExecutorStepResult& StepResult : PreviewReport.StepResults)
+			{
+				if (!StepResult.ToolName.Equals(TEXT("ScanAssets"), ESearchCase::CaseSensitive))
+				{
+					continue;
+				}
+				const FString* AssetCountPtr = StepResult.Evidence.Find(TEXT("asset_count"));
+				if (AssetCountPtr && AssetCountPtr->Equals(TEXT("0"), ESearchCase::CaseSensitive))
+				{
+					if (const FString* ScanRootPtr = StepResult.Evidence.Find(TEXT("scan_root")))
+					{
+						ScanRoot = *ScanRootPtr;
+					}
+					break;
+				}
+			}
+
+			if (!ScanRoot.IsEmpty())
+			{
+				++LastChatAutoRepairAttempts;
+				EmitAssistantLine(TEXT("检测到扫描结果为空，可能是路径输入不规范。我将基于 AssetRegistry 校验候选路径并自动重试一次..."));
+
+				TArray<FString> Suspects;
+				Suspects.Add(ScanRoot);
+				// If plan contains explicit target_root, include it too so LLM does not propagate a dirty archive path.
+				for (const FHCIAbilityKitAgentPlanStep& Step : LastPlan.Steps)
+				{
+					if (Step.ToolName != TEXT("NormalizeAssetNamingByMetadata") || !Step.Args.IsValid())
+					{
+						continue;
+					}
+					FString TargetRoot;
+					if (Step.Args->TryGetStringField(TEXT("target_root"), TargetRoot) && TargetRoot.StartsWith(TEXT("/Game/")))
+					{
+						Suspects.Add(TargetRoot);
+					}
+				}
+
+				const FString RepairBlock = HCI_BuildValidatedPathCandidatesEnvBlock(Suspects);
+				FHCIAbilityKitAgentCommandContext Retry;
+				Retry.InputParam = LastChatEffectiveInput;
+				Retry.SourceTag = LastChatSourceTag;
+				Retry.ExtraEnvContextText = LastChatExtraEnvContextText;
+				if (!RepairBlock.IsEmpty())
+				{
+					Retry.ExtraEnvContextText += TEXT("\n");
+					Retry.ExtraEnvContextText += RepairBlock;
+				}
+
+				SetCurrentState(EHCIAbilityKitAgentSessionState::Thinking);
+				SetActivityHint(TEXT("路径纠错重试中..."));
+				SetProgressState(HCI_MakeProgressState(true, true, 0.2f, TEXT("进度：路径纠错重试中...")));
+				if (ExecuteRegisteredCommand(TEXT("chat_submit"), Retry))
+				{
+					return;
+				}
+			}
+		}
+	}
+
 	SetCurrentState(EHCIAbilityKitAgentSessionState::AwaitUserConfirm);
 	SetActivityHint(TEXT("已生成待确认计划，请确认后执行。"));
-	EmitAssistantLine(TEXT("计划包含写操作，请在聊天窗口点击“确认并执行”继续。"));
+	EmitAssistantLine(TEXT("计划包含写操作。我已生成预览，请确认后执行（可在审批卡查看具体目录分发与重命名清单）。"));
 }
 
 bool UHCIAbilityKitAgentSubsystem::ExecuteRegisteredCommand(

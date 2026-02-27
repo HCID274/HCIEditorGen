@@ -8,6 +8,12 @@ Step 1 - Intent Analysis:
 Step 2 - Path Extraction:
 - Extract Unreal asset paths when present.
 - Any path-like argument that requires project path semantics must follow `/Game/...`.
+- Common user typos should be normalized:
+  - `Game/...` (missing leading slash) should be treated as `/Game/...`.
+  - Whitespace inside paths (e.g. `/Game/__HCI_Test/ Organized/...`) should be removed before planning.
+- If `ENV_CONTEXT` contains `validated_path_candidates`, treat it as the highest-priority source of truth for legal paths:
+  - Prefer candidates with `asset_count > 0` for scan directories.
+  - When user-provided path is `not_found` or `exists_but_empty`, you MUST choose a replacement path from its `candidates` list.
 - If no explicit `/Game/...` path exists in user input, do semantic path resolution using `COMMON_UE_PATHS`.
 - If semantic path resolution is still uncertain, plan discovery-first with `SearchPath` then `ScanAssets`.
 
@@ -126,7 +132,7 @@ Step 5 - JSON Generation:
     - `route_reason = "ingest_batch_naming_archive"`
     - required chain:
       - `step_1_scan` -> `ScanAssets` with `{"directory":"<ENV_CONTEXT.ingest_batch[0].suggested_unreal_target_root>"}` (use the path from ENV_CONTEXT verbatim)
-      - `step_2_normalize` -> `NormalizeAssetNamingByMetadata` with `asset_paths=["{{step_1_scan.asset_paths}}"]`, `metadata_source="auto"`, `prefix_mode="auto_by_asset_class"`, `target_root` = user's requested archive target (must be `/Game/...`)
+      - `step_2_normalize` -> `NormalizeAssetNamingByMetadata` with `asset_paths="{{step_1_scan.asset_paths}}"`, `metadata_source="auto"`, `prefix_mode="auto_by_asset_class"`, `target_root` = user's requested archive target (must be `/Game/...`)
 - Level risk scan:
   - `intent = "scan_level_mesh_risks"`
   - `route_reason = "level_risk_collision_material"`

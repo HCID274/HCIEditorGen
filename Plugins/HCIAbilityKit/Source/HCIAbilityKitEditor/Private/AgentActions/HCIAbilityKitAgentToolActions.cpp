@@ -11,11 +11,16 @@
 #include "Engine/StaticMeshActor.h"
 #include "Engine/Texture2D.h"
 #include "EngineUtils.h"
+#include "Framework/Notifications/NotificationManager.h"
+#include "Misc/FileHelper.h"
 #include "Misc/Paths.h"
 #include "Modules/ModuleManager.h"
 #include "PhysicsEngine/BodySetup.h"
+#include "Serialization/JsonReader.h"
+#include "Serialization/JsonSerializer.h"
 #include "UObject/ObjectRedirector.h"
 #include "UObject/UnrealType.h"
+#include "Widgets/Notifications/SNotificationList.h"
 
 DEFINE_LOG_CATEGORY_STATIC(LogHCIAbilityKitAgentToolActions, Log, All);
 
@@ -193,6 +198,157 @@ static FString HCI_DeriveClassPrefix(const UObject* Asset)
 	return TEXT("A");
 }
 
+static FString HCI_DeriveClassPrefixFromAssetData(const FAssetData& AssetData)
+{
+	const FString ClassName = AssetData.AssetClassPath.GetAssetName().ToString();
+	if (ClassName.Equals(TEXT("StaticMesh"), ESearchCase::IgnoreCase))
+	{
+		return TEXT("SM");
+	}
+	if (ClassName.Equals(TEXT("SkeletalMesh"), ESearchCase::IgnoreCase))
+	{
+		return TEXT("SK");
+	}
+	if (ClassName.Equals(TEXT("Texture2D"), ESearchCase::IgnoreCase))
+	{
+		return TEXT("T");
+	}
+	if (ClassName.Contains(TEXT("MaterialInstance"), ESearchCase::IgnoreCase))
+	{
+		return TEXT("MI");
+	}
+	if (ClassName.Contains(TEXT("Material"), ESearchCase::IgnoreCase))
+	{
+		return TEXT("M");
+	}
+	return TEXT("A");
+}
+
+static bool HCI_TryExtractImportSourceStemFromAssetData(const FAssetData& AssetData, FString& OutStem)
+{
+	OutStem.Reset();
+
+	static const TArray<FName> CandidateTags = {
+		FName(TEXT("SourceFile")),
+		FName(TEXT("SourceFilePath")),
+		FName(TEXT("ImportedFile")),
+		FName(TEXT("ImportedFilePath")),
+		FName(TEXT("ImportPath")),
+		FName(TEXT("SourceFileRelativePath")),
+		FName(TEXT("AssetImportData"))};
+
+	FString Raw;
+	for (const FName& Tag : CandidateTags)
+	{
+		Raw.Reset();
+		if (AssetData.GetTagValue(Tag, Raw))
+		{
+			Raw.TrimStartAndEndInline();
+			if (!Raw.IsEmpty())
+			{
+				break;
+			}
+		}
+	}
+
+	if (Raw.IsEmpty())
+	{
+		return false;
+	}
+
+	// Common formats:
+	// - "D:/path/file.png"
+	// - (D:/path/file.png)
+	// - "D:/path/file.png;D:/path/file2.png"
+	Raw.ReplaceInline(TEXT("\""), TEXT(""));
+	Raw.ReplaceInline(TEXT("'"), TEXT(""));
+	Raw.ReplaceInline(TEXT("("), TEXT(""));
+	Raw.ReplaceInline(TEXT(")"), TEXT(""));
+	Raw.TrimStartAndEndInline();
+
+	{
+		int32 Sep = INDEX_NONE;
+		if (Raw.FindChar(TEXT(';'), Sep) && Sep > 0)
+		{
+			Raw.LeftInline(Sep, false);
+		}
+	}
+	{
+		int32 Sep = INDEX_NONE;
+		if (Raw.FindChar(TEXT('|'), Sep) && Sep > 0)
+		{
+			Raw.LeftInline(Sep, false);
+		}
+	}
+	Raw.TrimStartAndEndInline();
+
+	if (Raw.IsEmpty())
+	{
+		return false;
+	}
+
+	OutStem = FPaths::GetBaseFilename(Raw);
+	OutStem.TrimStartAndEndInline();
+	return !OutStem.IsEmpty();
+}
+
+// Forward declare (defined below) so AssetData-only naming path can reuse the same fallback logic.
+static FString HCI_DeriveBaseNameFromCurrentName(const FString& CurrentAssetName, const FString& Prefix);
+
+static bool HCI_TryBuildNormalizedNameBaseFromAssetData(
+	const FAssetData& AssetData,
+	const FString& MetadataSource,
+	const FString& Prefix,
+	const FString& CurrentAssetName,
+	FString& OutBaseName,
+	FString& OutFailureReason)
+{
+	OutBaseName.Reset();
+	OutFailureReason.Reset();
+
+	const bool bUseImportDataOnly = MetadataSource.Equals(TEXT("import_data_only"), ESearchCase::IgnoreCase);
+	const bool bAuto = MetadataSource.Equals(TEXT("auto"), ESearchCase::IgnoreCase);
+
+	if (!bAuto && !bUseImportDataOnly)
+	{
+		OutFailureReason = TEXT("metadata_source_not_supported");
+		return false;
+	}
+
+	FString SourceStem;
+	if (HCI_TryExtractImportSourceStemFromAssetData(AssetData, SourceStem))
+	{
+		OutBaseName = HCI_SanitizeIdentifier(HCI_RemoveKnownPrefixToken(SourceStem));
+		if (!OutBaseName.IsEmpty())
+		{
+			if (OutBaseName.StartsWith(Prefix + TEXT("_"), ESearchCase::IgnoreCase))
+			{
+				OutBaseName.RightChopInline(Prefix.Len() + 1, false);
+				OutBaseName = HCI_SanitizeIdentifier(OutBaseName);
+			}
+			if (!OutBaseName.IsEmpty())
+			{
+				return true;
+			}
+		}
+	}
+
+	if (bUseImportDataOnly)
+	{
+		OutFailureReason = TEXT("import_metadata_missing");
+		return false;
+	}
+
+	OutBaseName = HCI_DeriveBaseNameFromCurrentName(CurrentAssetName, Prefix);
+	if (!OutBaseName.IsEmpty())
+	{
+		return true;
+	}
+
+	OutFailureReason = TEXT("name_sanitization_failed");
+	return false;
+}
+
 static bool HCI_TryGetAssetImportData(UObject* Asset, UAssetImportData*& OutImportData)
 {
 	OutImportData = nullptr;
@@ -310,6 +466,253 @@ static bool HCI_TryBuildNormalizedNameBase(
 
 	OutFailureReason = TEXT("name_sanitization_failed");
 	return false;
+}
+
+struct FHCIAbilityKitAssetRoutingRules
+{
+	bool bPerAssetFolder = true;
+	bool bGroupNamePascalCase = true;
+	bool bDependencyAware = true;
+	FString SharedRoot = TEXT("Shared");
+	TMap<FString, FString> SubfoldersByPrefix;
+};
+
+static FString HCI_ToPascalCase(const FString& SanitizedUnderscoreName)
+{
+	TArray<FString> Tokens;
+	SanitizedUnderscoreName.ParseIntoArray(Tokens, TEXT("_"), true);
+	FString Out;
+	for (FString Token : Tokens)
+	{
+		Token.TrimStartAndEndInline();
+		if (Token.IsEmpty())
+		{
+			continue;
+		}
+
+		Token.ToLowerInline();
+		if (Token.Len() >= 1)
+		{
+			Token[0] = FChar::ToUpper(Token[0]);
+		}
+		Out += Token;
+	}
+	return Out.IsEmpty() ? SanitizedUnderscoreName : Out;
+}
+
+static bool HCI_TryExtractMarkdownCodeFence(
+	const FString& Markdown,
+	const FString& FenceTag,
+	FString& OutFenceContent)
+{
+	OutFenceContent.Reset();
+
+	const FString OpenFence = FString::Printf(TEXT("```%s"), *FenceTag);
+	const int32 Start = Markdown.Find(OpenFence, ESearchCase::IgnoreCase, ESearchDir::FromStart);
+	if (Start == INDEX_NONE)
+	{
+		return false;
+	}
+
+	const int32 OpenEnd = Start + OpenFence.Len();
+	const int32 Newline = Markdown.Find(TEXT("\n"), ESearchCase::CaseSensitive, ESearchDir::FromStart, OpenEnd);
+	const int32 AfterOpen = (Newline == INDEX_NONE) ? OpenEnd : (Newline + 1);
+
+	const int32 End = Markdown.Find(TEXT("```"), ESearchCase::CaseSensitive, ESearchDir::FromStart, AfterOpen);
+	if (End == INDEX_NONE || End <= AfterOpen)
+	{
+		return false;
+	}
+
+	OutFenceContent = Markdown.Mid(AfterOpen, End - AfterOpen);
+	OutFenceContent.TrimStartAndEndInline();
+	return !OutFenceContent.IsEmpty();
+}
+
+static FHCIAbilityKitAssetRoutingRules HCI_LoadAssetRoutingRules()
+{
+	FHCIAbilityKitAssetRoutingRules Rules;
+	Rules.SubfoldersByPrefix.Add(TEXT("SM"), FString()); // meshes: group root
+	Rules.SubfoldersByPrefix.Add(TEXT("SK"), FString()); // skeletal meshes: group root
+	Rules.SubfoldersByPrefix.Add(TEXT("T"), TEXT("Textures"));
+	Rules.SubfoldersByPrefix.Add(TEXT("M"), TEXT("Materials"));
+	Rules.SubfoldersByPrefix.Add(TEXT("MI"), TEXT("Materials"));
+
+	const FString RulesPath = FPaths::Combine(FPaths::ProjectSavedDir(), TEXT("HCIAbilityKit/Rules/Project_Rules.md"));
+	if (!FPaths::FileExists(RulesPath))
+	{
+		return Rules;
+	}
+
+	FString Markdown;
+	if (!FFileHelper::LoadFileToString(Markdown, *RulesPath))
+	{
+		return Rules;
+	}
+
+	FString JsonText;
+	if (!HCI_TryExtractMarkdownCodeFence(Markdown, TEXT("hci_routing_json"), JsonText))
+	{
+		return Rules;
+	}
+
+	TSharedPtr<FJsonObject> Root;
+	const TSharedRef<TJsonReader<>> Reader = TJsonReaderFactory<>::Create(JsonText);
+	if (!FJsonSerializer::Deserialize(Reader, Root) || !Root.IsValid())
+	{
+		return Rules;
+	}
+
+	bool bPerAssetFolder = true;
+	if (Root->TryGetBoolField(TEXT("per_asset_folder"), bPerAssetFolder))
+	{
+		Rules.bPerAssetFolder = bPerAssetFolder;
+	}
+
+	bool bDependencyAware = true;
+	if (Root->TryGetBoolField(TEXT("dependency_aware"), bDependencyAware))
+	{
+		Rules.bDependencyAware = bDependencyAware;
+	}
+
+	FString SharedRoot;
+	if (Root->TryGetStringField(TEXT("shared_root"), SharedRoot))
+	{
+		SharedRoot.TrimStartAndEndInline();
+		SharedRoot = HCI_SanitizeIdentifier(SharedRoot);
+		if (!SharedRoot.IsEmpty())
+		{
+			Rules.SharedRoot = SharedRoot;
+		}
+	}
+
+	FString GroupStyle;
+	if (Root->TryGetStringField(TEXT("group_name_style"), GroupStyle))
+	{
+		GroupStyle.TrimStartAndEndInline();
+		GroupStyle.ToLowerInline();
+		if (GroupStyle == TEXT("sanitized") || GroupStyle == TEXT("underscore"))
+		{
+			Rules.bGroupNamePascalCase = false;
+		}
+		else if (GroupStyle == TEXT("pascal_case") || GroupStyle == TEXT("pascalcase"))
+		{
+			Rules.bGroupNamePascalCase = true;
+		}
+	}
+
+	const TSharedPtr<FJsonObject>* Subfolders = nullptr;
+	if (Root->TryGetObjectField(TEXT("subfolders"), Subfolders) && Subfolders && Subfolders->IsValid())
+	{
+		for (const auto& It : (*Subfolders)->Values)
+		{
+			if (!It.Value.IsValid() || It.Value->Type != EJson::String)
+			{
+				continue;
+			}
+
+			FString Key = It.Key;
+			Key.TrimStartAndEndInline();
+			Key.ToUpperInline();
+			if (Key.IsEmpty())
+			{
+				continue;
+			}
+
+			FString Val = It.Value->AsString();
+			Val.TrimStartAndEndInline();
+			Val = HCI_SanitizeIdentifier(Val);
+			Rules.SubfoldersByPrefix.Add(Key, Val);
+		}
+	}
+
+	return Rules;
+}
+
+enum class EHCITextureRole : uint8
+{
+	Unknown = 0,
+	BaseColor,
+	Normal,
+	ORM,
+	Roughness,
+	Metallic,
+	AO
+};
+
+static EHCITextureRole HCI_DetectTextureRoleFromTokens(const TArray<FString>& TokensLower)
+{
+	if (TokensLower.Num() == 0)
+	{
+		return EHCITextureRole::Unknown;
+	}
+
+	const FString& Last = TokensLower.Last();
+	if (Last == TEXT("bc") || Last == TEXT("basecolor") || Last == TEXT("albedo") || Last == TEXT("diffuse") || Last == TEXT("color"))
+	{
+		return EHCITextureRole::BaseColor;
+	}
+	if (Last == TEXT("n") || Last == TEXT("normal") || Last == TEXT("nrm") || Last == TEXT("nor"))
+	{
+		return EHCITextureRole::Normal;
+	}
+	if (Last == TEXT("orm") || Last == TEXT("occlusionroughnessmetallic"))
+	{
+		return EHCITextureRole::ORM;
+	}
+	if (Last == TEXT("r") || Last == TEXT("rough") || Last == TEXT("roughness") || Last == TEXT("rgh"))
+	{
+		return EHCITextureRole::Roughness;
+	}
+	if (Last == TEXT("m") || Last == TEXT("metal") || Last == TEXT("metallic") || Last == TEXT("mtl"))
+	{
+		return EHCITextureRole::Metallic;
+	}
+	if (Last == TEXT("ao") || Last == TEXT("occlusion"))
+	{
+		return EHCITextureRole::AO;
+	}
+	return EHCITextureRole::Unknown;
+}
+
+static FString HCI_TextureRoleSuffix(const EHCITextureRole Role)
+{
+	switch (Role)
+	{
+	case EHCITextureRole::BaseColor:
+		return TEXT("BC");
+	case EHCITextureRole::Normal:
+		return TEXT("N");
+	case EHCITextureRole::ORM:
+		return TEXT("ORM");
+	case EHCITextureRole::Roughness:
+		return TEXT("R");
+	case EHCITextureRole::Metallic:
+		return TEXT("M");
+	case EHCITextureRole::AO:
+		return TEXT("AO");
+	default:
+		return FString();
+	}
+}
+
+static void HCI_TrimCommonTrailingNoiseTokens(TArray<FString>& InOutTokensLower)
+{
+	while (InOutTokensLower.Num() > 0)
+	{
+		const FString& Last = InOutTokensLower.Last();
+		if (Last == TEXT("final") || Last == TEXT("temp") || Last == TEXT("test"))
+		{
+			InOutTokensLower.Pop();
+			continue;
+		}
+		if (Last.Len() >= 2 && Last[0] == TEXT('v') && FChar::IsDigit(Last[1]))
+		{
+			InOutTokensLower.Pop();
+			continue;
+		}
+		break;
+	}
 }
 
 static bool HCI_TryReadRequiredStringArg(
@@ -1607,11 +2010,126 @@ private:
 		bool bNeedsMove = false;
 	};
 
+	static bool HCI_TryFindAvailableDestination(
+		const FString& SourceObjectPath,
+		const FString& DestinationDir,
+		const FString& DesiredAssetName,
+		const TSet<FString>& ReservedDestinationObjects,
+		FString& OutDestinationAssetPath,
+		FString& OutDestinationObjectPath,
+		FString& OutResolvedAssetName)
+	{
+		OutDestinationAssetPath.Reset();
+		OutDestinationObjectPath.Reset();
+		OutResolvedAssetName.Reset();
+
+		const FString TrimmedDir = HCI_TrimTrailingSlash(DestinationDir);
+		if (TrimmedDir.IsEmpty() || !TrimmedDir.StartsWith(TEXT("/Game/")))
+		{
+			return false;
+		}
+
+		auto BuildPaths = [&TrimmedDir](const FString& AssetName, FString& OutAssetPath, FString& OutObjectPath)
+		{
+			OutAssetPath = FString::Printf(TEXT("%s/%s"), *TrimmedDir, *AssetName);
+			OutObjectPath = HCI_ToObjectPath(OutAssetPath, AssetName);
+		};
+
+		// 0 = desired, then deconflict suffixes.
+		for (int32 Attempt = 0; Attempt < 50; ++Attempt)
+		{
+			const FString CandidateName = (Attempt == 0)
+				? DesiredAssetName
+				: FString::Printf(TEXT("%s_%02d"), *DesiredAssetName, Attempt);
+
+			FString CandidateAssetPath;
+			FString CandidateObjectPath;
+			BuildPaths(CandidateName, CandidateAssetPath, CandidateObjectPath);
+
+			if (CandidateObjectPath.Equals(SourceObjectPath, ESearchCase::CaseSensitive))
+			{
+				// Already at desired location.
+				OutDestinationAssetPath = CandidateAssetPath;
+				OutDestinationObjectPath = CandidateObjectPath;
+				OutResolvedAssetName = CandidateName;
+				return true;
+			}
+
+			if (ReservedDestinationObjects.Contains(CandidateObjectPath))
+			{
+				continue;
+			}
+
+			if (UEditorAssetLibrary::DoesAssetExist(CandidateAssetPath))
+			{
+				continue;
+			}
+
+			OutDestinationAssetPath = CandidateAssetPath;
+			OutDestinationObjectPath = CandidateObjectPath;
+			OutResolvedAssetName = CandidateName;
+			return true;
+		}
+
+		return false;
+	}
+
 	static bool RunInternal(
 		const FHCIAbilityKitAgentToolActionRequest& Request,
 		FHCIAbilityKitAgentToolActionResult& OutResult,
 		const bool bIsDryRun)
 	{
+		const FHCIAbilityKitAssetRoutingRules RoutingRules = HCI_LoadAssetRoutingRules();
+
+		// Artists want immediate feedback during heavy rename/move operations; use a bottom-right throbber notification.
+		struct FHCINamingProgressNotification
+		{
+			TSharedPtr<SNotificationItem> Item;
+			bool bFinished = false;
+
+			void Start(const FString& Title)
+			{
+				FNotificationInfo Info(FText::FromString(Title));
+				Info.bFireAndForget = false;
+				Info.bUseThrobber = true;
+				Info.FadeOutDuration = 0.2f;
+				Info.ExpireDuration = 0.0f;
+				Item = FSlateNotificationManager::Get().AddNotification(Info);
+				if (Item.IsValid())
+				{
+					Item->SetCompletionState(SNotificationItem::CS_Pending);
+				}
+			}
+
+			void Update(const FString& Text)
+			{
+				if (Item.IsValid())
+				{
+					Item->SetText(FText::FromString(Text));
+				}
+			}
+
+			void Finish(const bool bOk, const FString& Text)
+			{
+				bFinished = true;
+				if (!Item.IsValid())
+				{
+					return;
+				}
+				Item->SetText(FText::FromString(Text));
+				Item->SetCompletionState(bOk ? SNotificationItem::CS_Success : SNotificationItem::CS_Fail);
+				Item->ExpireAndFadeout();
+			}
+
+			~FHCINamingProgressNotification()
+			{
+				if (Item.IsValid() && !bFinished)
+				{
+					Item->ExpireAndFadeout();
+				}
+			}
+		};
+
 		TArray<FString> AssetPaths;
 		FString MetadataSource;
 		FString PrefixMode;
@@ -1637,6 +2155,10 @@ private:
 			return false;
 		}
 
+		FHCINamingProgressNotification Notify;
+		Notify.Start(bIsDryRun ? TEXT("HCIAbilityKit: 预览资产规范化/归档中...") : TEXT("HCIAbilityKit: 执行资产规范化/归档中..."));
+		Notify.Update(FString::Printf(TEXT("阶段：准备中 (assets=%d)"), AssetPaths.Num()));
+
 		TargetRoot = HCI_TrimTrailingSlash(TargetRoot);
 		if (TargetRoot.IsEmpty() || !TargetRoot.StartsWith(TEXT("/Game/")))
 		{
@@ -1644,6 +2166,7 @@ private:
 			OutResult.bSucceeded = false;
 			OutResult.ErrorCode = TEXT("E4009");
 			OutResult.Reason = TEXT("target_root_must_start_with_game");
+			Notify.Finish(false, TEXT("失败：target_root 非 /Game/... 路径"));
 			return false;
 		}
 
@@ -1653,81 +2176,334 @@ private:
 		TArray<FString> ProposedMoveRows;
 		TArray<FString> FailedRows;
 
-		for (const FString& RawPath : AssetPaths)
+		FAssetRegistryModule& AssetRegistryModule = FModuleManager::LoadModuleChecked<FAssetRegistryModule>(TEXT("AssetRegistry"));
+		IAssetRegistry& AssetRegistry = AssetRegistryModule.Get();
+
+		struct FHCINormalizeItem
 		{
 			FString SourceAssetPath;
 			FString SourceObjectPath;
-			HCI_NormalizeAssetPathVariants(RawPath, SourceAssetPath, SourceObjectPath);
-
-			if (!UEditorAssetLibrary::DoesAssetExist(SourceAssetPath))
-			{
-				FailedRows.Add(FString::Printf(TEXT("%s (not_found)"), *SourceAssetPath));
-				continue;
-			}
-
 			FString SourcePackagePath;
 			FString SourceAssetName;
-			if (!HCI_TrySplitObjectPath(SourceObjectPath, SourcePackagePath, SourceAssetName))
+			FName PackageName;
+			FAssetData AssetData;
+			FString Prefix;
+			FString BaseNameFromMetadata;
+			EHCITextureRole TextureRole = EHCITextureRole::Unknown;
+			FString GroupNameFromName;
+			FString EffectiveGroupName;
+			bool bIsAnchor = false;
+			bool bIsShared = false;
+		};
+
+		TArray<FHCINormalizeItem> Items;
+		Items.Reserve(AssetPaths.Num());
+		TSet<FName> SelectionPackages;
+
+		Notify.Update(TEXT("阶段：解析资产列表与元数据..."));
+		for (const FString& RawPath : AssetPaths)
+		{
+			FHCINormalizeItem Item;
+
+			HCI_NormalizeAssetPathVariants(RawPath, Item.SourceAssetPath, Item.SourceObjectPath);
+
+			if (!HCI_TrySplitObjectPath(Item.SourceObjectPath, Item.SourcePackagePath, Item.SourceAssetName))
 			{
-				FailedRows.Add(FString::Printf(TEXT("%s (invalid_object_path)"), *SourceObjectPath));
+				FailedRows.Add(FString::Printf(TEXT("%s (invalid_object_path)"), *Item.SourceObjectPath));
 				continue;
 			}
 
-			UObject* Asset = LoadObject<UObject>(nullptr, *SourceObjectPath);
-			if (Asset == nullptr)
+			Item.AssetData = AssetRegistry.GetAssetByObjectPath(FSoftObjectPath(Item.SourceObjectPath));
+			if (!Item.AssetData.IsValid())
 			{
-				FailedRows.Add(FString::Printf(TEXT("%s (load_failed)"), *SourceObjectPath));
+				// Fallback: confirm existence via editor library so user gets a clearer error.
+				if (!UEditorAssetLibrary::DoesAssetExist(Item.SourceAssetPath))
+				{
+					FailedRows.Add(FString::Printf(TEXT("%s (not_found)"), *Item.SourceAssetPath));
+				}
+				else
+				{
+					FailedRows.Add(FString::Printf(TEXT("%s (asset_registry_missing)"), *Item.SourceObjectPath));
+				}
 				continue;
 			}
 
-			const FString Prefix = HCI_DeriveClassPrefix(Asset);
-			FString BaseName;
+			Item.PackageName = Item.AssetData.PackageName;
+			SelectionPackages.Add(Item.PackageName);
+
+			Item.Prefix = HCI_DeriveClassPrefixFromAssetData(Item.AssetData);
+			Item.bIsAnchor = (Item.Prefix == TEXT("SM") || Item.Prefix == TEXT("SK"));
+
 			FString FailureReason;
-			if (!HCI_TryBuildNormalizedNameBase(Asset, MetadataSource, Prefix, SourceAssetName, BaseName, FailureReason))
+			if (!HCI_TryBuildNormalizedNameBaseFromAssetData(
+					Item.AssetData,
+					MetadataSource,
+					Item.Prefix,
+					Item.SourceAssetName,
+					Item.BaseNameFromMetadata,
+					FailureReason))
 			{
-				FailedRows.Add(FString::Printf(TEXT("%s (%s)"), *SourceObjectPath, *FailureReason));
+				FailedRows.Add(FString::Printf(TEXT("%s (%s)"), *Item.SourceObjectPath, *FailureReason));
 				continue;
 			}
 
-			FString TargetAssetName = FString::Printf(TEXT("%s_%s"), *Prefix, *BaseName);
+			TArray<FString> Tokens;
+			Item.BaseNameFromMetadata.ParseIntoArray(Tokens, TEXT("_"), true);
+			TArray<FString> TokensLower;
+			TokensLower.Reserve(Tokens.Num());
+			for (const FString& Tok : Tokens)
+			{
+				TokensLower.Add(Tok.ToLower());
+			}
+
+			Item.TextureRole = EHCITextureRole::Unknown;
+			if (Item.Prefix == TEXT("T"))
+			{
+				Item.TextureRole = HCI_DetectTextureRoleFromTokens(TokensLower);
+				if (Item.TextureRole != EHCITextureRole::Unknown && TokensLower.Num() > 0)
+				{
+					TokensLower.Pop();
+				}
+			}
+
+			HCI_TrimCommonTrailingNoiseTokens(TokensLower);
+
+			FString GroupSanitized;
+			if (TokensLower.Num() > 0)
+			{
+				GroupSanitized = FString::Join(TokensLower, TEXT("_"));
+			}
+			if (GroupSanitized.IsEmpty())
+			{
+				GroupSanitized = Item.BaseNameFromMetadata;
+			}
+
+			FString GroupName = HCI_SanitizeIdentifier(GroupSanitized);
+			if (RoutingRules.bGroupNamePascalCase)
+			{
+				GroupName = HCI_ToPascalCase(GroupName);
+				GroupName = HCI_SanitizeIdentifier(GroupName);
+			}
+			if (GroupName.IsEmpty())
+			{
+				GroupName = TEXT("Asset");
+			}
+
+			Item.GroupNameFromName = GroupName;
+			Item.EffectiveGroupName = GroupName;
+			Items.Add(MoveTemp(Item));
+		}
+
+		// Dependency-aware grouping: assign textures/materials into the mesh's asset-group folder, and move shared assets into Shared/.
+		int32 AnchorCount = 0;
+		int32 SharedCount = 0;
+		if (RoutingRules.bDependencyAware)
+		{
+			TArray<FName> Anchors;
+			TMap<FName, FString> AnchorGroupNames;
+			for (const FHCINormalizeItem& Item : Items)
+			{
+				if (Item.bIsAnchor)
+				{
+					Anchors.Add(Item.PackageName);
+					AnchorGroupNames.Add(Item.PackageName, Item.GroupNameFromName);
+				}
+			}
+
+			AnchorCount = Anchors.Num();
+			if (Anchors.Num() > 0 && SelectionPackages.Num() > 0)
+			{
+				TMap<FName, TArray<FName>> DepsByPkg;
+				DepsByPkg.Reserve(SelectionPackages.Num());
+
+				for (const FName& Pkg : SelectionPackages)
+				{
+					TArray<FName> Deps;
+					AssetRegistry.GetDependencies(
+						Pkg,
+						Deps,
+						UE::AssetRegistry::EDependencyCategory::Package,
+						UE::AssetRegistry::FDependencyQuery(UE::AssetRegistry::EDependencyQuery::Hard));
+					Deps.RemoveAll([&SelectionPackages](const FName& Dep) { return !SelectionPackages.Contains(Dep); });
+					DepsByPkg.Add(Pkg, MoveTemp(Deps));
+				}
+
+				TMap<FName, int32> MemberCount;
+				TMap<FName, FName> SoleAnchor;
+
+				for (const FName& AnchorPkg : Anchors)
+				{
+					TArray<FName> Stack;
+					Stack.Add(AnchorPkg);
+					TSet<FName> Visited;
+					Visited.Reserve(64);
+					Visited.Add(AnchorPkg);
+
+					while (Stack.Num() > 0)
+					{
+						const FName Current = Stack.Pop(EAllowShrinking::No);
+						const TArray<FName>* Deps = DepsByPkg.Find(Current);
+						if (!Deps)
+						{
+							continue;
+						}
+						for (const FName& Dep : *Deps)
+						{
+							if (Visited.Contains(Dep))
+							{
+								continue;
+							}
+							Visited.Add(Dep);
+							Stack.Add(Dep);
+						}
+					}
+
+					for (const FName& Member : Visited)
+					{
+						int32& C = MemberCount.FindOrAdd(Member);
+						++C;
+						if (C == 1)
+						{
+							SoleAnchor.Add(Member, AnchorPkg);
+						}
+						else
+						{
+							SoleAnchor.Add(Member, NAME_None);
+						}
+					}
+				}
+
+				for (FHCINormalizeItem& Item : Items)
+				{
+					if (Item.bIsAnchor)
+					{
+						continue;
+					}
+
+					const int32* C = MemberCount.Find(Item.PackageName);
+					if (C && *C > 1)
+					{
+						Item.bIsShared = true;
+						Item.EffectiveGroupName = RoutingRules.SharedRoot;
+						++SharedCount;
+						continue;
+					}
+
+					const FName* AnchorPkg = SoleAnchor.Find(Item.PackageName);
+					if (AnchorPkg && AnchorPkg->IsValid())
+					{
+						const FString* AnchorGroup = AnchorGroupNames.Find(*AnchorPkg);
+						if (AnchorGroup && !AnchorGroup->IsEmpty())
+						{
+							Item.EffectiveGroupName = *AnchorGroup;
+						}
+					}
+				}
+			}
+		}
+
+		for (const FHCINormalizeItem& Item : Items)
+		{
+			const FString& Prefix = Item.Prefix;
+
+			FString GroupNameForNaming = Item.EffectiveGroupName;
+			if (GroupNameForNaming.IsEmpty() || GroupNameForNaming == RoutingRules.SharedRoot)
+			{
+				GroupNameForNaming = Item.GroupNameFromName;
+			}
+
+			const FString RoleSuffix = HCI_TextureRoleSuffix(Item.TextureRole);
+
+			FString AssetBaseName;
+			if (Item.bIsShared)
+			{
+				AssetBaseName = HCI_SanitizeIdentifier(Item.BaseNameFromMetadata);
+				if (RoutingRules.bGroupNamePascalCase)
+				{
+					AssetBaseName = HCI_ToPascalCase(AssetBaseName);
+					AssetBaseName = HCI_SanitizeIdentifier(AssetBaseName);
+				}
+				if (Prefix == TEXT("T") && !RoleSuffix.IsEmpty() && !AssetBaseName.EndsWith(TEXT("_") + RoleSuffix, ESearchCase::IgnoreCase))
+				{
+					AssetBaseName = FString::Printf(TEXT("%s_%s"), *AssetBaseName, *RoleSuffix);
+				}
+			}
+			else
+			{
+				AssetBaseName = GroupNameForNaming;
+				if (Prefix == TEXT("T") && !RoleSuffix.IsEmpty())
+				{
+					AssetBaseName = FString::Printf(TEXT("%s_%s"), *GroupNameForNaming, *RoleSuffix);
+				}
+			}
+
+			AssetBaseName = HCI_SanitizeIdentifier(AssetBaseName);
+			if (AssetBaseName.IsEmpty())
+			{
+				FailedRows.Add(FString::Printf(TEXT("%s (target_name_invalid)"), *Item.SourceObjectPath));
+				continue;
+			}
+
+			FString TargetAssetName = FString::Printf(TEXT("%s_%s"), *Prefix, *AssetBaseName);
 			TargetAssetName = HCI_SanitizeIdentifier(TargetAssetName);
 			if (TargetAssetName.IsEmpty())
 			{
-				FailedRows.Add(FString::Printf(TEXT("%s (target_name_invalid)"), *SourceObjectPath));
+				FailedRows.Add(FString::Printf(TEXT("%s (target_name_invalid)"), *Item.SourceObjectPath));
 				continue;
 			}
 
-			const FString DestinationAssetPath = FString::Printf(TEXT("%s/%s"), *TargetRoot, *TargetAssetName);
-			const FString DestinationObjectPath = HCI_ToObjectPath(DestinationAssetPath, TargetAssetName);
-			if (DestinationObjectPath.Equals(SourceObjectPath, ESearchCase::CaseSensitive))
+			FString DestinationDir = TargetRoot;
+			if (Item.bIsShared)
 			{
+				DestinationDir = FString::Printf(TEXT("%s/%s"), *DestinationDir, *RoutingRules.SharedRoot);
+			}
+			else if (RoutingRules.bPerAssetFolder)
+			{
+				DestinationDir = FString::Printf(TEXT("%s/%s"), *DestinationDir, *Item.EffectiveGroupName);
+			}
+
+			{
+				const FString* Subfolder = RoutingRules.SubfoldersByPrefix.Find(Prefix);
+				if (Subfolder && !Subfolder->IsEmpty())
+				{
+					DestinationDir = FString::Printf(TEXT("%s/%s"), *DestinationDir, **Subfolder);
+				}
+			}
+
+			DestinationDir = HCI_TrimTrailingSlash(DestinationDir);
+
+			FString DestinationAssetPath;
+			FString DestinationObjectPath;
+			FString ResolvedAssetName;
+			if (!HCI_TryFindAvailableDestination(
+					Item.SourceObjectPath,
+					DestinationDir,
+					TargetAssetName,
+					ReservedDestinationObjects,
+					DestinationAssetPath,
+					DestinationObjectPath,
+					ResolvedAssetName))
+			{
+				FailedRows.Add(FString::Printf(TEXT("%s (destination_unavailable)"), *Item.SourceObjectPath));
 				continue;
 			}
 
-			if (ReservedDestinationObjects.Contains(DestinationObjectPath))
+			if (DestinationObjectPath.Equals(Item.SourceObjectPath, ESearchCase::CaseSensitive))
 			{
-				FailedRows.Add(FString::Printf(TEXT("%s (duplicate_destination)"), *SourceObjectPath));
-				continue;
-			}
-
-			const bool bDestinationExists = UEditorAssetLibrary::DoesAssetExist(DestinationAssetPath);
-			if (bDestinationExists && !DestinationAssetPath.Equals(SourceAssetPath, ESearchCase::CaseSensitive))
-			{
-				FailedRows.Add(FString::Printf(TEXT("%s (destination_exists:%s)"), *SourceObjectPath, *DestinationObjectPath));
 				continue;
 			}
 
 			FHCINamingProposal& Proposal = Proposals.AddDefaulted_GetRef();
-			Proposal.SourceAssetPath = SourceAssetPath;
-			Proposal.SourceObjectPath = SourceObjectPath;
-			Proposal.SourceAssetName = SourceAssetName;
-			Proposal.SourceDirectory = HCI_GetDirectoryFromPackagePath(SourcePackagePath);
+			Proposal.SourceAssetPath = Item.SourceAssetPath;
+			Proposal.SourceObjectPath = Item.SourceObjectPath;
+			Proposal.SourceAssetName = Item.SourceAssetName;
+			Proposal.SourceDirectory = HCI_GetDirectoryFromPackagePath(Item.SourcePackagePath);
 			Proposal.DestinationAssetPath = DestinationAssetPath;
 			Proposal.DestinationObjectPath = DestinationObjectPath;
-			Proposal.DestinationAssetName = TargetAssetName;
-			Proposal.DestinationDirectory = TargetRoot;
-			Proposal.bNeedsRename = !SourceAssetName.Equals(TargetAssetName, ESearchCase::CaseSensitive);
-			Proposal.bNeedsMove = !Proposal.SourceDirectory.Equals(TargetRoot, ESearchCase::CaseSensitive);
+			Proposal.DestinationAssetName = ResolvedAssetName.IsEmpty() ? TargetAssetName : ResolvedAssetName;
+			Proposal.DestinationDirectory = DestinationDir;
+			Proposal.bNeedsRename = !Item.SourceAssetName.Equals(Proposal.DestinationAssetName, ESearchCase::CaseSensitive);
+			Proposal.bNeedsMove = !Proposal.SourceDirectory.Equals(DestinationDir, ESearchCase::CaseSensitive);
 			ReservedDestinationObjects.Add(DestinationObjectPath);
 
 			if (Proposal.bNeedsRename)
@@ -1736,14 +2512,31 @@ private:
 			}
 			if (Proposal.bNeedsMove)
 			{
-				ProposedMoveRows.Add(FString::Printf(TEXT("%s -> %s"), *Proposal.SourceDirectory, *Proposal.DestinationDirectory));
+				ProposedMoveRows.Add(FString::Printf(TEXT("%s -> %s"), *Proposal.SourceAssetPath, *Proposal.DestinationAssetPath));
 			}
 		}
 
+		Notify.Update(FString::Printf(TEXT("阶段：已生成提案 (proposals=%d)"), Proposals.Num()));
 		int32 AppliedCount = 0;
 		if (!bIsDryRun && Proposals.Num() > 0)
 		{
+			Notify.Update(FString::Printf(TEXT("阶段：执行移动/重命名... (ops=%d)"), Proposals.Num()));
+			// Ensure destination directories exist before moving packages.
 			UEditorAssetLibrary::MakeDirectory(TargetRoot);
+			{
+				TSet<FString> Dirs;
+				for (const FHCINamingProposal& Proposal : Proposals)
+				{
+					if (!Proposal.DestinationDirectory.IsEmpty())
+					{
+						Dirs.Add(Proposal.DestinationDirectory);
+					}
+				}
+				for (const FString& Dir : Dirs)
+				{
+					UEditorAssetLibrary::MakeDirectory(Dir);
+				}
+			}
 
 			for (const FHCINamingProposal& Proposal : Proposals)
 			{
@@ -1753,6 +2546,10 @@ private:
 					continue;
 				}
 				++AppliedCount;
+				if ((AppliedCount % 10) == 0)
+				{
+					Notify.Update(FString::Printf(TEXT("阶段：执行移动/重命名... (%d/%d)"), AppliedCount, Proposals.Num()));
+				}
 			}
 		}
 
@@ -1777,6 +2574,9 @@ private:
 			OutResult.Evidence.Add(TEXT("failed_assets"), FString::Join(FailedRows, TEXT(" | ")));
 		}
 
+		Notify.Finish(
+			OutResult.bSucceeded,
+			OutResult.bSucceeded ? TEXT("完成：资产规范化/归档") : TEXT("完成：资产规范化/归档（失败）"));
 		return OutResult.bSucceeded;
 	}
 };

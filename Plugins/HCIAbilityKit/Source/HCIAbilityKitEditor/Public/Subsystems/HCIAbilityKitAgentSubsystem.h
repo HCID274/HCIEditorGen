@@ -3,6 +3,7 @@
 #include "CoreMinimal.h"
 #include "Agent/Planner/HCIAbilityKitAgentPlan.h"
 #include "Agent/Planner/HCIAbilityKitAgentPlanner.h"
+#include "Agent/Executor/HCIAbilityKitAgentExecutor.h"
 #include "Commands/HCIAbilityKitAgentCommandBase.h"
 #include "EditorSubsystem.h"
 #include "HCIAbilityKitAgentSubsystem.generated.h"
@@ -145,6 +146,13 @@ private:
 	UPROPERTY(Transient)
 	TObjectPtr<UHCIAbilityKitAgentCommandBase> ActiveCommand = nullptr;
 
+	// Last chat request snapshot (used for auto-repair retry when ScanAssets returns empty due to dirty path input).
+	FString LastChatTrimmedUserInput;
+	FString LastChatEffectiveInput;
+	FString LastChatSourceTag;
+	FString LastChatExtraEnvContextText;
+	int32 LastChatAutoRepairAttempts = 0;
+
 	TMap<FName, TSubclassOf<UHCIAbilityKitAgentCommandBase>> CommandRegistry;
 	TArray<FHCIAbilityKitAgentQuickCommand> QuickCommands;
 	FString QuickCommandsLoadError;
@@ -156,4 +164,8 @@ private:
 	FHCIAbilityKitAgentUiProgressState CurrentProgressState;
 	FString CurrentActivityHint;
 	TArray<FHCIAbilityKitAgentUiLocateTarget> LastExecutionLocateTargets;
+
+	// Cached dry-run step results used to enrich the approval card with concrete routing proposals.
+	bool bHasApprovalPreview = false;
+	TArray<FHCIAbilityKitAgentExecutorStepResult> ApprovalPreviewStepResults;
 };

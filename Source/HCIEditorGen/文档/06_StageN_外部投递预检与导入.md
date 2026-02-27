@@ -101,3 +101,110 @@
 关键呈现点：
 - 审批卡中每个关键写步骤必须展示 `ui_presentation.intent_reason`（为什么这么做 / 为什么豁免）。
 - 高风险步骤展示 `ui_presentation.risk_warning`。
+
+## 7. Slice N2：目录分发（Asset Routing）与多级归档（冻结）
+
+> N1 解决“安全导入 + 上下文注入”。N2 解决“导入后如何在工程内长期可维护地存放”：命名只是第一步，目录语义（模块/类型/资产组/子目录）才是大项目里最难维护的部分。
+
+### 7.1 第一性原理
+
+- 人是靠“路径语义”找资产：几千个资产堆在一个目录，团队协作必然崩溃。
+- 引擎与版本控制也依赖路径语义：Pak 组织、权限、分支策略、内容审计都与目录结构强相关。
+- 因此，“命名规范化工具”必须升级为“命名 + 目录分发器（Asset Router）”。
+
+### 7.2 设计（不新增工具，不改 Plan JSON）
+
+- 仍复用既有 Planner 工具链：`ScanAssets -> NormalizeAssetNamingByMetadata`。
+- `NormalizeAssetNamingByMetadata` 的内部策略升级：
+  - 在 `target_root` 下，按“资产组（Asset Group）”建立专属文件夹；
+  - 按资产类别进入子目录：`Textures/Materials/`（可配置）。
+- 写操作仍走审批卡确认（HITL），符合“不做无确认写工程”原则。
+
+### 7.3 路由规则配置（Project_Rules.md 内可选 JSON 代码块）
+
+文件：`Saved/HCIAbilityKit/Rules/Project_Rules.md`
+
+推荐写法：在 Markdown 里嵌入一个结构化代码块（非程序员也能改）：
+
+```text
+## Asset Routing
+
+```hci_routing_json
+{
+  "per_asset_folder": true,
+  "group_name_style": "pascal_case",
+  "subfolders": {
+    "SM": "",
+    "T": "Textures",
+    "M": "Materials",
+    "MI": "Materials"
+  }
+}
+```
+```
+
+说明：
+- `per_asset_folder=true`：每个资产组独占一个文件夹（推荐，工业常态）。
+- `group_name_style`：资产组文件夹命名风格（默认 `pascal_case`，便于阅读）。
+- `subfolders`：按前缀（由资产 Class 推导，如 `SM/T/M/MI`）路由到子目录；空字符串表示放在资产组根目录。
+
+若未提供该代码块：系统按默认规则执行（每资产组文件夹 + `Textures/Materials/`）。
+
+### 7.4 UE 手测脚本（N2）
+
+1. 运行投递器：
+   - `python SourceData/AbilityKits/Python/hci_ingest_stage.py --input <你的测试资产目录> --source-app manual --suggest-target-root /Game/__HCI_Test/Incoming`
+2. UE：`HCIAbilityKit.IngestImportLatest`
+3. UE：`HCIAbilityKit.AgentChatUI`
+4. 输入：
+   - `帮我规范化刚导入的批次，并归档到 /Game/__HCI_Test/Organized`
+5. 审批卡：
+   - 预期能看到“多级目录分发”的提案（至少 Texture2D 进入 `Textures/` 子目录）
+6. 点击 `通过`：
+   - 预期资产真实移动、重命名、并 FixUp Redirectors，不出现引用断裂。
+
+## 8. Slice N3：混乱目录重整（依赖感知分组 + Shared 落点 + 可重复回归夹具）
+
+> N2 解决“刚导入批次”的组织问题，但真实项目里经常遇到“目录天然就乱了、历史遗留交错引用”的情况。N3 的目标是让 Asset Router 能在真实混乱目录下工作，并提供可重复回归的测试夹具（每次 Reset 还原混乱态）。
+
+### 8.1 第一性原理
+
+- “目录整理”不是字符串替换，而是**重排依赖图**：`StaticMesh -> Material(Instance) -> Texture`。
+- 资产会交叉引用，强行归到某一个组会造成冲突与误伤，因此需要 `Shared/` 落点。
+- 回归测试必须可重复：不能整理一次就没法再测，因此需要“一键恢复混乱态”。
+
+### 8.2 夹具命令（只影响 __HCI_Test，Seed 只读）
+
+1. `HCIAbilityKit.SeedChaosBuildSnapshot`
+   - 从 `/Game/Seed`（只读）挑选并复制 `<= 50` 个资产到：
+     - `/Game/__HCI_Test/Fixtures/SeedChaosSnapshot`
+2. `HCIAbilityKit.SeedChaosReset`
+   - 弹确认框后，仅删除并重建：
+     - `/Game/__HCI_Test/Incoming/SeedChaos`
+     - `/Game/__HCI_Test/Organized/SeedClean`
+   - 把 Snapshot 复制回 Incoming，并执行：
+     - 目录打散（分散到多个子目录）
+     - 名字变脏（例如 `SM_xxxxxxxx_final_v2`）
+   - 生成报告：
+     - `Saved/HCIAbilityKit/TestFixtures/SeedChaos/latest.json`
+
+### 8.3 路由策略（不新增 Planner 工具）
+
+- Planner 工具链保持不变：`ScanAssets -> NormalizeAssetNamingByMetadata`
+- `NormalizeAssetNamingByMetadata` 内部升级为依赖感知：
+  - 以 `StaticMesh/SkeletalMesh` 作为 Anchor（资产组锚点）
+  - 使用 `AssetRegistry` 依赖（Hard Dependencies）做传递归并
+  - 若某资源被多个 Anchor 引用，落到 `target_root/Shared/...`
+
+### 8.4 UE 手测脚本（N3）
+
+1. 首次生成快照：
+   - `HCIAbilityKit.SeedChaosBuildSnapshot`
+2. 每次回归重置：
+   - `HCIAbilityKit.SeedChaosReset`
+3. Agent 整理：
+   - `HCIAbilityKit.AgentChatUI`
+   - 输入：
+     - `扫描 /Game/__HCI_Test/Incoming/SeedChaos，然后按元数据规范命名并移动归档到 /Game/__HCI_Test/Organized/SeedClean。`
+4. 审批卡点击 `通过`：
+   - 预期能看到多个目标目录（含 `Shared/`），执行后结构稳定且不丢引用。

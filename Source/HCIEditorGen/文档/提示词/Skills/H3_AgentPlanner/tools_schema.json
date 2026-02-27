@@ -217,12 +217,19 @@
           ],
           "properties": {
             "asset_paths": {
-              "type": "array",
-              "minItems": 1,
-              "maxItems": 50,
-              "items": {
-                "$ref": "#/definitions/game_or_variable_path"
-              }
+              "anyOf": [
+                {
+                  "type": "array",
+                  "minItems": 1,
+                  "maxItems": 50,
+                  "items": {
+                    "$ref": "#/definitions/game_or_variable_path"
+                  }
+                },
+                {
+                  "$ref": "#/definitions/variable_template_string"
+                }
+              ]
             },
             "metadata_source": {
               "type": "string",

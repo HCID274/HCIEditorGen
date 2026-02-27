@@ -5172,10 +5172,12 @@ void FHCIAbilityKitAgentDemoConsoleCommands::Startup()
 	StartupIngestCommands();
 	StartupLlmCommands();
 	StartupReviewCommands();
+	StartupFixtureCommands();
 }
 
 void FHCIAbilityKitAgentDemoConsoleCommands::Shutdown()
 {
+	ShutdownFixtureCommands();
 	ShutdownReviewCommands();
 	ShutdownLlmCommands();
 	ShutdownIngestCommands();

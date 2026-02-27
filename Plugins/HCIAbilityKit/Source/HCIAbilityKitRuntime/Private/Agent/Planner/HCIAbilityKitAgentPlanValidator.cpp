@@ -422,6 +422,12 @@ static bool HCI_ValidateStringValue(
 	return true;
 }
 
+// Forward decl (used by args/schema validation and by optional field-level pipeline variables).
+static bool HCI_TryParseVariableTemplateReference(
+	const FString& InText,
+	FString& OutStepId,
+	FString& OutEvidenceKey);
+
 static bool HCI_ValidateArgsAgainstSchema(
 	const FHCIAbilityKitToolDescriptor& Tool,
 	const FHCIAbilityKitAgentPlanStep& Step,
@@ -497,6 +503,24 @@ static bool HCI_ValidateArgsAgainstSchema(
 		{
 			if (Value->Type != EJson::Array)
 			{
+				// Stage N4: allow field-level pipeline variable for NormalizeAssetNamingByMetadata.asset_paths, e.g.
+				// "asset_paths": "{{step_1_scan.asset_paths}}"
+				if (Tool.ToolName == TEXT("NormalizeAssetNamingByMetadata") &&
+					ArgKey.Equals(TEXT("asset_paths"), ESearchCase::CaseSensitive) &&
+					Value->Type == EJson::String)
+				{
+					FString Parsed;
+					if (Value->TryGetString(Parsed))
+					{
+						FString SourceStepId;
+						FString SourceEvidenceKey;
+						if (HCI_TryParseVariableTemplateReference(Parsed, SourceStepId, SourceEvidenceKey))
+						{
+							// The executor will resolve it to a concrete array before tool execution.
+							break;
+						}
+					}
+				}
 				return HCI_Fail(
 					OutResult,
 					HCI_IsLevelRiskSpecialArg(Tool.ToolName, ArgKey) ? TEXT("E4011") : TEXT("E4003"),
@@ -643,6 +667,19 @@ static int32 HCI_CountModifyTargets(const FHCIAbilityKitAgentPlanStep& Step)
 	if (AssetPathsValue && AssetPathsValue->IsValid() && (*AssetPathsValue)->Type == EJson::Array)
 	{
 		return (*AssetPathsValue)->AsArray().Num();
+	}
+	if (AssetPathsValue && AssetPathsValue->IsValid() && (*AssetPathsValue)->Type == EJson::String)
+	{
+		FString Raw;
+		if ((*AssetPathsValue)->TryGetString(Raw))
+		{
+			Raw.TrimStartAndEndInline();
+			// Conservative: a pipeline variable may expand up to the hard modify limit.
+			if (Raw.StartsWith(TEXT("{{")) && Raw.Contains(TEXT(".")) && Raw.EndsWith(TEXT("}}")))
+			{
+				return FHCIAbilityKitAgentExecutionGate::MaxAssetModifyLimit;
+			}
+		}
 	}
 
 	const TSharedPtr<FJsonValue>* AssetPathValue = Step.Args->Values.Find(TEXT("asset_path"));

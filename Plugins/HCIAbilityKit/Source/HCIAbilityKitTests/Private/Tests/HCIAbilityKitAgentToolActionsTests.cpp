@@ -604,6 +604,11 @@ bool FHCIAbilityKitNormalizeNamingExecuteTest::RunTest(const FString& Parameters
 		{
 			return Path.Contains(TEXT("/T_"));
 		});
+	const bool bHasTexturesSubdir = TargetAssets.ContainsByPredicate(
+		[](const FString& Path)
+		{
+			return Path.Contains(TEXT("/Textures/")) && Path.Contains(TEXT("/T_"));
+		});
 
 	TestTrue(TEXT("Normalize naming execute call should succeed"), bCallOk);
 	TestTrue(TEXT("Normalize naming execute result should succeed"), Result.bSucceeded);
@@ -616,6 +621,7 @@ bool FHCIAbilityKitNormalizeNamingExecuteTest::RunTest(const FString& Parameters
 		FCString::Atoi(*Result.Evidence.FindRef(TEXT("affected_count"))) > 0);
 	TestTrue(TEXT("Organized root should contain a SM_ asset"), bHasMeshPrefix);
 	TestTrue(TEXT("Organized root should contain a T_ asset"), bHasTexturePrefix);
+	TestTrue(TEXT("Organized routing should place at least one texture under a Textures subdir"), bHasTexturesSubdir);
 	TestFalse(TEXT("Original mesh path should no longer exist"), UEditorAssetLibrary::DoesAssetExist(MeshAssetPath));
 	TestFalse(TEXT("Original texture path should no longer exist"), UEditorAssetLibrary::DoesAssetExist(TextureAssetPath));
 

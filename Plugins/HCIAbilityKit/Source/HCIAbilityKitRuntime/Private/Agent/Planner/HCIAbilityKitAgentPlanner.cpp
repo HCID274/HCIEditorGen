@@ -398,10 +398,15 @@ static bool HCI_IsGamePathTerminalChar(const TCHAR Ch)
 static bool HCI_TryExtractFirstGamePathToken(const FString& UserText, FString& OutToken)
 {
 	OutToken.Reset();
-	const int32 Start = UserText.Find(TEXT("/Game/"), ESearchCase::IgnoreCase);
+	int32 Start = UserText.Find(TEXT("/Game/"), ESearchCase::IgnoreCase);
 	if (Start == INDEX_NONE)
 	{
-		return false;
+		// Accept common user typo: missing leading slash ("Game/...").
+		Start = UserText.Find(TEXT("Game/"), ESearchCase::IgnoreCase);
+		if (Start == INDEX_NONE)
+		{
+			return false;
+		}
 	}
 
 	int32 End = Start;
@@ -411,6 +416,10 @@ static bool HCI_TryExtractFirstGamePathToken(const FString& UserText, FString& O
 	}
 
 	OutToken = UserText.Mid(Start, End - Start).TrimStartAndEnd();
+	if (OutToken.StartsWith(TEXT("Game/"), ESearchCase::IgnoreCase))
+	{
+		OutToken = FString::Printf(TEXT("/%s"), *OutToken);
+	}
 	return !OutToken.IsEmpty();
 }
 
@@ -421,10 +430,14 @@ static void HCI_ExtractAllGamePathTokens(const FString& UserText, TArray<FString
 	int32 SearchFrom = 0;
 	while (SearchFrom < UserText.Len())
 	{
-		const int32 Start = UserText.Find(TEXT("/Game/"), ESearchCase::IgnoreCase, ESearchDir::FromStart, SearchFrom);
+		int32 Start = UserText.Find(TEXT("/Game/"), ESearchCase::IgnoreCase, ESearchDir::FromStart, SearchFrom);
 		if (Start == INDEX_NONE)
 		{
-			return;
+			Start = UserText.Find(TEXT("Game/"), ESearchCase::IgnoreCase, ESearchDir::FromStart, SearchFrom);
+			if (Start == INDEX_NONE)
+			{
+				return;
+			}
 		}
 
 		int32 End = Start;
@@ -434,6 +447,10 @@ static void HCI_ExtractAllGamePathTokens(const FString& UserText, TArray<FString
 		}
 
 		FString Token = UserText.Mid(Start, End - Start).TrimStartAndEnd();
+		if (Token.StartsWith(TEXT("Game/"), ESearchCase::IgnoreCase))
+		{
+			Token = FString::Printf(TEXT("/%s"), *Token);
+		}
 		if (!Token.IsEmpty())
 		{
 			OutTokens.Add(MoveTemp(Token));
@@ -595,9 +612,8 @@ static TSharedPtr<FJsonObject> HCI_MakeNamingArgsWithPipeline(
 	const FString& TargetRoot)
 {
 	TSharedPtr<FJsonObject> Args = MakeShared<FJsonObject>();
-	TArray<TSharedPtr<FJsonValue>> AssetPaths;
-	AssetPaths.Add(MakeShared<FJsonValueString>(FString::Printf(TEXT("{{%s.asset_paths}}"), *ScanStepId)));
-	Args->SetArrayField(TEXT("asset_paths"), AssetPaths);
+	// Field-level pipeline variable: executor will resolve it into a concrete string array before tool execution.
+	Args->SetStringField(TEXT("asset_paths"), FString::Printf(TEXT("{{%s.asset_paths}}"), *ScanStepId));
 	Args->SetStringField(TEXT("metadata_source"), TEXT("auto"));
 	Args->SetStringField(TEXT("prefix_mode"), TEXT("auto_by_asset_class"));
 	Args->SetStringField(TEXT("target_root"), TargetRoot.IsEmpty() ? TEXT("/Game/Art/Organized") : TargetRoot);
@@ -1242,6 +1258,10 @@ static bool HCI_BuildKeywordPlan(
 	const bool bDirectoryNamingIntent =
 		HCI_TextContainsAny(Text, {TEXT("整理"), TEXT("归档"), TEXT("重命名"), TEXT("命名"), TEXT("organize"), TEXT("archive"), TEXT("rename"), TEXT("naming")}) &&
 		HCI_TextContainsAny(Text, {TEXT("目录"), TEXT("文件夹"), TEXT("folder"), TEXT("directory")});
+	const bool bExplicitPathNamingIntent =
+		HCI_TextContainsAny(Text, {TEXT("整理"), TEXT("归档"), TEXT("重命名"), TEXT("命名"), TEXT("规范"), TEXT("规范化"), TEXT("organize"), TEXT("archive"), TEXT("rename"), TEXT("naming")}) &&
+		(HCI_TextContainsAny(Text, {TEXT("扫描"), TEXT("scan"), TEXT("inspect")}) || UserText.Contains(TEXT("/Game/"), ESearchCase::IgnoreCase) || UserText.Contains(TEXT("Game/"), ESearchCase::IgnoreCase)) &&
+		(UserText.Contains(TEXT("/Game/"), ESearchCase::IgnoreCase) || UserText.Contains(TEXT("Game/"), ESearchCase::IgnoreCase));
 
 	const bool bLevelRiskIntent =
 		HCI_TextContainsAny(Text, {TEXT("关卡"), TEXT("场景"), TEXT("level")}) &&
@@ -1296,10 +1316,10 @@ static bool HCI_BuildKeywordPlan(
 			OutRouteReason,
 			OutError);
 	}
-	else if (bNamingIntent)
+	else if (bNamingIntent || bExplicitPathNamingIntent)
 	{
 		OutPlan.Intent = TEXT("normalize_temp_assets_by_metadata");
-		OutRouteReason = TEXT("naming_traceability_temp_assets");
+		OutRouteReason = bNamingIntent ? TEXT("naming_traceability_temp_assets") : TEXT("naming_traceability_explicit_paths");
 
 		// If user provided explicit /Game/... paths, prefer them over the default /Game/Temp.
 		TArray<FString> PathTokens;

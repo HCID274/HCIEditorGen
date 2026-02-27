@@ -65,6 +65,7 @@ struct FHCIAbilityKitAgentPlanExecutionReport
 	int32 ScannedAssets = 0;
 	FString SummaryText;
 	FString SearchPathEvidenceText;
+	TArray<FHCIAbilityKitAgentExecutorStepResult> StepResults;
 	TArray<FHCIAbilityKitAgentExecutionLocateTarget> LocateTargets;
 };
 

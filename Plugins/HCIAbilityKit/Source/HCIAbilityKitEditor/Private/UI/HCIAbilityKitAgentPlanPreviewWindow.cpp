@@ -886,6 +886,7 @@ bool FHCIAbilityKitAgentPlanPreviewWindow::ExecutePlan(
 		ScannedLevelActors,
 		RiskyLevelActors);
 	OutReport.SearchPathEvidenceText = BuildSearchPathEvidenceSummary(RunResult.StepResults);
+	OutReport.StepResults = RunResult.StepResults;
 	BuildLocateTargetsFromStepResults(RunResult.StepResults, OutReport.LocateTargets);
 
 	UE_LOG(

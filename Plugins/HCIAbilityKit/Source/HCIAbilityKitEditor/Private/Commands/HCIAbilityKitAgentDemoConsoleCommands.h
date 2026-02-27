@@ -36,6 +36,8 @@ private:
 	TUniquePtr<FAutoConsoleCommand> IngestImportLatestCommand;
 	TUniquePtr<FAutoConsoleCommand> SeedChaosBuildSnapshotCommand;
 	TUniquePtr<FAutoConsoleCommand> SeedChaosResetCommand;
+	TUniquePtr<FAutoConsoleCommand> MatLinkBuildSnapshotCommand;
+	TUniquePtr<FAutoConsoleCommand> MatLinkResetCommand;
 	TUniquePtr<FAutoConsoleCommand> AgentPlanWithLLMDemoCommand;
 	TUniquePtr<FAutoConsoleCommand> AgentPlanWithRealLLMDemoCommand;
 	TUniquePtr<FAutoConsoleCommand> AgentPlanWithRealLLMProbeCommand;

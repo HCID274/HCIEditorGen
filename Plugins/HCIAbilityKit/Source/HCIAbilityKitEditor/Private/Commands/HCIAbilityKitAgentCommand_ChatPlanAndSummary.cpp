@@ -362,6 +362,7 @@ void UHCIAbilityKitAgentCommand_ChatPlanAndSummary::ExecuteAsync(
 	const bool bAccepted = HCI_RequestAgentPlanPreviewFromUi(
 		UserText,
 		SourceTag,
+		Context.ExtraEnvContextText,
 		false,
 		[Complete](const bool bSuccess,
 			const FString& RequestText,

@@ -19,6 +19,7 @@
 #include "Widgets/Layout/SBorder.h"
 #include "Widgets/Layout/SBox.h"
 #include "Widgets/Layout/SScrollBox.h"
+#include "Widgets/Layout/SSpacer.h"
 #include "Widgets/SBoxPanel.h"
 #include "Widgets/SCompoundWidget.h"
 #include "Widgets/SWindow.h"
@@ -135,7 +136,7 @@ struct FHCIAbilityKitChatBubbleMessage
 	bool bShowThrobber = false;
 	bool bShowReviewActions = false;
 	bool bShowPreviewButton = false;
-	TArray<FString> ReviewLines;
+	FHCIAbilityKitAgentUiApprovalCard ApprovalCard;
 	TArray<FHCIAbilityKitAgentUiLocateTarget> LocateTargets;
 };
 
@@ -436,6 +437,18 @@ private:
 			return;
 		}
 
+		// If we are waiting for user approval, suppress "plan summary" style chatter in the UI.
+		if (UHCIAbilityKitAgentSubsystem* AgentSubsystem = GetAgentSubsystem())
+		{
+			if (AgentSubsystem->GetCurrentState() == EHCIAbilityKitAgentSessionState::AwaitUserConfirm)
+			{
+				if (Text.StartsWith(TEXT("摘要：")) || Text.Contains(TEXT("|风险：")) || Text.Contains(TEXT("|建议：")))
+				{
+					return;
+				}
+			}
+		}
+
 		if (CachedSummaryText == Text)
 		{
 			return; // 避免和 OnSummaryReceived 重复展示
@@ -458,6 +471,15 @@ private:
 
 	void HandleSubsystemSummaryReceived(const FString& SummaryText)
 	{
+		// Write plans should not show "plan summary" noise before approval.
+		if (UHCIAbilityKitAgentSubsystem* AgentSubsystem = GetAgentSubsystem())
+		{
+			if (AgentSubsystem->GetCurrentState() == EHCIAbilityKitAgentSessionState::AwaitUserConfirm)
+			{
+				return;
+			}
+		}
+
 		CachedSummaryText = SummaryText.TrimStartAndEnd();
 		TryFinalizeThinkingBubbleIfReady();
 	}
@@ -467,10 +489,16 @@ private:
 		RefreshThinkingBubbleFromSubsystem();
 	}
 
-	void HandleSubsystemSessionStateChanged(EHCIAbilityKitAgentSessionState)
+	void HandleSubsystemSessionStateChanged(EHCIAbilityKitAgentSessionState NewState)
 	{
 		RefreshThinkingBubbleFromSubsystem();
 		RefreshReviewCardBubbleFromSubsystem();
+		if (NewState == EHCIAbilityKitAgentSessionState::AwaitUserConfirm)
+		{
+			// Replace the placeholder bubble with a short, decision-focused sentence.
+			CachedSummaryText.Reset();
+			FinalizeThinkingBubbleWithText(TEXT("需要你确认后才会修改资产。"));
+		}
 		TryFinalizeThinkingBubbleIfReady();
 	}
 
@@ -547,7 +575,7 @@ private:
 		Msg.bShowThrobber = false;
 		Msg.bShowReviewActions = false;
 		Msg.bShowPreviewButton = false;
-		Msg.ReviewLines.Reset();
+		Msg.ApprovalCard = FHCIAbilityKitAgentUiApprovalCard();
 		Msg.LocateTargets.Reset();
 		ActiveThinkingBubbleIndex = INDEX_NONE;
 
@@ -664,8 +692,8 @@ private:
 			return;
 		}
 
-		TArray<FString> CardLines;
-		if (!AgentSubsystem->BuildLastPlanCardLines(CardLines) || CardLines.Num() <= 0)
+		FHCIAbilityKitAgentUiApprovalCard Card;
+		if (!AgentSubsystem->BuildLastPlanApprovalCard(Card) || Card.KeyAction.IsEmpty())
 		{
 			return;
 		}
@@ -687,10 +715,10 @@ private:
 
 		TargetMsg->Role = EHCIAbilityKitChatBubbleRole::Assistant;
 		TargetMsg->Kind = EHCIAbilityKitChatBubbleKind::ReviewCard;
-		TargetMsg->Text = TEXT("待确认执行（写操作）");
-		TargetMsg->ReviewLines = CardLines;
+		TargetMsg->Text = Card.Title;
+		TargetMsg->ApprovalCard = Card;
 		TargetMsg->bShowReviewActions = true;
-		TargetMsg->bShowPreviewButton = true;
+		TargetMsg->bShowPreviewButton = false;
 		RebuildChatListWidgets();
 	}
 
@@ -733,9 +761,9 @@ private:
 	{
 		const FHCIAbilityKitChatBubbleMessage& Msg = ChatMessages[MessageIndex];
 		const bool bIsUser = Msg.Role == EHCIAbilityKitChatBubbleRole::User;
-		const FLinearColor BubbleColor = bIsUser
-			? FLinearColor(0.14f, 0.38f, 0.93f, 1.0f)
-			: FLinearColor(0.17f, 0.17f, 0.19f, 1.0f);
+		const FLinearColor BubbleColor = (Msg.Kind == EHCIAbilityKitChatBubbleKind::ReviewCard)
+			? FLinearColor(0.14f, 0.14f, 0.16f, 1.0f)
+			: (bIsUser ? FLinearColor(0.12f, 0.34f, 0.86f, 1.0f) : FLinearColor(0.12f, 0.12f, 0.14f, 1.0f));
 
 		TSharedRef<SVerticalBox> ContentBox = SNew(SVerticalBox);
 
@@ -780,84 +808,94 @@ private:
 		}
 		else if (Msg.Kind == EHCIAbilityKitChatBubbleKind::ReviewCard)
 		{
+			const FHCIAbilityKitAgentUiApprovalCard& Card = Msg.ApprovalCard;
+
 			ContentBox->AddSlot().AutoHeight()
 			[
 				SNew(STextBlock)
-				.Text(FText::FromString(Msg.Text))
+				.Text(FText::FromString(Card.Title.IsEmpty() ? Msg.Text : Card.Title))
 				.AutoWrapText(true)
 				.WrapTextAt(560.0f)
 				.ColorAndOpacity(FSlateColor(FLinearColor::White))
 			];
 
-			for (int32 LineIndex = 0; LineIndex < Msg.ReviewLines.Num(); ++LineIndex)
-			{
-				ContentBox->AddSlot().AutoHeight().Padding(0.0f, 8.0f, 0.0f, 0.0f)
+			ContentBox->AddSlot().AutoHeight().Padding(0.0f, 8.0f, 0.0f, 0.0f)
+			[
+				SNew(SBorder)
+				.BorderImage(FAppStyle::GetBrush("WhiteBrush"))
+				.BorderBackgroundColor(FLinearColor(0.24f, 0.12f, 0.12f, 1.0f))
+				.Padding(FMargin(10.0f, 8.0f))
 				[
-					SNew(SBorder)
-					.BorderImage(FAppStyle::GetBrush("WhiteBrush"))
-					.BorderBackgroundColor(FLinearColor(0.23f, 0.23f, 0.26f, 1.0f))
-					.Padding(FMargin(10.0f, 8.0f))
-					[
-						SNew(SHorizontalBox)
-						+ SHorizontalBox::Slot()
-						.FillWidth(1.0f)
-						.VAlign(VAlign_Center)
-						.Padding(0.0f, 0.0f, 8.0f, 0.0f)
-						[
-							SNew(STextBlock)
-							.Text(FText::FromString(Msg.ReviewLines[LineIndex]))
-							.AutoWrapText(true)
-							.WrapTextAt(440.0f)
-							.ColorAndOpacity(FSlateColor(FLinearColor(0.93f, 0.93f, 0.95f, 1.0f)))
-						]
-						+ SHorizontalBox::Slot()
-						.AutoWidth()
-						.VAlign(VAlign_Center)
-						.Padding(0.0f, 0.0f, 4.0f, 0.0f)
-						[
-							SNew(SButton)
-							.IsEnabled(Msg.bShowReviewActions)
-							.ToolTipText(FText::FromString(TEXT("取消本次待确认计划（当前为整单取消）")))
-							.ButtonColorAndOpacity(FLinearColor(0.32f, 0.18f, 0.18f, 1.0f))
-							.ContentPadding(FMargin(6.0f))
-							.OnClicked(this, &SHCIAbilityKitAgentChatWindow::HandleCancelPendingPlanClicked)
-							[
-								SNew(SImage)
-								.Image(FAppStyle::GetBrush("Icons.X"))
-								.ColorAndOpacity(FSlateColor(FLinearColor(1.0f, 0.85f, 0.85f, 1.0f)))
-							]
-						]
-						+ SHorizontalBox::Slot()
-						.AutoWidth()
-						.VAlign(VAlign_Center)
-						[
-							SNew(SButton)
-							.IsEnabled(Msg.bShowReviewActions)
-							.ToolTipText(FText::FromString(TEXT("确认执行待确认计划（当前为整单执行）")))
-							.ButtonColorAndOpacity(FLinearColor(0.16f, 0.30f, 0.20f, 1.0f))
-							.ContentPadding(FMargin(6.0f))
-							.OnClicked(this, &SHCIAbilityKitAgentChatWindow::HandleCommitLastPlanClicked)
-							[
-								SNew(SImage)
-								.Image(FAppStyle::GetBrush("Icons.Check"))
-								.ColorAndOpacity(FSlateColor(FLinearColor(0.84f, 1.0f, 0.88f, 1.0f)))
-							]
-						]
-					]
-				];
-			}
+					SNew(STextBlock)
+					.Text(FText::FromString(Card.KeyAction))
+					.AutoWrapText(true)
+					.WrapTextAt(560.0f)
+					.ColorAndOpacity(FSlateColor(FLinearColor(1.0f, 0.88f, 0.88f, 1.0f)))
+				]
+			];
 
-			if (Msg.bShowReviewActions)
+			if (!Card.ImpactHint.IsEmpty())
 			{
 				ContentBox->AddSlot().AutoHeight().Padding(0.0f, 8.0f, 0.0f, 0.0f)
 				[
 					SNew(STextBlock)
-					.Text(FText::FromString(TEXT("提示：当前执行策略为整单确认/取消（All-or-Nothing）。")))
+					.Text(FText::FromString(Card.ImpactHint))
 					.AutoWrapText(true)
 					.WrapTextAt(560.0f)
-					.ColorAndOpacity(FSlateColor(FLinearColor(0.80f, 0.80f, 0.84f, 1.0f)))
+					.ColorAndOpacity(FSlateColor(FLinearColor(0.88f, 0.88f, 0.92f, 1.0f)))
 				];
 			}
+
+			if (!Card.Warning.IsEmpty())
+			{
+				ContentBox->AddSlot().AutoHeight().Padding(0.0f, 6.0f, 0.0f, 0.0f)
+				[
+					SNew(STextBlock)
+					.Text(FText::FromString(FString::Printf(TEXT("注意：%s"), *Card.Warning)))
+					.AutoWrapText(true)
+					.WrapTextAt(560.0f)
+					.ColorAndOpacity(FSlateColor(FLinearColor(1.0f, 0.80f, 0.80f, 1.0f)))
+				];
+			}
+
+			ContentBox->AddSlot().AutoHeight().Padding(0.0f, 10.0f, 0.0f, 0.0f)
+			[
+				SNew(SHorizontalBox)
+				+ SHorizontalBox::Slot()
+				.FillWidth(1.0f)
+				[
+					SNew(SSpacer)
+				]
+				+ SHorizontalBox::Slot()
+				.AutoWidth()
+				.Padding(0.0f, 0.0f, 8.0f, 0.0f)
+				[
+					SNew(SButton)
+					.IsEnabled(Msg.bShowReviewActions)
+					.ButtonColorAndOpacity(FLinearColor(0.56f, 0.16f, 0.16f, 1.0f))
+					.ContentPadding(FMargin(14.0f, 8.0f))
+					.OnClicked(this, &SHCIAbilityKitAgentChatWindow::HandleCancelPendingPlanClicked)
+					[
+						SNew(STextBlock)
+						.Text(FText::FromString(TEXT("打回")))
+						.ColorAndOpacity(FSlateColor(FLinearColor::White))
+					]
+				]
+				+ SHorizontalBox::Slot()
+				.AutoWidth()
+				[
+					SNew(SButton)
+					.IsEnabled(Msg.bShowReviewActions)
+					.ButtonColorAndOpacity(FLinearColor(0.16f, 0.46f, 0.24f, 1.0f))
+					.ContentPadding(FMargin(14.0f, 8.0f))
+					.OnClicked(this, &SHCIAbilityKitAgentChatWindow::HandleCommitLastPlanClicked)
+					[
+						SNew(STextBlock)
+						.Text(FText::FromString(TEXT("通过")))
+						.ColorAndOpacity(FSlateColor(FLinearColor::White))
+					]
+				]
+			];
 		}
 		else if (Msg.Kind == EHCIAbilityKitChatBubbleKind::LocateTargets)
 		{

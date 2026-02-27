@@ -12,9 +12,11 @@ public:
 
 private:
 	void StartupCoreCommands();
+	void StartupIngestCommands();
 	void StartupLlmCommands();
 	void StartupReviewCommands();
 	void ShutdownCoreCommands();
+	void ShutdownIngestCommands();
 	void ShutdownLlmCommands();
 	void ShutdownReviewCommands();
 
@@ -28,6 +30,8 @@ private:
 	TUniquePtr<FAutoConsoleCommand> AgentPlanDemoJsonCommand;
 	TUniquePtr<FAutoConsoleCommand> AgentPlanPreviewUiCommand;
 	TUniquePtr<FAutoConsoleCommand> AgentChatUiCommand;
+	TUniquePtr<FAutoConsoleCommand> IngestDumpLatestCommand;
+	TUniquePtr<FAutoConsoleCommand> IngestImportLatestCommand;
 	TUniquePtr<FAutoConsoleCommand> AgentPlanWithLLMDemoCommand;
 	TUniquePtr<FAutoConsoleCommand> AgentPlanWithRealLLMDemoCommand;
 	TUniquePtr<FAutoConsoleCommand> AgentPlanWithRealLLMProbeCommand;

@@ -258,8 +258,14 @@ static bool HCI_TryParseOptionalUiPresentation(
 			return false;
 		}
 
-		bOutHasValue = true;
-		OutValue = Parsed;
+		Parsed.TrimStartAndEndInline();
+		// Be resilient to LLMs outputting empty ui_presentation fields; treat empty as "not provided"
+		// so validators can fall back to C++ summaries instead of failing the whole plan.
+		if (!Parsed.IsEmpty())
+		{
+			bOutHasValue = true;
+			OutValue = MoveTemp(Parsed);
+		}
 		return true;
 	};
 
@@ -377,7 +383,12 @@ static bool HCI_IsGamePathTerminalChar(const TCHAR Ch)
 		   Ch == TCHAR('"') ||
 		   Ch == TCHAR('\'') ||
 		   Ch == TCHAR(',') ||
+		   Ch == TCHAR(0xFF0C) || // '，'
 		   Ch == TCHAR(';') ||
+		   Ch == TCHAR(0xFF1B) || // '；'
+		   Ch == TCHAR(':') ||
+		   Ch == TCHAR(0xFF1A) || // '：'
+		   Ch == TCHAR(0x3002) || // '。'
 		   Ch == TCHAR(')') ||
 		   Ch == TCHAR('(') ||
 		   Ch == TCHAR(']') ||
@@ -401,6 +412,35 @@ static bool HCI_TryExtractFirstGamePathToken(const FString& UserText, FString& O
 
 	OutToken = UserText.Mid(Start, End - Start).TrimStartAndEnd();
 	return !OutToken.IsEmpty();
+}
+
+static void HCI_ExtractAllGamePathTokens(const FString& UserText, TArray<FString>& OutTokens)
+{
+	OutTokens.Reset();
+
+	int32 SearchFrom = 0;
+	while (SearchFrom < UserText.Len())
+	{
+		const int32 Start = UserText.Find(TEXT("/Game/"), ESearchCase::IgnoreCase, ESearchDir::FromStart, SearchFrom);
+		if (Start == INDEX_NONE)
+		{
+			return;
+		}
+
+		int32 End = Start;
+		while (End < UserText.Len() && !HCI_IsGamePathTerminalChar(UserText[End]))
+		{
+			++End;
+		}
+
+		FString Token = UserText.Mid(Start, End - Start).TrimStartAndEnd();
+		if (!Token.IsEmpty())
+		{
+			OutTokens.Add(MoveTemp(Token));
+		}
+
+		SearchFrom = FMath::Max(End, Start + 5);
+	}
 }
 
 static FString HCI_DeriveDirectoryFromPathToken(const FString& PathToken)
@@ -550,16 +590,17 @@ static bool HCI_TryBuildAutoEnvContext(
 	return true;
 }
 
-static TSharedPtr<FJsonObject> HCI_MakeNamingArgs()
+static TSharedPtr<FJsonObject> HCI_MakeNamingArgsWithPipeline(
+	const FString& ScanStepId,
+	const FString& TargetRoot)
 {
 	TSharedPtr<FJsonObject> Args = MakeShared<FJsonObject>();
 	TArray<TSharedPtr<FJsonValue>> AssetPaths;
-	AssetPaths.Add(MakeShared<FJsonValueString>(TEXT("/Game/Temp/SM_RockTemp_01.SM_RockTemp_01")));
-	AssetPaths.Add(MakeShared<FJsonValueString>(TEXT("/Game/Temp/T_DiffuseTemp_01.T_DiffuseTemp_01")));
+	AssetPaths.Add(MakeShared<FJsonValueString>(FString::Printf(TEXT("{{%s.asset_paths}}"), *ScanStepId)));
 	Args->SetArrayField(TEXT("asset_paths"), AssetPaths);
 	Args->SetStringField(TEXT("metadata_source"), TEXT("auto"));
 	Args->SetStringField(TEXT("prefix_mode"), TEXT("auto_by_asset_class"));
-	Args->SetStringField(TEXT("target_root"), TEXT("/Game/Art/Organized"));
+	Args->SetStringField(TEXT("target_root"), TargetRoot.IsEmpty() ? TEXT("/Game/Art/Organized") : TargetRoot);
 	return Args;
 }
 
@@ -1260,12 +1301,26 @@ static bool HCI_BuildKeywordPlan(
 		OutPlan.Intent = TEXT("normalize_temp_assets_by_metadata");
 		OutRouteReason = TEXT("naming_traceability_temp_assets");
 
+		// If user provided explicit /Game/... paths, prefer them over the default /Game/Temp.
+		TArray<FString> PathTokens;
+		HCI_ExtractAllGamePathTokens(UserText, PathTokens);
+		const FString ScanRoot = PathTokens.Num() > 0 ? HCI_DetermineEnvScanRoot(PathTokens[0]) : FString();
+		FString TargetRoot;
+		if (PathTokens.Num() > 1)
+		{
+			TargetRoot = HCI_DeriveDirectoryFromPathToken(PathTokens.Last());
+		}
+		if (TargetRoot.IsEmpty())
+		{
+			TargetRoot = TEXT("/Game/Art/Organized");
+		}
+
 		FHCIAbilityKitAgentPlanStep& ScanStep = OutPlan.Steps.AddDefaulted_GetRef();
 		if (!HCI_StepFromTool(
 				ToolRegistry,
-				TEXT("s1"),
+				TEXT("step_1_scan"),
 					TEXT("ScanAssets"),
-					HCI_MakeScanAssetsArgs(),
+					ScanRoot.IsEmpty() ? HCI_MakeScanAssetsArgs() : HCI_MakeScanAssetsArgsWithDirectory(ScanRoot),
 					{TEXT("scan_root"), TEXT("asset_count"), TEXT("asset_paths"), TEXT("result")},
 					ScanStep,
 					OutError))
@@ -1276,9 +1331,9 @@ static bool HCI_BuildKeywordPlan(
 		FHCIAbilityKitAgentPlanStep& Step = OutPlan.Steps.AddDefaulted_GetRef();
 		if (!HCI_StepFromTool(
 				ToolRegistry,
-				TEXT("s2"),
+				TEXT("step_2_normalize"),
 					TEXT("NormalizeAssetNamingByMetadata"),
-					HCI_MakeNamingArgs(),
+					HCI_MakeNamingArgsWithPipeline(TEXT("step_1_scan"), TargetRoot),
 					{TEXT("result"), TEXT("proposed_renames"), TEXT("proposed_moves"), TEXT("affected_count")},
 					Step,
 					OutError))
@@ -1698,6 +1753,16 @@ static void HCI_StartAsyncRealHttpAttempt(const TSharedRef<FHCIAbilityKitAsyncPl
 			State->EnvContextText,
 			State->EnvContextAssetCount,
 			State->bEnvContextInjected);
+
+		const FString Extra = State->Options.ExtraEnvContextText.TrimStartAndEnd();
+		if (!Extra.IsEmpty())
+		{
+			if (!State->EnvContextText.TrimStartAndEnd().IsEmpty())
+			{
+				State->EnvContextText += TEXT("\n");
+			}
+			State->EnvContextText += Extra;
+		}
 	}
 
 	FString SystemPrompt;

@@ -34,6 +34,7 @@ Step 5 - JSON Generation:
 - `expected_evidence` MUST be a non-empty string array.
 - `ui_presentation` SHOULD be provided for each step; at minimum include `step_summary`.
 - `ui_presentation.step_summary` should be a short human-readable phrase (for artists), not raw `tool_name + args`.
+- `ui_presentation.intent_reason` SHOULD be filled for each step, explaining why this step is needed or why an exception is granted.
 - `ui_presentation.risk_warning` should be filled for write/destructive steps; omit for ordinary read-only steps.
 - For `SetTextureMaxSize.asset_paths` / `SetMeshLODGroup.asset_paths`, you MUST use pipeline input from `ScanAssets` evidence (`{{step_x.asset_paths}}`).
 - For `intent = "batch_fix_asset_compliance"`, plan MUST contain at least one write step (`SetTextureMaxSize` or `SetMeshLODGroup`).
@@ -41,7 +42,15 @@ Step 5 - JSON Generation:
 - `fallback_scan_assets` is NOT allowed for pure chat.
 - If `ENV_CONTEXT` contains a file list, treat that file list as the ONLY source of truth for concrete asset paths in `RenameAsset`/`MoveAsset`/`NormalizeAssetNamingByMetadata`.
 - Never fabricate asset paths that are not present in `ENV_CONTEXT` when file list is available.
-- `NormalizeAssetNamingByMetadata` / `RenameAsset` / `MoveAsset` are ALLOWED only when `ENV_CONTEXT` already provides concrete asset file list.
+- `NormalizeAssetNamingByMetadata` / `RenameAsset` / `MoveAsset` are ALLOWED only when you have concrete UE asset paths from ONE of:
+  - `ENV_CONTEXT` (explicit asset path list), OR
+  - a `ScanAssets` step output (`{{step_x.asset_paths}}`) within the same plan.
+- If `ENV_CONTEXT` contains an `ingest_batch` block with a line `suggested_unreal_target_root: /Game/...` and user refers to "刚导入/最新批次/latest ingest batch", prefer using that target root as the directory scope for `ScanAssets` follow-ups.
+- When `ingest_batch` provides `suggested_unreal_target_root`, you MUST obtain concrete UE asset paths via `ScanAssets` on that directory, then feed `{{step_scan.asset_paths}}` into `NormalizeAssetNamingByMetadata.asset_paths` (or into `SetTextureMaxSize/SetMeshLODGroup`); do NOT attempt to rename/move assets by guessing `/Game/...` paths from filenames.
+
+- If `ingest_batch.suggested_unreal_target_root` is available and user intent is to "规范化/归档/整理/重命名/移动 刚导入/最新批次":
+  - This is actionable (NOT pure chat).
+  - You MUST output a plan that starts with `ScanAssets` on `ingest_batch.suggested_unreal_target_root` and then performs the requested write steps using pipeline variables.
 - If `ENV_CONTEXT` is empty and user explicitly requests modification, you MUST still output a modification-capable pipeline plan:
   - first produce a `ScanAssets` step;
   - then a write step that consumes `{{step_scan.asset_paths}}`;
@@ -111,6 +120,13 @@ Step 5 - JSON Generation:
     - if ENV_CONTEXT has files: `NormalizeAssetNamingByMetadata`
     - if ENV_CONTEXT empty and path known: `ScanAssets` (discovery only)
     - if ENV_CONTEXT empty and path unknown: `SearchPath` -> `ScanAssets` (discovery only)
+- Naming/archiving for latest ingest batch:
+  - when `ENV_CONTEXT` includes an `ingest_batch` block and user mentions "刚导入/最新批次":
+    - `intent = "normalize_ingest_batch_by_metadata"`
+    - `route_reason = "ingest_batch_naming_archive"`
+    - required chain:
+      - `step_1_scan` -> `ScanAssets` with `{"directory":"<ENV_CONTEXT.ingest_batch[0].suggested_unreal_target_root>"}` (use the path from ENV_CONTEXT verbatim)
+      - `step_2_normalize` -> `NormalizeAssetNamingByMetadata` with `asset_paths=["{{step_1_scan.asset_paths}}"]`, `metadata_source="auto"`, `prefix_mode="auto_by_asset_class"`, `target_root` = user's requested archive target (must be `/Game/...`)
 - Level risk scan:
   - `intent = "scan_level_mesh_risks"`
   - `route_reason = "level_risk_collision_material"`

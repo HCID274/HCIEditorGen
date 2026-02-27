@@ -69,6 +69,14 @@ DECLARE_MULTICAST_DELEGATE_OneParam(FHCIAbilityKitAgentProgressStateEvent, const
 DECLARE_MULTICAST_DELEGATE(FHCIAbilityKitAgentLocateTargetsChangedEvent);
 DECLARE_MULTICAST_DELEGATE_OneParam(FHCIAbilityKitAgentActivityHintEvent, const FString& /*HintText*/);
 
+struct FHCIAbilityKitAgentUiApprovalCard
+{
+	FString Title;
+	FString KeyAction;
+	FString ImpactHint;
+	FString Warning;
+};
+
 /**
  * Agent 聊天编排入口：统一受理 UI 输入并分发命令。
  */
@@ -89,6 +97,7 @@ public:
 	bool CanCommitLastPlanFromChat() const;
 	bool CanCancelPendingPlanFromChat() const;
 	bool BuildLastPlanCardLines(TArray<FString>& OutLines) const;
+	bool BuildLastPlanApprovalCard(FHCIAbilityKitAgentUiApprovalCard& OutCard) const;
 	void GetCurrentProgressState(FHCIAbilityKitAgentUiProgressState& OutState) const;
 	void GetCurrentActivityHint(FString& OutHint) const;
 	void GetLastExecutionLocateTargets(TArray<FHCIAbilityKitAgentUiLocateTarget>& OutTargets) const;

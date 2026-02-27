@@ -42,6 +42,9 @@ struct HCIABILITYKITRUNTIME_API FHCIAbilityKitAgentPlannerBuildOptions
 	bool bForceDirectoryScanFirst = true;
 	bool bEnableAutoEnvContextScan = true;
 	FString EnvContextDefaultScanRoot;
+	// Optional extra context injected into the prompt ENV_CONTEXT. Intended for structured external signals
+	// (e.g. latest ingest batch manifest summary) to reduce user-side "context engineering".
+	FString ExtraEnvContextText;
 	TFunction<bool(const FString&, TArray<FHCIAbilityKitAgentPlannerEnvAssetEntry>&, FString&)> ScanAssetsForEnvContext;
 	int32 LlmHttpTimeoutMs = 12000;
 	bool bLlmEnableThinking = false;

@@ -23,10 +23,13 @@ void HCI_RunAbilityKitAgentPlanDemoCommand(const TArray<FString>& Args);
 void HCI_RunAbilityKitAgentPlanDemoJsonCommand(const TArray<FString>& Args);
 void HCI_RunAbilityKitAgentPlanPreviewUiCommand(const TArray<FString>& Args);
 void HCI_RunAbilityKitAgentChatUiCommand(const TArray<FString>& Args);
+void HCI_RunAbilityKitIngestDumpLatestCommand(const TArray<FString>& Args);
+void HCI_RunAbilityKitIngestImportLatestCommand(const TArray<FString>& Args);
 bool HCI_IsAgentPlanPreviewRequestInFlight();
 bool HCI_RequestAgentPlanPreviewFromUi(
 	const FString& UserText,
 	const FString& SourceTag,
+	const FString& ExtraEnvContextText,
 	bool bAutoOpenPreviewWindow,
 	FHCIAbilityKitAgentPlanPreviewRequestOnComplete&& OnComplete);
 void HCI_RunAbilityKitAgentPlanWithLLMDemoCommand(const TArray<FString>& Args);

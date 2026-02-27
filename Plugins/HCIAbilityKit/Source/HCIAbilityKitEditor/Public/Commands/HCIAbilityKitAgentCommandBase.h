@@ -10,6 +10,9 @@ struct FHCIAbilityKitAgentCommandContext
 {
 	FString InputParam;
 	FString SourceTag;
+	// Optional extra ENV_CONTEXT injected into planner prompt. Intended for structured, non-chat signals
+	// (e.g. latest external ingest batch manifest summary).
+	FString ExtraEnvContextText;
 };
 
 struct FHCIAbilityKitAgentCommandResult

@@ -1659,6 +1659,7 @@ bool HCI_IsAgentPlanPreviewRequestInFlight()
 bool HCI_RequestAgentPlanPreviewFromUi(
 	const FString& UserText,
 	const FString& SourceTag,
+	const FString& ExtraEnvContextText,
 	const bool bAutoOpenPreviewWindow,
 	FHCIAbilityKitAgentPlanPreviewRequestOnComplete&& OnComplete)
 {
@@ -1708,7 +1709,8 @@ bool HCI_RequestAgentPlanPreviewFromUi(
 		*SafeSourceTag);
 
 	const FHCIAbilityKitToolRegistry& ToolRegistry = FHCIAbilityKitToolRegistry::GetReadOnly();
-	const FHCIAbilityKitAgentPlannerBuildOptions PlannerOptions = HCI_MakeRealHttpPlannerOptions();
+	FHCIAbilityKitAgentPlannerBuildOptions PlannerOptions = HCI_MakeRealHttpPlannerOptions();
+	PlannerOptions.ExtraEnvContextText = ExtraEnvContextText;
 	FHCIAbilityKitAgentPlanner::BuildPlanFromNaturalLanguageWithProviderAsync(
 		SafeUserText,
 		TEXT("req_cli_i1_preview_ui"),
@@ -1844,6 +1846,7 @@ void HCI_RunAbilityKitAgentPlanPreviewUiCommand(const TArray<FString>& Args)
 	HCI_RequestAgentPlanPreviewFromUi(
 		UserText,
 		TEXT("AgentPlanPreviewUI"),
+		FString(),
 		true,
 		FHCIAbilityKitAgentPlanPreviewRequestOnComplete());
 }
@@ -5166,6 +5169,7 @@ void HCI_RunAbilityKitAgentExecutePlanReviewPrepareSimHandoffEnvelopeJsonCommand
 void FHCIAbilityKitAgentDemoConsoleCommands::Startup()
 {
 	StartupCoreCommands();
+	StartupIngestCommands();
 	StartupLlmCommands();
 	StartupReviewCommands();
 }
@@ -5174,5 +5178,6 @@ void FHCIAbilityKitAgentDemoConsoleCommands::Shutdown()
 {
 	ShutdownReviewCommands();
 	ShutdownLlmCommands();
+	ShutdownIngestCommands();
 	ShutdownCoreCommands();
 }

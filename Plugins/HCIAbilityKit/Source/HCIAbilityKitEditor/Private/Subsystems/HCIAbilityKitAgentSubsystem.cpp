@@ -6,7 +6,9 @@
 #include "Editor.h"
 #include "Dom/JsonObject.h"
 #include "EngineUtils.h"
+#include "Ingest/HCIAbilityKitIngestManifest.h"
 #include "GameFramework/Actor.h"
+#include "HAL/FileManager.h"
 #include "Misc/FileHelper.h"
 #include "Misc/Paths.h"
 #include "Serialization/JsonReader.h"
@@ -176,14 +178,31 @@ static int32 HCI_GetStepArgInt(const FHCIAbilityKitAgentPlanStep& Step, const TC
 	return DefaultValue;
 }
 
+static FString HCI_SanitizeUiTextForArtist(FString InOut)
+{
+	// Remove obvious technical terms but preserve paths like /Game/...
+	InOut.ReplaceInline(TEXT("Texture2D"), TEXT("贴图"));
+	InOut.ReplaceInline(TEXT("StaticMesh"), TEXT("静态网格"));
+	InOut.ReplaceInline(TEXT("Static Mesh"), TEXT("静态网格"));
+	InOut.ReplaceInline(TEXT("Maximum Texture Size"), TEXT("最大纹理尺寸"));
+	InOut.ReplaceInline(TEXT("Max Texture Size"), TEXT("最大纹理尺寸"));
+	InOut.ReplaceInline(TEXT("LOD Group"), TEXT("细节等级组"));
+	// Common UE preset values that are not user-friendly in Chinese UI.
+	InOut.ReplaceInline(TEXT("LevelArchitecture"), TEXT("关卡建筑"));
+	InOut.ReplaceInline(TEXT("SmallProp"), TEXT("小道具"));
+	InOut.ReplaceInline(TEXT("LargeProp"), TEXT("大道具"));
+	InOut.ReplaceInline(TEXT("Foliage"), TEXT("植被"));
+	return InOut;
+}
+
 static FString HCI_BuildStepSummaryFallback(const FHCIAbilityKitAgentPlanStep& Step)
 {
 	if (Step.UiPresentation.bHasStepSummary)
 	{
-		const FString Trimmed = Step.UiPresentation.StepSummary.TrimStartAndEnd();
+		FString Trimmed = Step.UiPresentation.StepSummary.TrimStartAndEnd();
 		if (!Trimmed.IsEmpty())
 		{
-			return Trimmed;
+			return HCI_SanitizeUiTextForArtist(MoveTemp(Trimmed));
 		}
 	}
 
@@ -213,15 +232,15 @@ static FString HCI_BuildStepSummaryFallback(const FHCIAbilityKitAgentPlanStep& S
 	{
 		const int32 MaxSize = HCI_GetStepArgInt(Step, TEXT("max_size"), 0);
 		return MaxSize > 0
-			? FString::Printf(TEXT("准备批量限制贴图分辨率（Maximum Texture Size=%d）"), MaxSize)
-			: TEXT("准备批量限制贴图分辨率");
+			? FString::Printf(TEXT("准备批量将贴图最大纹理尺寸限制为 %d"), MaxSize)
+			: TEXT("准备批量限制贴图最大纹理尺寸");
 	}
 	if (Step.ToolName == TEXT("SetMeshLODGroup"))
 	{
 		const FString LODGroup = HCI_GetStepArgString(Step, TEXT("lod_group"));
 		return LODGroup.IsEmpty()
-			? TEXT("准备批量设置模型 LOD Group")
-			: FString::Printf(TEXT("准备批量设置模型 LOD Group（%s）"), *LODGroup);
+			? TEXT("准备批量设置模型细节等级组")
+			: FString::Printf(TEXT("准备批量设置模型细节等级组（%s）"), *LODGroup);
 	}
 	if (Step.ToolName == TEXT("NormalizeAssetNamingByMetadata"))
 	{
@@ -244,10 +263,10 @@ static FString HCI_BuildStepIntentReasonFallback(const FHCIAbilityKitAgentPlanSt
 {
 	if (Step.UiPresentation.bHasIntentReason)
 	{
-		const FString Trimmed = Step.UiPresentation.IntentReason.TrimStartAndEnd();
+		FString Trimmed = Step.UiPresentation.IntentReason.TrimStartAndEnd();
 		if (!Trimmed.IsEmpty())
 		{
-			return Trimmed;
+			return HCI_SanitizeUiTextForArtist(MoveTemp(Trimmed));
 		}
 	}
 
@@ -274,10 +293,10 @@ static FString HCI_BuildStepRiskWarningFallback(const FHCIAbilityKitAgentPlanSte
 {
 	if (Step.UiPresentation.bHasRiskWarning)
 	{
-		const FString Trimmed = Step.UiPresentation.RiskWarning.TrimStartAndEnd();
+		FString Trimmed = Step.UiPresentation.RiskWarning.TrimStartAndEnd();
 		if (!Trimmed.IsEmpty())
 		{
-			return Trimmed;
+			return HCI_SanitizeUiTextForArtist(MoveTemp(Trimmed));
 		}
 	}
 
@@ -432,7 +451,7 @@ static FString HCI_BuildStepActionHintForChat(const FHCIAbilityKitAgentPlanStep&
 	}
 	if (Step.ToolName == TEXT("SetMeshLODGroup"))
 	{
-		return TEXT("正在设置模型 LOD Group...");
+		return TEXT("正在设置模型细节等级组...");
 	}
 	if (Step.ToolName == TEXT("NormalizeAssetNamingByMetadata"))
 	{
@@ -525,6 +544,159 @@ static bool HCI_Subsystem_TryLocateAssetSyncBrowser(const FString& AssetPath, FS
 	OutReason = TEXT("ok");
 	return true;
 }
+
+static FString HCI_IndentAsYamlLiteralBlock(const FString& Text, const FString& Indent)
+{
+	TArray<FString> Lines;
+	Text.ParseIntoArrayLines(Lines, false);
+	FString Out;
+	for (const FString& Line : Lines)
+	{
+		Out += Indent;
+		Out += Line;
+		Out += TEXT("\n");
+	}
+	return Out;
+}
+
+static bool HCI_TryLoadProjectRulesMarkdown(FString& OutText, bool& bOutTruncated, FString& OutError)
+{
+	OutText.Reset();
+	OutError.Reset();
+	bOutTruncated = false;
+
+	const FString RulesPath = FPaths::Combine(FPaths::ProjectSavedDir(), TEXT("HCIAbilityKit/Rules/Project_Rules.md"));
+	if (!FPaths::FileExists(RulesPath))
+	{
+		OutError = TEXT("project_rules_md_not_found");
+		return false;
+	}
+
+	FString Raw;
+	if (!FFileHelper::LoadFileToString(Raw, *RulesPath))
+	{
+		OutError = FString::Printf(TEXT("project_rules_md_read_failed path=%s"), *RulesPath);
+		return false;
+	}
+
+	Raw.TrimStartAndEndInline();
+	if (Raw.IsEmpty())
+	{
+		OutError = TEXT("project_rules_md_empty");
+		return false;
+	}
+
+	// Keep injection bounded: we want rules to be editable by non-programmers, but never let it explode prompt size.
+	const int32 MaxChars = 12000;
+	if (Raw.Len() > MaxChars)
+	{
+		bOutTruncated = true;
+		Raw.LeftInline(MaxChars);
+	}
+
+	OutText = MoveTemp(Raw);
+	return true;
+}
+
+static bool HCI_TryLoadLatestIngestManifest(FHCIAbilityKitIngestManifest& OutManifest, FString& OutError)
+{
+	OutManifest = FHCIAbilityKitIngestManifest();
+	OutError.Reset();
+
+	const FString IngestRoot = FPaths::Combine(FPaths::ProjectSavedDir(), TEXT("HCIAbilityKit/Ingest"));
+	FString ManifestPath;
+	if (!FHCIAbilityKitIngestManifest::TryFindLatestManifestUnderRoot(IngestRoot, ManifestPath, OutError))
+	{
+		return false;
+	}
+
+	return FHCIAbilityKitIngestManifest::TryLoadFromFile(ManifestPath, OutManifest, OutError);
+}
+
+static FString HCI_BuildStageNExtraEnvContextText()
+{
+	TArray<FString> Blocks;
+
+	{
+		FString RulesText;
+		bool bTruncated = false;
+		FString Error;
+		if (HCI_TryLoadProjectRulesMarkdown(RulesText, bTruncated, Error))
+		{
+			FString Block;
+			Block += TEXT("project_rules_md: |\n");
+			Block += HCI_IndentAsYamlLiteralBlock(RulesText, TEXT("  "));
+			if (bTruncated)
+			{
+				Block += TEXT("  (truncated)\n");
+			}
+			Blocks.Add(MoveTemp(Block));
+		}
+	}
+
+	{
+		FHCIAbilityKitIngestManifest Manifest;
+		FString Error;
+		if (HCI_TryLoadLatestIngestManifest(Manifest, Error))
+		{
+			Blocks.Add(Manifest.BuildEnvContextSnippet());
+		}
+	}
+
+	FString Out = FString::Join(Blocks, TEXT("\n"));
+	Out.TrimStartAndEndInline();
+	return Out;
+}
+
+static bool HCI_ShouldAugmentChatInputWithLatestIngestRoot(const FString& UserText)
+{
+	// Even if user already provided a /Game/... target (e.g. archive destination),
+	// we still want to inject the latest ingest root as the SOURCE scope when they say "刚导入/最新批次".
+	if (UserText.Contains(TEXT("latest_ingest_root=")) || UserText.Contains(TEXT("最近导入批次目录：")))
+	{
+		return false;
+	}
+	return
+		UserText.Contains(TEXT("刚导入")) ||
+		UserText.Contains(TEXT("最新批次")) ||
+		UserText.Contains(TEXT("最新导入")) ||
+		UserText.Contains(TEXT("latest ingest")) ||
+		UserText.Contains(TEXT("latest batch"));
+}
+
+static bool HCI_TryAugmentChatInputWithLatestIngestRoot(const FString& UserText, FString& OutAugmented, FString& OutIngestRoot)
+{
+	OutAugmented = UserText;
+	OutIngestRoot.Reset();
+
+	if (!HCI_ShouldAugmentChatInputWithLatestIngestRoot(UserText))
+	{
+		return false;
+	}
+
+	FHCIAbilityKitIngestManifest Manifest;
+	FString Error;
+	if (!HCI_TryLoadLatestIngestManifest(Manifest, Error))
+	{
+		return false;
+	}
+
+	const FString Root = Manifest.SuggestedUnrealTargetRoot.TrimStartAndEnd();
+	if (!Root.StartsWith(TEXT("/Game/")))
+	{
+		return false;
+	}
+	if (UserText.Contains(Root))
+	{
+		// User already provided it; no need to augment.
+		return false;
+	}
+
+	OutIngestRoot = Root;
+	// Make ingest root the FIRST /Game/... token so both auto env scan and keyword fallback pick correct scan root.
+	OutAugmented = FString::Printf(TEXT("最近导入批次目录：%s。%s"), *Root, *UserText);
+	return true;
+}
 }
 
 void UHCIAbilityKitAgentSubsystem::Initialize(FSubsystemCollectionBase& Collection)
@@ -572,6 +744,14 @@ bool UHCIAbilityKitAgentSubsystem::SubmitChatInput(const FString& UserInput, con
 		return false;
 	}
 
+	FString EffectiveInput = TrimmedInput;
+	FString DetectedIngestRoot;
+	if (HCI_TryAugmentChatInputWithLatestIngestRoot(TrimmedInput, EffectiveInput, DetectedIngestRoot))
+	{
+		EmitStatus(FString::Printf(TEXT("已识别最近导入批次目录：%s"), *DetectedIngestRoot));
+		UE_LOG(LogTemp, Display, TEXT("[HCIAbilityKit][AgentChatUI][Env] detected_latest_ingest_root=%s"), *DetectedIngestRoot);
+	}
+
 	EmitUserLine(TrimmedInput);
 	EmitAssistantLine(TEXT("已发送，等待规划结果..."));
 	bHasLastPlan = false;
@@ -583,8 +763,9 @@ bool UHCIAbilityKitAgentSubsystem::SubmitChatInput(const FString& UserInput, con
 	SetActivityHint(TEXT("思考中..."));
 
 	FHCIAbilityKitAgentCommandContext Context;
-	Context.InputParam = TrimmedInput;
+	Context.InputParam = EffectiveInput;
 	Context.SourceTag = SourceTag;
+	Context.ExtraEnvContextText = HCI_BuildStageNExtraEnvContextText();
 	if (!ExecuteRegisteredCommand(TEXT("chat_submit"), Context))
 	{
 		SetCurrentState(EHCIAbilityKitAgentSessionState::Failed);
@@ -753,6 +934,81 @@ bool UHCIAbilityKitAgentSubsystem::BuildLastPlanCardLines(TArray<FString>& OutLi
 		{
 			OutLines.Add(FString::Printf(TEXT("   风险：%s"), *RiskWarning));
 		}
+	}
+
+	return true;
+}
+
+static int32 HCI_RiskRankForApprovalCard(const EHCIAbilityKitAgentPlanRiskLevel RiskLevel)
+{
+	switch (RiskLevel)
+	{
+	case EHCIAbilityKitAgentPlanRiskLevel::Destructive:
+		return 30;
+	case EHCIAbilityKitAgentPlanRiskLevel::Write:
+		return 20;
+	case EHCIAbilityKitAgentPlanRiskLevel::ReadOnly:
+		return 10;
+	default:
+		return 0;
+	}
+}
+
+bool UHCIAbilityKitAgentSubsystem::BuildLastPlanApprovalCard(FHCIAbilityKitAgentUiApprovalCard& OutCard) const
+{
+	OutCard = FHCIAbilityKitAgentUiApprovalCard();
+	if (!bHasLastPlan)
+	{
+		return false;
+	}
+
+	if (!(CurrentState == EHCIAbilityKitAgentSessionState::AwaitUserConfirm && IsWriteLikePlan(LastPlan)))
+	{
+		return false;
+	}
+
+	const FHCIAbilityKitAgentPlanStep* BestStep = nullptr;
+	int32 BestRank = -1;
+	for (const FHCIAbilityKitAgentPlanStep& Step : LastPlan.Steps)
+	{
+		if (!(Step.bRequiresConfirm || HCI_Subsystem_IsWriteLikeRisk(Step.RiskLevel)))
+		{
+			continue;
+		}
+
+		// Prefer destructive > write, then earlier steps. requires_confirm adds a small bias.
+		const int32 Rank = HCI_RiskRankForApprovalCard(Step.RiskLevel) + (Step.bRequiresConfirm ? 1 : 0);
+		if (Rank > BestRank)
+		{
+			BestRank = Rank;
+			BestStep = &Step;
+		}
+	}
+
+	if (!BestStep)
+	{
+		return false;
+	}
+
+	OutCard.Title = TEXT("请确认修改");
+	OutCard.KeyAction = HCI_SanitizeUiTextForArtist(BuildStepDisplaySummaryForUi(*BestStep));
+	OutCard.ImpactHint = HCI_SanitizeUiTextForArtist(BuildStepImpactHintForUi(*BestStep));
+
+	// Only show warning for write-like steps; hide read-only warnings (no decision value).
+	const bool bWriteLike = BestStep->bRequiresConfirm || HCI_Subsystem_IsWriteLikeRisk(BestStep->RiskLevel);
+	if (bWriteLike && (BestStep->RiskLevel == EHCIAbilityKitAgentPlanRiskLevel::Write || BestStep->RiskLevel == EHCIAbilityKitAgentPlanRiskLevel::Destructive))
+	{
+		OutCard.Warning = HCI_SanitizeUiTextForArtist(BuildStepRiskWarningForUi(*BestStep));
+	}
+
+	OutCard.Title.TrimStartAndEndInline();
+	OutCard.KeyAction.TrimStartAndEndInline();
+	OutCard.ImpactHint.TrimStartAndEndInline();
+	OutCard.Warning.TrimStartAndEndInline();
+
+	if (OutCard.KeyAction.IsEmpty())
+	{
+		OutCard.KeyAction = TEXT("将对项目资产进行修改");
 	}
 
 	return true;

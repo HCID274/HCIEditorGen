@@ -33,6 +33,7 @@ public class HCIAbilityKitEditor : ModuleRules
 				"ContentBrowser",   // 内容浏览器扩展
 				"AssetRegistry",    // 资产路径与类型校验
 				"AssetTools",       // Redirector FixupReferencers
+				"DirectoryWatcher", // External ingest batch watcher (Stage N)
 				"Json",             // JSON 解析支持
 				"HTTP",             // LLM 调试探针
 				"EditorScriptingUtilities", // UEditorAssetLibrary (Stage I ToolAction)

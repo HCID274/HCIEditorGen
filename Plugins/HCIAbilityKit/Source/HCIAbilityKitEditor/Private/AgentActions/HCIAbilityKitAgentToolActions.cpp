@@ -1071,6 +1071,15 @@ private:
 				OutResult.Reason = TEXT("no_actors_selected");
 				OutResult.Evidence.Add(TEXT("scope"), Scope);
 				OutResult.Evidence.Add(TEXT("selected_actor_count"), TEXT("0"));
+				// Keep evidence keys stable even on failure, so UI stats don't fall back to TargetCountEstimate.
+				OutResult.Evidence.Add(TEXT("candidate_actor_count"), TEXT("0"));
+				OutResult.Evidence.Add(TEXT("scanned_count"), TEXT("0"));
+				OutResult.Evidence.Add(TEXT("risky_count"), TEXT("0"));
+				OutResult.Evidence.Add(TEXT("risk_summary"), TEXT("No actor selected. Select one or switch scope to 'all'."));
+				OutResult.Evidence.Add(TEXT("risky_actors"), TEXT("none"));
+				OutResult.Evidence.Add(TEXT("missing_collision_actors"), TEXT("none"));
+				OutResult.Evidence.Add(TEXT("default_material_actors"), TEXT("none"));
+				OutResult.Evidence.Add(TEXT("result"), TEXT("no_actors_selected"));
 				return false;
 			}
 		}

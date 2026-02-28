@@ -186,7 +186,7 @@ static bool HCI_TryOverrideLlmPlanWithKeywordMessageOnlyGuard(
 
 static bool HCI_IsVariableTemplateString(const FString& InText)
 {
-	const FRegexPattern Pattern(TEXT("^\\{\\{\\s*[A-Za-z0-9_]+\\.[A-Za-z0-9_]+(?:\\[\\d+\\])?\\s*\\}\\}$"));
+	static const FRegexPattern Pattern(TEXT("^\\{\\{\\s*[A-Za-z0-9_]+\\.[A-Za-z0-9_]+(?:\\[\\d+\\])?\\s*\\}\\}$"));
 	FRegexMatcher Matcher(Pattern, InText.TrimStartAndEnd());
 	return Matcher.FindNext();
 }
@@ -808,7 +808,7 @@ static bool HCI_TryParseVariableTemplateStepId(const FString& InText, FString& O
 {
 	OutStepId.Reset();
 	const FString Trimmed = InText.TrimStartAndEnd();
-	const FRegexPattern Pattern(TEXT("^\\{\\{\\s*([A-Za-z0-9_]+)\\.[A-Za-z0-9_]+(?:\\[\\d+\\])?\\s*\\}\\}$"));
+	static const FRegexPattern Pattern(TEXT("^\\{\\{\\s*([A-Za-z0-9_]+)\\.[A-Za-z0-9_]+(?:\\[\\d+\\])?\\s*\\}\\}$"));
 	FRegexMatcher Matcher(Pattern, Trimmed);
 	if (!Matcher.FindNext())
 	{

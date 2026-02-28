@@ -98,7 +98,7 @@ static bool HCI_TryGetIntExact(const TSharedPtr<FJsonValue>& Value, int32& OutIn
 
 static bool HCI_IsVariableTemplateStringForValidation(const FString& Value)
 {
-	const FRegexPattern Pattern(TEXT("^\\{\\{\\s*[A-Za-z0-9_]+\\.[A-Za-z0-9_]+(?:\\[\\d+\\])?\\s*\\}\\}$"));
+	static const FRegexPattern Pattern(TEXT("^\\{\\{\\s*[A-Za-z0-9_]+\\.[A-Za-z0-9_]+(?:\\[\\d+\\])?\\s*\\}\\}$"));
 	FRegexMatcher Matcher(Pattern, Value.TrimStartAndEnd());
 	return Matcher.FindNext();
 }
@@ -746,7 +746,7 @@ static bool HCI_TryParseVariableTemplateReference(
 	OutSourceStepId.Reset();
 	OutSourceEvidenceKey.Reset();
 	const FString Trimmed = InText.TrimStartAndEnd();
-	const FRegexPattern Pattern(TEXT("^\\{\\{\\s*([A-Za-z0-9_]+)\\.([A-Za-z0-9_]+)(?:\\[\\d+\\])?\\s*\\}\\}$"));
+	static const FRegexPattern Pattern(TEXT("^\\{\\{\\s*([A-Za-z0-9_]+)\\.([A-Za-z0-9_]+)(?:\\[\\d+\\])?\\s*\\}\\}$"));
 	FRegexMatcher Matcher(Pattern, Trimmed);
 	if (!Matcher.FindNext())
 	{

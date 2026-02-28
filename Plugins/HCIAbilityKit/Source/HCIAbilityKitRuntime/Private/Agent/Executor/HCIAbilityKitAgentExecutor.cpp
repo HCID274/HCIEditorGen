@@ -23,7 +23,7 @@ static bool HCI_ParseVariableTemplate(
 	OutIndex = INDEX_NONE;
 
 	const FString Trimmed = InText.TrimStartAndEnd();
-	const FRegexPattern Pattern(TEXT("^\\{\\{\\s*([A-Za-z0-9_]+)\\.([A-Za-z0-9_]+)(?:\\[(\\d+)\\])?\\s*\\}\\}$"));
+	static const FRegexPattern Pattern(TEXT("^\\{\\{\\s*([A-Za-z0-9_]+)\\.([A-Za-z0-9_]+)(?:\\[(\\d+)\\])?\\s*\\}\\}$"));
 	FRegexMatcher Matcher(Pattern, Trimmed);
 	if (!Matcher.FindNext())
 	{

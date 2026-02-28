@@ -14,6 +14,8 @@
 #include "Modules/ModuleManager.h"
 #include "ScopedTransaction.h"
 #include "Styling/AppStyle.h"
+#include "GameFramework/Actor.h"
+#include "UObject/SoftObjectPath.h"
 #include "Widgets/Input/SButton.h"
 #include "Widgets/Layout/SBorder.h"
 #include "Widgets/Layout/SBox.h"
@@ -311,9 +313,41 @@ static FString HCI_BuildLocateTargetLabelFromPath(
 	int32 DotIndex = INDEX_NONE;
 	if (bActor)
 	{
+#if WITH_EDITOR
+		if (UObject* Resolved = FindObject<UObject>(nullptr, *TargetPath))
+		{
+			if (const AActor* Actor = Cast<AActor>(Resolved))
+			{
+				const FString ActorLabel = Actor->GetActorLabel();
+				if (!ActorLabel.IsEmpty())
+				{
+					LabelCore = ActorLabel;
+				}
+			}
+		}
+		else
+		{
+			const FSoftObjectPath SoftPath(TargetPath);
+			if (UObject* SoftResolved = SoftPath.ResolveObject())
+			{
+				if (const AActor* Actor = Cast<AActor>(SoftResolved))
+				{
+					const FString ActorLabel = Actor->GetActorLabel();
+					if (!ActorLabel.IsEmpty())
+					{
+						LabelCore = ActorLabel;
+					}
+				}
+			}
+		}
+#endif
+
 		if (TargetPath.FindLastChar(TEXT('.'), DotIndex) && DotIndex + 1 < TargetPath.Len())
 		{
-			LabelCore = TargetPath.Mid(DotIndex + 1);
+			if (LabelCore == TargetPath)
+			{
+				LabelCore = TargetPath.Mid(DotIndex + 1);
+			}
 		}
 	}
 	else
@@ -917,10 +951,11 @@ void FHCIAbilityKitAgentPlanPreviewWindow::BuildLocateTargetsFromStepResults(
 			const FString* ActorPath = StepResult.Evidence.Find(TEXT("actor_path"));
 			if (ActorPath != nullptr)
 			{
+				const FString Issue = HCI_GetEvidenceValue(StepResult.Evidence, TEXT("issue"));
 				HCI_AddLocateTargetUnique(
 					EHCIAbilityKitAgentExecutionLocateTargetKind::Actor,
 					*ActorPath,
-					FString(),
+					Issue,
 					StepResult.ToolName,
 					TEXT("actor_path"),
 					SeenKeys,

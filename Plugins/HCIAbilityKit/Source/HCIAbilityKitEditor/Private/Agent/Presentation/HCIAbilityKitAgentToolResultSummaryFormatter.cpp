@@ -164,38 +164,42 @@ static void HCI_FormatScanLevelMeshRisks(
 	const FString Scope = HCI_GetStr(Step.Evidence, TEXT("scope"));
 	const int32 Scanned = HCI_ParseInt(Step.Evidence, TEXT("scanned_count"), Step.TargetCountEstimate);
 	const int32 Risky = HCI_ParseInt(Step.Evidence, TEXT("risky_count"), 0);
+	const int32 Candidate = HCI_ParseInt(Step.Evidence, TEXT("candidate_actor_count"), 0);
 	const FString MissingCollisionActors = HCI_GetStr(Step.Evidence, TEXT("missing_collision_actors"));
 	const FString DefaultMaterialActors = HCI_GetStr(Step.Evidence, TEXT("default_material_actors"));
 	const int32 MissingCollisionCount = HCI_CountEvidenceList(MissingCollisionActors);
 	const int32 DefaultMaterialCount = HCI_CountEvidenceList(DefaultMaterialActors);
 
+	FString ScopeLabel = TEXT("-");
+	if (Scope.Equals(TEXT("all"), ESearchCase::IgnoreCase))
+	{
+		ScopeLabel = TEXT("全场景");
+	}
+	else if (Scope.Equals(TEXT("selected"), ESearchCase::IgnoreCase))
+	{
+		ScopeLabel = TEXT("选中");
+	}
+
 	HCI_AppendIfSpace(
 		OutLines,
-		FString::Printf(TEXT("关卡风险：扫描 %d，风险 %d（缺碰撞 %d，默认材质 %d）scope=%s"),
+		FString::Printf(TEXT("关卡风险（%s）：扫描 Actor %d%s，风险 %d（缺碰撞 %d，默认材质 %d）"),
+			*ScopeLabel,
 			FMath::Max(0, Scanned),
+			(Candidate > 0 ? *FString::Printf(TEXT("/%d"), FMath::Max(0, Candidate)) : TEXT("")),
 			FMath::Max(0, Risky),
 			FMath::Max(0, MissingCollisionCount),
-			FMath::Max(0, DefaultMaterialCount),
-			Scope.IsEmpty() ? TEXT("-") : *Scope),
+			FMath::Max(0, DefaultMaterialCount)),
 		Options);
 
-	auto AppendActorList = [&OutLines, &Options](const TCHAR* Label, const FString& Text)
+	if (false && Risky > 0)
 	{
 		TArray<FString> Items;
-		HCI_SplitEvidenceList(Text, Options.MaxItemsPerList, Items);
+		const FString RiskyActors = HCI_GetStr(Step.Evidence, TEXT("risky_actors"));
+		HCI_SplitEvidenceList(RiskyActors, 1, Items);
 		if (Items.Num() > 0)
 		{
-			HCI_AppendIfSpace(OutLines, FString::Printf(TEXT("例：%s %s"), Label, *FString::Join(Items, TEXT(" | "))), Options);
+			HCI_AppendIfSpace(OutLines, FString::Printf(TEXT("风险Actor示例（仅展示1项，非文件）：%s"), *Items[0]), Options);
 		}
-	};
-
-	if (MissingCollisionCount > 0)
-	{
-		AppendActorList(TEXT("缺碰撞"), MissingCollisionActors);
-	}
-	else if (DefaultMaterialCount > 0)
-	{
-		AppendActorList(TEXT("默认材质"), DefaultMaterialActors);
 	}
 }
 

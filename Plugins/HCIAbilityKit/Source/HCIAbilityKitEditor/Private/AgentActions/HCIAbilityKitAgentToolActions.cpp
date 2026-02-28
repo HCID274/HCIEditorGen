@@ -1,5 +1,10 @@
 #include "AgentActions/HCIAbilityKitAgentToolActions.h"
 
+#include "AgentActions/Support/HCIAbilityKitAssetMoveRenameUtils.h"
+#include "AgentActions/Support/HCIAbilityKitAssetNamingRules.h"
+#include "AgentActions/Support/HCIAbilityKitAssetPathUtils.h"
+#include "AgentActions/Support/HCIAbilityKitRedirectorFixup.h"
+
 #include "AssetToolsModule.h"
 #include "AssetRegistry/AssetRegistryModule.h"
 #include "Dom/JsonObject.h"
@@ -36,35 +41,12 @@ static bool HCI_TrySplitObjectPath(
 	FString& OutPackagePath,
 	FString& OutAssetName)
 {
-	OutPackagePath.Reset();
-	OutAssetName.Reset();
-
-	if (!ObjectPath.StartsWith(TEXT("/Game/")))
-	{
-		return false;
-	}
-
-	FString PackagePath = ObjectPath;
-	const int32 DotIndex = PackagePath.Find(TEXT("."), ESearchCase::CaseSensitive, ESearchDir::FromStart);
-	if (DotIndex != INDEX_NONE)
-	{
-		PackagePath = PackagePath.Left(DotIndex);
-	}
-
-	int32 LastSlash = INDEX_NONE;
-	if (!PackagePath.FindLastChar(TEXT('/'), LastSlash) || LastSlash <= 0 || LastSlash + 1 >= PackagePath.Len())
-	{
-		return false;
-	}
-
-	OutPackagePath = PackagePath;
-	OutAssetName = PackagePath.Mid(LastSlash + 1);
-	return !OutAssetName.IsEmpty();
+	return HCIAbilityKitAssetPathUtils::TrySplitObjectPath(ObjectPath, OutPackagePath, OutAssetName);
 }
 
 static FString HCI_ToObjectPath(const FString& PackagePath, const FString& AssetName)
 {
-	return FString::Printf(TEXT("%s.%s"), *PackagePath, *AssetName);
+	return HCIAbilityKitAssetPathUtils::ToObjectPath(PackagePath, AssetName);
 }
 
 static void HCI_NormalizeAssetPathVariants(
@@ -72,161 +54,37 @@ static void HCI_NormalizeAssetPathVariants(
 	FString& OutAssetPath,
 	FString& OutObjectPath)
 {
-	OutAssetPath = InPath;
-	OutObjectPath = InPath;
-
-	FString PackagePath;
-	FString AssetName;
-	if (HCI_TrySplitObjectPath(InPath, PackagePath, AssetName))
-	{
-		OutAssetPath = PackagePath;
-		OutObjectPath = HCI_ToObjectPath(PackagePath, AssetName);
-	}
+	HCIAbilityKitAssetPathUtils::NormalizeAssetPathVariants(InPath, OutAssetPath, OutObjectPath);
 }
 
 static FString HCI_GetDirectoryFromPackagePath(const FString& PackagePath)
 {
-	int32 LastSlash = INDEX_NONE;
-	if (!PackagePath.FindLastChar(TEXT('/'), LastSlash) || LastSlash <= 0)
-	{
-		return FString();
-	}
-	return PackagePath.Left(LastSlash);
+	return HCIAbilityKitAssetPathUtils::GetDirectoryFromPackagePath(PackagePath);
 }
 
 static FString HCI_TrimTrailingSlash(const FString& InPath)
 {
-	FString Out = InPath;
-	while (Out.EndsWith(TEXT("/")))
-	{
-		Out.LeftChopInline(1, false);
-	}
-	return Out;
+	return HCIAbilityKitAssetPathUtils::TrimTrailingSlash(InPath);
 }
 
 static FString HCI_SanitizeIdentifier(const FString& InText)
 {
-	FString Out;
-	Out.Reserve(InText.Len());
-	bool bPrevUnderscore = false;
-	for (TCHAR Ch : InText)
-	{
-		if (FChar::IsAlnum(Ch))
-		{
-			Out.AppendChar(Ch);
-			bPrevUnderscore = false;
-			continue;
-		}
-
-		if (!bPrevUnderscore)
-		{
-			Out.AppendChar(TEXT('_'));
-			bPrevUnderscore = true;
-		}
-	}
-
-	while (Out.StartsWith(TEXT("_")))
-	{
-		Out.RightChopInline(1, false);
-	}
-	while (Out.EndsWith(TEXT("_")))
-	{
-		Out.LeftChopInline(1, false);
-	}
-
-	if (Out.IsEmpty())
-	{
-		return FString();
-	}
-
-	if (FChar::IsDigit(Out[0]))
-	{
-		Out = FString::Printf(TEXT("A_%s"), *Out);
-	}
-	return Out;
+	return HCIAbilityKitAssetNamingRules::SanitizeIdentifier(InText);
 }
 
 static FString HCI_RemoveKnownPrefixToken(const FString& InName)
 {
-	const int32 UnderscoreIndex = InName.Find(TEXT("_"), ESearchCase::CaseSensitive, ESearchDir::FromStart);
-	if (UnderscoreIndex <= 0 || UnderscoreIndex + 1 >= InName.Len())
-	{
-		return InName;
-	}
-
-	const FString PrefixToken = InName.Left(UnderscoreIndex).ToUpper();
-	static const TSet<FString> KnownPrefixes = {
-		TEXT("SM"),
-		TEXT("SK"),
-		TEXT("T"),
-		TEXT("M"),
-		TEXT("MI"),
-		TEXT("BP"),
-		TEXT("S"),
-		TEXT("FX")};
-	if (!KnownPrefixes.Contains(PrefixToken))
-	{
-		return InName;
-	}
-
-	return InName.Mid(UnderscoreIndex + 1);
+	return HCIAbilityKitAssetNamingRules::RemoveKnownPrefixToken(InName);
 }
 
 static FString HCI_DeriveClassPrefix(const UObject* Asset)
 {
-	if (Asset == nullptr)
-	{
-		return TEXT("A");
-	}
-	if (Asset->IsA(UStaticMesh::StaticClass()))
-	{
-		return TEXT("SM");
-	}
-	if (Asset->IsA(UTexture2D::StaticClass()))
-	{
-		return TEXT("T");
-	}
-
-	const FString ClassName = Asset->GetClass()->GetName();
-	if (ClassName.Contains(TEXT("MaterialInstance")))
-	{
-		return TEXT("MI");
-	}
-	if (ClassName.Contains(TEXT("Material")))
-	{
-		return TEXT("M");
-	}
-	if (ClassName.Contains(TEXT("SkeletalMesh")))
-	{
-		return TEXT("SK");
-	}
-	return TEXT("A");
+	return HCIAbilityKitAssetNamingRules::DeriveClassPrefix(Asset);
 }
 
 static FString HCI_DeriveClassPrefixFromAssetData(const FAssetData& AssetData)
 {
-	const FString ClassName = AssetData.AssetClassPath.GetAssetName().ToString();
-	if (ClassName.Equals(TEXT("StaticMesh"), ESearchCase::IgnoreCase))
-	{
-		return TEXT("SM");
-	}
-	if (ClassName.Equals(TEXT("SkeletalMesh"), ESearchCase::IgnoreCase))
-	{
-		return TEXT("SK");
-	}
-	if (ClassName.Equals(TEXT("Texture2D"), ESearchCase::IgnoreCase))
-	{
-		return TEXT("T");
-	}
-	if (ClassName.Contains(TEXT("MaterialInstance"), ESearchCase::IgnoreCase))
-	{
-		return TEXT("MI");
-	}
-	if (ClassName.Contains(TEXT("Material"), ESearchCase::IgnoreCase))
-	{
-		return TEXT("M");
-	}
-	return TEXT("A");
+	return HCIAbilityKitAssetNamingRules::DeriveClassPrefixFromAssetData(AssetData);
 }
 
 static bool HCI_TryExtractImportSourceStemFromAssetData(const FAssetData& AssetData, FString& OutStem)
@@ -810,19 +668,13 @@ static bool HCI_ValidateSourceAssetExists(
 	const FString& SourceAssetPath,
 	FHCIAbilityKitAgentToolActionResult& OutResult)
 {
-	if (!SourceAssetPath.StartsWith(TEXT("/Game/")))
+	const HCIAbilityKitAssetMoveRenameUtils::FHCIAbilityKitValidateAssetExistsResult Check =
+		HCIAbilityKitAssetMoveRenameUtils::ValidateSourceAssetExists(SourceAssetPath);
+	if (!Check.bOk)
 	{
 		OutResult.bSucceeded = false;
-		OutResult.ErrorCode = TEXT("E4009");
-		OutResult.Reason = TEXT("asset_path_must_start_with_game");
-		return false;
-	}
-
-	if (!UEditorAssetLibrary::DoesAssetExist(SourceAssetPath))
-	{
-		OutResult.bSucceeded = false;
-		OutResult.ErrorCode = TEXT("E4201");
-		OutResult.Reason = TEXT("asset_not_found");
+		OutResult.ErrorCode = Check.ErrorCode.IsEmpty() ? TEXT("E4201") : Check.ErrorCode;
+		OutResult.Reason = Check.Reason.IsEmpty() ? TEXT("asset_not_found") : Check.Reason;
 		return false;
 	}
 	return true;
@@ -830,12 +682,7 @@ static bool HCI_ValidateSourceAssetExists(
 
 static FString HCI_GetDirectoryLeafName(const FString& Path)
 {
-	int32 LastSlash = INDEX_NONE;
-	if (!Path.FindLastChar(TEXT('/'), LastSlash) || LastSlash < 0 || LastSlash + 1 >= Path.Len())
-	{
-		return Path;
-	}
-	return Path.Mid(LastSlash + 1);
+	return HCIAbilityKitAssetPathUtils::GetDirectoryLeafName(Path);
 }
 
 static FString HCI_NormalizeFuzzyToken(const FString& Text)
@@ -993,47 +840,18 @@ static void HCI_FixupRedirectorReferencers(
 	const FString& SourceAssetPath,
 	FHCIAbilityKitAgentToolActionResult& OutResult)
 {
-	UObjectRedirector* Redirector = Cast<UObjectRedirector>(LoadObject<UObject>(nullptr, *SourceAssetPath));
-	if (Redirector == nullptr)
+	const HCIAbilityKitRedirectorFixup::FHCIAbilityKitRedirectorFixupResult Fixup =
+		HCIAbilityKitRedirectorFixup::FixupRedirectorReferencers(SourceAssetPath);
+	OutResult.Evidence.Add(TEXT("redirector_fixup"), Fixup.Status.IsEmpty() ? TEXT("unknown") : Fixup.Status);
+	if (Fixup.Status != TEXT("no_redirector_found"))
 	{
-		OutResult.Evidence.Add(TEXT("redirector_fixup"), TEXT("no_redirector_found"));
-		return;
+		OutResult.Evidence.Add(TEXT("redirector_count"), FString::FromInt(Fixup.RedirectorCount));
 	}
-
-	TArray<UObjectRedirector*> Redirectors;
-	Redirectors.Add(Redirector);
-
-	FAssetToolsModule& AssetToolsModule = FModuleManager::LoadModuleChecked<FAssetToolsModule>(TEXT("AssetTools"));
-	AssetToolsModule.Get().FixupReferencers(Redirectors, false, ERedirectFixupMode::DeleteFixedUpRedirectors);
-	OutResult.Evidence.Add(TEXT("redirector_fixup"), TEXT("fixup_referencers_called"));
-	OutResult.Evidence.Add(TEXT("redirector_count"), FString::FromInt(Redirectors.Num()));
 }
 
 static bool HCI_MoveAssetWithAssetTools(const FString& SourceAssetPath, const FString& DestinationAssetPath)
 {
-	UObject* SourceAsset = LoadObject<UObject>(nullptr, *SourceAssetPath);
-	if (SourceAsset == nullptr)
-	{
-		return false;
-	}
-
-	FString DestinationPackagePath;
-	FString DestinationAssetName;
-	if (!HCI_TrySplitObjectPath(DestinationAssetPath, DestinationPackagePath, DestinationAssetName))
-	{
-		return false;
-	}
-
-	const FString DestinationDir = HCI_GetDirectoryFromPackagePath(DestinationPackagePath);
-	if (DestinationDir.IsEmpty())
-	{
-		return false;
-	}
-
-	FAssetToolsModule& AssetToolsModule = FModuleManager::LoadModuleChecked<FAssetToolsModule>(TEXT("AssetTools"));
-	TArray<FAssetRenameData> RenameRequests;
-	RenameRequests.Emplace(SourceAsset, DestinationDir, DestinationAssetName);
-	return AssetToolsModule.Get().RenameAssets(RenameRequests);
+	return HCIAbilityKitAssetMoveRenameUtils::MoveAssetWithAssetTools(SourceAssetPath, DestinationAssetPath);
 }
 
 class FHCIAbilityKitScanAssetsToolAction final : public IHCIAbilityKitAgentToolAction

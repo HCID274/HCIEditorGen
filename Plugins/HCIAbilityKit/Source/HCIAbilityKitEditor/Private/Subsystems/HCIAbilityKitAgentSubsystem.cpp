@@ -1989,19 +1989,17 @@ bool UHCIAbilityKitAgentSubsystem::ExecuteLastPlan(
 		[this](const int32 StepIndex, const int32 TotalSteps, const FHCIAbilityKitAgentPlanStep& Step)
 		{
 			const FString ActionHint = HCI_BuildStepActionHintForChat(Step);
-			AsyncTask(ENamedThreads::GameThread, [this, StepIndex, TotalSteps, ActionHint]()
+			// ExecutePlan runs on the game thread; update progress immediately so the UI stays responsive/visible.
+			if (!IsValid(this))
 			{
-				if (!IsValid(this))
-				{
-					return;
-				}
-				SetActivityHint(ActionHint);
-				SetProgressState(HCI_MakeProgressState(
-					true,
-					true,
-					0.60f,
-					FString::Printf(TEXT("进度：执行计划（%d/%d）%s"), StepIndex + 1, TotalSteps, *ActionHint)));
-			});
+				return;
+			}
+			SetActivityHint(ActionHint);
+			SetProgressState(HCI_MakeProgressState(
+				true,
+				true,
+				0.60f,
+				FString::Printf(TEXT("进度：执行计划（%d/%d）%s"), StepIndex + 1, TotalSteps, *ActionHint)));
 		});
 
 	SetLocateTargetsFromExecutionReport(Report);

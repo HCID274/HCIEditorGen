@@ -11,6 +11,7 @@
 #include "IContentBrowserSingleton.h"
 #include "Misc/MessageDialog.h"
 #include "Modules/ModuleManager.h"
+#include "ScopedTransaction.h"
 #include "Styling/AppStyle.h"
 #include "Widgets/Input/SButton.h"
 #include "Widgets/Layout/SBorder.h"
@@ -832,6 +833,15 @@ bool FHCIAbilityKitAgentPlanPreviewWindow::ExecutePlan(
 		};
 	}
 	HCIAbilityKitAgentToolActions::BuildStageIDraftActions(Options.ToolActions);
+
+	// Business-level Undo: one approved commit == one undo record (Context=HCIAbilityKit).
+	// Keep DryRun free of transactions.
+	TUniquePtr<FScopedTransaction> BusinessTransaction;
+	if (!bDryRun && bUserConfirmedWriteSteps)
+	{
+		const FString SessionName = FString::Printf(TEXT("HCIAbilityKit: %s (%s)"), *Plan.Intent, *Plan.RequestId);
+		BusinessTransaction = MakeUnique<FScopedTransaction>(TEXT("HCIAbilityKit"), FText::FromString(SessionName), nullptr, true);
+	}
 
 	FHCIAbilityKitAgentExecutorRunResult RunResult;
 	OutReport.bRunOk = FHCIAbilityKitAgentExecutor::ExecutePlan(

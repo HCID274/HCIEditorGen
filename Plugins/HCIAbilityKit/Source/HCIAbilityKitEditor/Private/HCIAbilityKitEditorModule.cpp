@@ -27,6 +27,8 @@
 #include "Engine/StreamableManager.h"
 #include "EngineUtils.h"
 #include "Editor.h"
+#include "EditorUndoClient.h"
+#include "Framework/Notifications/NotificationManager.h"
 #include "GameFramework/Actor.h"
 #include "HAL/IConsoleManager.h"
 #include "HAL/FileManager.h"
@@ -54,6 +56,7 @@
 #include "UObject/GarbageCollection.h"
 #include "UObject/SoftObjectPath.h"
 #include "UObject/UObjectGlobals.h"
+#include "Widgets/Notifications/SNotificationList.h"
 
 DEFINE_LOG_CATEGORY_STATIC(LogHCIAbilityKitSearchQuery, Log, All);
 DEFINE_LOG_CATEGORY_STATIC(LogHCIAbilityKitAuditScan, Log, All);
@@ -71,6 +74,69 @@ static TUniquePtr<FAutoConsoleCommand> GHCIAbilityKitDryRunDiffPreviewDemoComman
 static TUniquePtr<FAutoConsoleCommand> GHCIAbilityKitDryRunDiffPreviewLocateCommand;
 static TUniquePtr<FAutoConsoleCommand> GHCIAbilityKitDryRunDiffPreviewJsonCommand;
 static const TCHAR* GHCIAbilityKitPythonScriptPath = TEXT("SourceData/AbilityKits/Python/hci_abilitykit_hook.py");
+
+namespace
+{
+static const TCHAR* GHCIAbilityKitBusinessUndoContext = TEXT("HCIAbilityKit");
+
+class FHCIAbilityKitBusinessUndoClient final : public FSelfRegisteringEditorUndoClient
+{
+public:
+	virtual FString GetTransactionContext() const override
+	{
+		return GHCIAbilityKitBusinessUndoContext;
+	}
+
+	virtual bool MatchesContext(
+		const FTransactionContext& InContext,
+		const TArray<TPair<UObject*, FTransactionObjectEvent>>& TransactionObjectContexts) const override
+	{
+		if (!InContext.Context.Equals(GHCIAbilityKitBusinessUndoContext, ESearchCase::CaseSensitive))
+		{
+			return false;
+		}
+
+		// Cache title so PostUndo/PostRedo can show a meaningful toast (those callbacks don't carry context).
+		LastMatchedTitle = InContext.Title;
+		return true;
+	}
+
+	virtual void PostUndo(bool bSuccess) override
+	{
+		ShowToast(bSuccess, /*bRedo=*/false);
+	}
+
+	virtual void PostRedo(bool bSuccess) override
+	{
+		ShowToast(bSuccess, /*bRedo=*/true);
+	}
+
+private:
+	void ShowToast(const bool bSuccess, const bool bRedo)
+	{
+		const FString TitleText = LastMatchedTitle.IsEmpty() ? TEXT("HCIAbilityKit") : LastMatchedTitle.ToString();
+		const FString Prefix = bRedo ? TEXT("已重做") : TEXT("已撤销");
+		const FString Status = bSuccess ? TEXT("") : TEXT("（失败）");
+		const FString Message = FString::Printf(TEXT("%s：%s%s"), *Prefix, *TitleText, *Status);
+
+		// Non-blocking toast; don't use modal dialogs in undo/redo callbacks.
+		FNotificationInfo Info(FText::FromString(Message));
+		Info.bFireAndForget = true;
+		Info.ExpireDuration = 3.0f;
+		Info.FadeOutDuration = 0.2f;
+		Info.bUseSuccessFailIcons = true;
+		const TSharedPtr<SNotificationItem> Item = FSlateNotificationManager::Get().AddNotification(Info);
+		if (Item.IsValid())
+		{
+			Item->SetCompletionState(bSuccess ? SNotificationItem::CS_Success : SNotificationItem::CS_Fail);
+		}
+	}
+
+	mutable FText LastMatchedTitle;
+};
+} // namespace
+
+static TUniquePtr<FHCIAbilityKitBusinessUndoClient> GHCIAbilityKitBusinessUndoClient;
 
 struct FHCIAbilityKitAuditScanAsyncState
 {
@@ -1919,6 +1985,12 @@ void FHCIAbilityKitEditorModule::StartupModule()
 			FConsoleCommandWithArgsDelegate::CreateStatic(&HCI_RunAbilityKitDryRunDiffPreviewJsonCommand));
 	}
 
+	// Business-level Undo listener (toast on Ctrl+Z / Ctrl+Y) for transactions created with Context="HCIAbilityKit".
+	// This must be non-blocking and should not depend on any user UI being open.
+	if (!GHCIAbilityKitBusinessUndoClient.IsValid() && GEditor != nullptr)
+	{
+		GHCIAbilityKitBusinessUndoClient = MakeUnique<FHCIAbilityKitBusinessUndoClient>();
+	}
 }
 
 void FHCIAbilityKitEditorModule::ShutdownModule()
@@ -1963,7 +2035,7 @@ void FHCIAbilityKitEditorModule::ShutdownModule()
 	GHCIAbilityKitDryRunDiffPreviewDemoCommand.Reset();
 	GHCIAbilityKitDryRunDiffPreviewLocateCommand.Reset();
 	GHCIAbilityKitDryRunDiffPreviewJsonCommand.Reset();
+	GHCIAbilityKitBusinessUndoClient.Reset();
 }
 
 IMPLEMENT_MODULE(FHCIAbilityKitEditorModule, HCIAbilityKitEditor)
-

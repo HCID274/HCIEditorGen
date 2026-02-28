@@ -13,6 +13,7 @@
 #include "Engine/Texture2D.h"
 #include "EngineUtils.h"
 #include "Factories/MaterialInstanceConstantFactoryNew.h"
+#include "Framework/Application/SlateApplication.h"
 #include "Framework/Notifications/NotificationManager.h"
 #include "Materials/Material.h"
 #include "Materials/MaterialInstanceConstant.h"
@@ -2553,6 +2554,8 @@ private:
 				if ((AppliedCount % 10) == 0)
 				{
 					Notify.Update(FString::Printf(TEXT("阶段：执行移动/重命名... (%d/%d)"), AppliedCount, Proposals.Num()));
+					// Keep editor UI responsive during large batch operations.
+					FSlateApplication::Get().PumpMessages();
 				}
 			}
 		}
@@ -3129,6 +3132,8 @@ private:
 		{
 			++Completed;
 			Notify.Update(FString::Printf(TEXT("Auto-Material：执行中... (%d/%d)"), Completed, ReadyGroups.Num()));
+			// Keep editor UI responsive during batch operations.
+			FSlateApplication::Get().PumpMessages();
 
 			const FString MiName = FString::Printf(TEXT("MI_%s"), *Group.Id);
 			const FString MiDir = MaterialsDir;

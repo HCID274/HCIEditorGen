@@ -1,7 +1,9 @@
 #include "AgentActions/ToolActions/HCIAbilityKitToolActionFactories.h"
 
-#include "AgentActions/ToolActions/HCIAbilityKitAgentToolActions_LegacyShared.h"
-#include "AgentActions/ToolActions/HCIAbilityKitToolAction_MoveRename_LegacyShared.h"
+#include "AgentActions/Support/HCIAbilityKitAssetPathUtils.h"
+#include "AgentActions/Support/HCIAbilityKitToolActionEvidenceBuilder.h"
+#include "AgentActions/Support/HCIAbilityKitToolActionMoveRenameSupport.h"
+#include "AgentActions/Support/HCIAbilityKitToolActionParamParser.h"
 
 #include "EditorAssetLibrary.h"
 
@@ -21,25 +23,22 @@ public:
 	{
 		FString SourceAssetPath;
 		FString NewName;
-		if (!HCI_TryReadRequiredStringArg(Request.Args, TEXT("asset_path"), SourceAssetPath) ||
-			!HCI_TryReadRequiredStringArg(Request.Args, TEXT("new_name"), NewName))
+		const FHCIAbilityKitToolActionParamParser Params(Request.Args);
+		if (!Params.TryGetRequiredString(TEXT("asset_path"), SourceAssetPath) ||
+			!Params.TryGetRequiredString(TEXT("new_name"), NewName))
 		{
-			OutResult = FHCIAbilityKitAgentToolActionResult();
-			OutResult.bSucceeded = false;
-			OutResult.ErrorCode = TEXT("E4001");
-			OutResult.Reason = TEXT("required_arg_missing");
-			return false;
+			return FHCIAbilityKitToolActionEvidenceBuilder::FailRequiredArgMissing(OutResult);
 		}
 
 		OutResult = FHCIAbilityKitAgentToolActionResult();
-		if (!HCI_ValidateSourceAssetExists(SourceAssetPath, OutResult))
+		if (!HCIAbilityKitToolActionMoveRenameSupport::ValidateSourceAssetExists(SourceAssetPath, OutResult))
 		{
 			return false;
 		}
 
 		FString SourcePackagePath;
 		FString SourceAssetName;
-		if (!HCI_TrySplitObjectPath(SourceAssetPath, SourcePackagePath, SourceAssetName))
+		if (!HCIAbilityKitAssetPathUtils::TrySplitObjectPath(SourceAssetPath, SourcePackagePath, SourceAssetName))
 		{
 			OutResult.bSucceeded = false;
 			OutResult.ErrorCode = TEXT("E4009");
@@ -47,9 +46,9 @@ public:
 			return false;
 		}
 
-		const FString SourceDir = HCI_GetDirectoryFromPackagePath(SourcePackagePath);
+		const FString SourceDir = HCIAbilityKitAssetPathUtils::GetDirectoryFromPackagePath(SourcePackagePath);
 		const FString DestinationPackagePath = FString::Printf(TEXT("%s/%s"), *SourceDir, *NewName);
-		const FString DestinationAssetPath = HCI_ToObjectPath(DestinationPackagePath, NewName);
+		const FString DestinationAssetPath = HCIAbilityKitAssetPathUtils::ToObjectPath(DestinationPackagePath, NewName);
 
 		OutResult.bSucceeded = true;
 		OutResult.Reason = TEXT("rename_dry_run_ok");
@@ -90,7 +89,7 @@ public:
 
 		const int32 DotIndex = DestinationAssetPath.Find(TEXT("."), ESearchCase::CaseSensitive, ESearchDir::FromStart);
 		const FString DestinationPackagePath = (DotIndex == INDEX_NONE) ? DestinationAssetPath : DestinationAssetPath.Left(DotIndex);
-		const FString DestinationDir = HCI_GetDirectoryFromPackagePath(DestinationPackagePath);
+		const FString DestinationDir = HCIAbilityKitAssetPathUtils::GetDirectoryFromPackagePath(DestinationPackagePath);
 		if (!DestinationDir.IsEmpty())
 		{
 			UEditorAssetLibrary::MakeDirectory(DestinationDir);
@@ -102,7 +101,7 @@ public:
 		OutResult.Reason = bRenamed ? TEXT("rename_execute_ok") : TEXT("rename_execute_failed");
 		if (bRenamed)
 		{
-			HCI_FixupRedirectorReferencers(SourceAssetPath, OutResult);
+			HCIAbilityKitToolActionMoveRenameSupport::FixupRedirectorReferencers(SourceAssetPath, OutResult);
 		}
 		OutResult.Evidence.Add(TEXT("result"), bRenamed ? TEXT("rename_execute_ok") : TEXT("rename_execute_failed"));
 		return bRenamed;
@@ -114,4 +113,3 @@ TSharedPtr<IHCIAbilityKitAgentToolAction> HCIAbilityKitToolActionFactories::Make
 {
 	return MakeShared<FHCIAbilityKitRenameAssetToolAction>();
 }
-

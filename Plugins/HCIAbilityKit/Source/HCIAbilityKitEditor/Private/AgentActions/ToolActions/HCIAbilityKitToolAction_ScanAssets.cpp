@@ -1,6 +1,8 @@
 #include "AgentActions/ToolActions/HCIAbilityKitToolActionFactories.h"
 
-#include "AgentActions/ToolActions/HCIAbilityKitAgentToolActions_LegacyShared.h"
+#include "AgentActions/Support/HCIAbilityKitToolActionAssetPathNormalizer.h"
+#include "AgentActions/Support/HCIAbilityKitToolActionEvidenceBuilder.h"
+#include "AgentActions/Support/HCIAbilityKitToolActionParamParser.h"
 
 #include "EditorAssetLibrary.h"
 
@@ -33,24 +35,27 @@ private:
 		const FHCIAbilityKitAgentToolActionRequest& Request,
 		FHCIAbilityKitAgentToolActionResult& OutResult)
 	{
+		const FHCIAbilityKitToolActionParamParser Params(Request.Args);
+
 		FString Directory = TEXT("/Game/Temp");
-		if (Request.Args.IsValid())
+		FString DirectoryArg;
+		if (Params.TryGetOptionalStringFieldRaw(TEXT("directory"), DirectoryArg))
 		{
-			Request.Args->TryGetStringField(TEXT("directory"), Directory);
-			Request.Args->TryGetStringField(TEXT("target_root"), Directory);
+			Directory = DirectoryArg;
 		}
-		if (Directory.IsEmpty() || !Directory.StartsWith(TEXT("/Game")))
+		if (Params.TryGetOptionalStringFieldRaw(TEXT("target_root"), DirectoryArg))
+		{
+			Directory = DirectoryArg;
+		}
+		if (Directory.IsEmpty() || !FHCIAbilityKitToolActionAssetPathNormalizer::IsGamePathLoose(Directory))
 		{
 			Directory = TEXT("/Game/Temp");
 		}
 
 		const TArray<FString> AssetPaths = UEditorAssetLibrary::ListAssets(Directory, true, false);
-		OutResult = FHCIAbilityKitAgentToolActionResult();
-		OutResult.bSucceeded = true;
-		OutResult.Reason = TEXT("scan_assets_ok");
-		OutResult.EstimatedAffectedCount = AssetPaths.Num();
+		FHCIAbilityKitToolActionEvidenceBuilder::SetSucceeded(OutResult, TEXT("scan_assets_ok"), AssetPaths.Num());
 		OutResult.Evidence.Add(TEXT("scan_root"), Directory);
-		OutResult.Evidence.Add(TEXT("asset_count"), FString::FromInt(AssetPaths.Num()));
+		FHCIAbilityKitToolActionEvidenceBuilder::AddEvidenceInt(OutResult, TEXT("asset_count"), AssetPaths.Num());
 		OutResult.Evidence.Add(TEXT("result"), FString::Printf(TEXT("scan_assets_ok count=%d"), AssetPaths.Num()));
 		OutResult.Evidence.Add(TEXT("asset_path"), AssetPaths.Num() > 0 ? AssetPaths[0] : TEXT("-"));
 		OutResult.Evidence.Add(TEXT("asset_paths"), FString::Join(AssetPaths, TEXT("|")));
@@ -63,4 +68,3 @@ TSharedPtr<IHCIAbilityKitAgentToolAction> HCIAbilityKitToolActionFactories::Make
 {
 	return MakeShared<FHCIAbilityKitScanAssetsToolAction>();
 }
-

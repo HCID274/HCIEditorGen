@@ -1,6 +1,10 @@
 #include "AgentActions/ToolActions/HCIAbilityKitToolActionFactories.h"
 
-#include "AgentActions/ToolActions/HCIAbilityKitAgentToolActions_LegacyShared.h"
+#include "AgentActions/Support/HCIAbilityKitAssetNamingRules.h"
+#include "AgentActions/Support/HCIAbilityKitAssetPathUtils.h"
+#include "AgentActions/Support/HCIAbilityKitToolActionAssetPathNormalizer.h"
+#include "AgentActions/Support/HCIAbilityKitToolActionEvidenceBuilder.h"
+#include "AgentActions/Support/HCIAbilityKitToolActionParamParser.h"
 #include "AgentActions/ToolActions/HCIAbilityKitToolAction_NormalizeAssetNamingByMetadata_LegacyShared.h"
 
 #include "AssetRegistry/AssetRegistryModule.h"
@@ -62,7 +66,7 @@ private:
 		OutDestinationObjectPath.Reset();
 		OutResolvedAssetName.Reset();
 
-		const FString TrimmedDir = HCI_TrimTrailingSlash(DestinationDir);
+		const FString TrimmedDir = HCIAbilityKitAssetPathUtils::TrimTrailingSlash(DestinationDir);
 		if (TrimmedDir.IsEmpty() || !TrimmedDir.StartsWith(TEXT("/Game/")))
 		{
 			return false;
@@ -71,7 +75,7 @@ private:
 		auto BuildPaths = [&TrimmedDir](const FString& AssetName, FString& OutAssetPath, FString& OutObjectPath)
 		{
 			OutAssetPath = FString::Printf(TEXT("%s/%s"), *TrimmedDir, *AssetName);
-			OutObjectPath = HCI_ToObjectPath(OutAssetPath, AssetName);
+			OutObjectPath = HCIAbilityKitAssetPathUtils::ToObjectPath(OutAssetPath, AssetName);
 		};
 
 		// 0 = desired, then deconflict suffixes.
@@ -173,16 +177,13 @@ private:
 		FString MetadataSource;
 		FString PrefixMode;
 		FString TargetRoot;
-		if (!HCI_TryReadRequiredStringArrayArg(Request.Args, TEXT("asset_paths"), AssetPaths) ||
-			!HCI_TryReadRequiredStringArg(Request.Args, TEXT("metadata_source"), MetadataSource) ||
-			!HCI_TryReadRequiredStringArg(Request.Args, TEXT("prefix_mode"), PrefixMode) ||
-			!HCI_TryReadRequiredStringArg(Request.Args, TEXT("target_root"), TargetRoot))
+		const FHCIAbilityKitToolActionParamParser Params(Request.Args);
+		if (!Params.TryGetRequiredStringArray(TEXT("asset_paths"), AssetPaths) ||
+			!Params.TryGetRequiredString(TEXT("metadata_source"), MetadataSource) ||
+			!Params.TryGetRequiredString(TEXT("prefix_mode"), PrefixMode) ||
+			!Params.TryGetRequiredString(TEXT("target_root"), TargetRoot))
 		{
-			OutResult = FHCIAbilityKitAgentToolActionResult();
-			OutResult.bSucceeded = false;
-			OutResult.ErrorCode = TEXT("E4001");
-			OutResult.Reason = TEXT("required_arg_missing");
-			return false;
+			return FHCIAbilityKitToolActionEvidenceBuilder::FailRequiredArgMissing(OutResult);
 		}
 
 		if (!PrefixMode.Equals(TEXT("auto_by_asset_class"), ESearchCase::CaseSensitive))
@@ -198,7 +199,7 @@ private:
 		Notify.Start(bIsDryRun ? TEXT("HCIAbilityKit: 预览资产规范化/归档中...") : TEXT("HCIAbilityKit: 执行资产规范化/归档中..."));
 		Notify.Update(FString::Printf(TEXT("阶段：准备中 (assets=%d)"), AssetPaths.Num()));
 
-		TargetRoot = HCI_TrimTrailingSlash(TargetRoot);
+		TargetRoot = HCIAbilityKitAssetPathUtils::TrimTrailingSlash(TargetRoot);
 		if (TargetRoot.IsEmpty() || !TargetRoot.StartsWith(TEXT("/Game/")))
 		{
 			OutResult = FHCIAbilityKitAgentToolActionResult();
@@ -244,9 +245,9 @@ private:
 		{
 			FHCINormalizeItem Item;
 
-			HCI_NormalizeAssetPathVariants(RawPath, Item.SourceAssetPath, Item.SourceObjectPath);
+			FHCIAbilityKitToolActionAssetPathNormalizer::NormalizeAssetPathVariants(RawPath, Item.SourceAssetPath, Item.SourceObjectPath);
 
-			if (!HCI_TrySplitObjectPath(Item.SourceObjectPath, Item.SourcePackagePath, Item.SourceAssetName))
+			if (!HCIAbilityKitAssetPathUtils::TrySplitObjectPath(Item.SourceObjectPath, Item.SourcePackagePath, Item.SourceAssetName))
 			{
 				FailedRows.Add(FString::Printf(TEXT("%s (invalid_object_path)"), *Item.SourceObjectPath));
 				continue;
@@ -270,7 +271,7 @@ private:
 			Item.PackageName = Item.AssetData.PackageName;
 			SelectionPackages.Add(Item.PackageName);
 
-			Item.Prefix = HCI_DeriveClassPrefixFromAssetData(Item.AssetData);
+			Item.Prefix = HCIAbilityKitAssetNamingRules::DeriveClassPrefixFromAssetData(Item.AssetData);
 			Item.bIsAnchor = (Item.Prefix == TEXT("SM") || Item.Prefix == TEXT("SK"));
 
 			FString FailureReason;
@@ -317,11 +318,11 @@ private:
 				GroupSanitized = Item.BaseNameFromMetadata;
 			}
 
-			FString GroupName = HCI_SanitizeIdentifier(GroupSanitized);
+			FString GroupName = HCIAbilityKitAssetNamingRules::SanitizeIdentifier(GroupSanitized);
 			if (RoutingRules.bGroupNamePascalCase)
 			{
 				GroupName = HCI_ToPascalCase(GroupName);
-				GroupName = HCI_SanitizeIdentifier(GroupName);
+				GroupName = HCIAbilityKitAssetNamingRules::SanitizeIdentifier(GroupName);
 			}
 			if (GroupName.IsEmpty())
 			{
@@ -456,11 +457,11 @@ private:
 			FString AssetBaseName;
 			if (Item.bIsShared)
 			{
-				AssetBaseName = HCI_SanitizeIdentifier(Item.BaseNameFromMetadata);
+				AssetBaseName = HCIAbilityKitAssetNamingRules::SanitizeIdentifier(Item.BaseNameFromMetadata);
 				if (RoutingRules.bGroupNamePascalCase)
 				{
 					AssetBaseName = HCI_ToPascalCase(AssetBaseName);
-					AssetBaseName = HCI_SanitizeIdentifier(AssetBaseName);
+					AssetBaseName = HCIAbilityKitAssetNamingRules::SanitizeIdentifier(AssetBaseName);
 				}
 				if (Prefix == TEXT("T") && !RoleSuffix.IsEmpty() && !AssetBaseName.EndsWith(TEXT("_") + RoleSuffix, ESearchCase::IgnoreCase))
 				{
@@ -476,7 +477,7 @@ private:
 				}
 			}
 
-			AssetBaseName = HCI_SanitizeIdentifier(AssetBaseName);
+			AssetBaseName = HCIAbilityKitAssetNamingRules::SanitizeIdentifier(AssetBaseName);
 			if (AssetBaseName.IsEmpty())
 			{
 				FailedRows.Add(FString::Printf(TEXT("%s (target_name_invalid)"), *Item.SourceObjectPath));
@@ -484,7 +485,7 @@ private:
 			}
 
 			FString TargetAssetName = FString::Printf(TEXT("%s_%s"), *Prefix, *AssetBaseName);
-			TargetAssetName = HCI_SanitizeIdentifier(TargetAssetName);
+			TargetAssetName = HCIAbilityKitAssetNamingRules::SanitizeIdentifier(TargetAssetName);
 			if (TargetAssetName.IsEmpty())
 			{
 				FailedRows.Add(FString::Printf(TEXT("%s (target_name_invalid)"), *Item.SourceObjectPath));
@@ -509,7 +510,7 @@ private:
 				}
 			}
 
-			DestinationDir = HCI_TrimTrailingSlash(DestinationDir);
+			DestinationDir = HCIAbilityKitAssetPathUtils::TrimTrailingSlash(DestinationDir);
 
 			FString DestinationAssetPath;
 			FString DestinationObjectPath;
@@ -536,7 +537,7 @@ private:
 			Proposal.SourceAssetPath = Item.SourceAssetPath;
 			Proposal.SourceObjectPath = Item.SourceObjectPath;
 			Proposal.SourceAssetName = Item.SourceAssetName;
-			Proposal.SourceDirectory = HCI_GetDirectoryFromPackagePath(Item.SourcePackagePath);
+			Proposal.SourceDirectory = HCIAbilityKitAssetPathUtils::GetDirectoryFromPackagePath(Item.SourcePackagePath);
 			Proposal.DestinationAssetPath = DestinationAssetPath;
 			Proposal.DestinationObjectPath = DestinationObjectPath;
 			Proposal.DestinationAssetName = ResolvedAssetName.IsEmpty() ? TargetAssetName : ResolvedAssetName;
@@ -627,4 +628,3 @@ TSharedPtr<IHCIAbilityKitAgentToolAction> HCIAbilityKitToolActionFactories::Make
 {
 	return MakeShared<FHCIAbilityKitNormalizeAssetNamingByMetadataToolAction>();
 }
-

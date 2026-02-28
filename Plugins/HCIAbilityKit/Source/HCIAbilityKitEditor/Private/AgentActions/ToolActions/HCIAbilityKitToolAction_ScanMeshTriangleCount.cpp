@@ -1,6 +1,8 @@
 #include "AgentActions/ToolActions/HCIAbilityKitToolActionFactories.h"
 
-#include "AgentActions/ToolActions/HCIAbilityKitAgentToolActions_LegacyShared.h"
+#include "AgentActions/Support/HCIAbilityKitToolActionAssetPathNormalizer.h"
+#include "AgentActions/Support/HCIAbilityKitToolActionEvidenceBuilder.h"
+#include "AgentActions/Support/HCIAbilityKitToolActionParamParser.h"
 
 #include "EditorAssetLibrary.h"
 #include "Engine/StaticMesh.h"
@@ -40,12 +42,15 @@ private:
 		const FHCIAbilityKitAgentToolActionRequest& Request,
 		FHCIAbilityKitAgentToolActionResult& OutResult)
 	{
+		const FHCIAbilityKitToolActionParamParser Params(Request.Args);
+
 		FString Directory = TEXT("/Game/Temp");
-		if (Request.Args.IsValid())
+		FString DirectoryArg;
+		if (Params.TryGetOptionalStringFieldRaw(TEXT("directory"), DirectoryArg))
 		{
-			Request.Args->TryGetStringField(TEXT("directory"), Directory);
+			Directory = DirectoryArg;
 		}
-		if (Directory.IsEmpty() || !Directory.StartsWith(TEXT("/Game")))
+		if (Directory.IsEmpty() || !FHCIAbilityKitToolActionAssetPathNormalizer::IsGamePathLoose(Directory))
 		{
 			Directory = TEXT("/Game/Temp");
 		}
@@ -58,7 +63,7 @@ private:
 		{
 			FString AssetPath;
 			FString ObjectPath;
-			HCI_NormalizeAssetPathVariants(CandidatePath, AssetPath, ObjectPath);
+			FHCIAbilityKitToolActionAssetPathNormalizer::NormalizeAssetPathVariants(CandidatePath, AssetPath, ObjectPath);
 			if (!UEditorAssetLibrary::DoesAssetExist(AssetPath))
 			{
 				continue;
@@ -97,16 +102,13 @@ private:
 		}
 
 		const FHCIStaticMeshTriangleEntry* MaxEntry = MeshEntries.Num() > 0 ? &MeshEntries[0] : nullptr;
-		OutResult = FHCIAbilityKitAgentToolActionResult();
-		OutResult.bSucceeded = true;
-		OutResult.Reason = TEXT("scan_mesh_triangle_count_ok");
-		OutResult.EstimatedAffectedCount = MeshEntries.Num();
+		FHCIAbilityKitToolActionEvidenceBuilder::SetSucceeded(OutResult, TEXT("scan_mesh_triangle_count_ok"), MeshEntries.Num());
 		OutResult.Evidence.Add(TEXT("scan_root"), Directory);
-		OutResult.Evidence.Add(TEXT("scanned_count"), FString::FromInt(CandidateAssetPaths.Num()));
-		OutResult.Evidence.Add(TEXT("mesh_count"), FString::FromInt(MeshEntries.Num()));
-		OutResult.Evidence.Add(TEXT("max_triangle_count"), FString::FromInt(MaxEntry ? MaxEntry->TriangleCountLod0 : 0));
+		FHCIAbilityKitToolActionEvidenceBuilder::AddEvidenceInt(OutResult, TEXT("scanned_count"), CandidateAssetPaths.Num());
+		FHCIAbilityKitToolActionEvidenceBuilder::AddEvidenceInt(OutResult, TEXT("mesh_count"), MeshEntries.Num());
+		FHCIAbilityKitToolActionEvidenceBuilder::AddEvidenceInt(OutResult, TEXT("max_triangle_count"), MaxEntry ? MaxEntry->TriangleCountLod0 : 0);
 		OutResult.Evidence.Add(TEXT("max_triangle_asset"), MaxEntry ? MaxEntry->AssetPath : TEXT("-"));
-		OutResult.Evidence.Add(TEXT("top_meshes"), TopMeshes.Num() > 0 ? FString::Join(TopMeshes, TEXT(" | ")) : TEXT("none"));
+		FHCIAbilityKitToolActionEvidenceBuilder::AddEvidenceJoinedOrNone(OutResult, TEXT("top_meshes"), TopMeshes, TEXT(" | "));
 		OutResult.Evidence.Add(TEXT("result"), TEXT("scan_mesh_triangle_count_ok"));
 		return true;
 	}
@@ -117,4 +119,3 @@ TSharedPtr<IHCIAbilityKitAgentToolAction> HCIAbilityKitToolActionFactories::Make
 {
 	return MakeShared<FHCIAbilityKitScanMeshTriangleCountToolAction>();
 }
-

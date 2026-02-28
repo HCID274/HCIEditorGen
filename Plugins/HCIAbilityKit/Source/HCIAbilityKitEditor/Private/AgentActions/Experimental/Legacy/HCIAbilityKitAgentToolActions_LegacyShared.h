@@ -2,6 +2,8 @@
 
 #include "CoreMinimal.h"
 
+// Legacy snapshot (Global Step 2 refactor): kept for reference only; do not include from production ToolActions.
+
 #include "AgentActions/Support/HCIAbilityKitAssetNamingRules.h"
 #include "AgentActions/Support/HCIAbilityKitAssetPathUtils.h"
 

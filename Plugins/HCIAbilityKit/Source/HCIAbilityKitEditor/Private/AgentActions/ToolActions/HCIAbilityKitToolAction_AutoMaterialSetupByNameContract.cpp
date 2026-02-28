@@ -1,6 +1,9 @@
 #include "AgentActions/ToolActions/HCIAbilityKitToolActionFactories.h"
 
-#include "AgentActions/ToolActions/HCIAbilityKitAgentToolActions_LegacyShared.h"
+#include "AgentActions/Support/HCIAbilityKitAssetNamingRules.h"
+#include "AgentActions/Support/HCIAbilityKitAssetPathUtils.h"
+#include "AgentActions/Support/HCIAbilityKitToolActionEvidenceBuilder.h"
+#include "AgentActions/Support/HCIAbilityKitToolActionParamParser.h"
 
 #include "AssetToolsModule.h"
 #include "Dom/JsonObject.h"
@@ -106,7 +109,7 @@ private:
 	{
 		FString PackagePath;
 		FString AssetName;
-		if (HCI_TrySplitObjectPath(InPath, PackagePath, AssetName))
+		if (HCIAbilityKitAssetPathUtils::TrySplitObjectPath(InPath, PackagePath, AssetName))
 		{
 			return AssetName;
 		}
@@ -123,7 +126,7 @@ private:
 
 		OutId = AssetName.Mid(3);
 		OutId.TrimStartAndEndInline();
-		OutId = HCI_SanitizeIdentifier(OutId);
+		OutId = HCIAbilityKitAssetNamingRules::SanitizeIdentifier(OutId);
 		return !OutId.IsEmpty();
 	}
 
@@ -161,7 +164,7 @@ private:
 			Id += Parts[Index];
 		}
 
-		Id = HCI_SanitizeIdentifier(Id);
+		Id = HCIAbilityKitAssetNamingRules::SanitizeIdentifier(Id);
 		if (Id.IsEmpty())
 		{
 			return false;
@@ -324,17 +327,14 @@ private:
 	{
 		TArray<FString> AssetPaths;
 		FString TargetRoot;
-		if (!HCI_TryReadRequiredStringArrayArg(Request.Args, TEXT("asset_paths"), AssetPaths) ||
-			!HCI_TryReadRequiredStringArg(Request.Args, TEXT("target_root"), TargetRoot))
+		const FHCIAbilityKitToolActionParamParser Params(Request.Args);
+		if (!Params.TryGetRequiredStringArray(TEXT("asset_paths"), AssetPaths) ||
+			!Params.TryGetRequiredString(TEXT("target_root"), TargetRoot))
 		{
-			OutResult = FHCIAbilityKitAgentToolActionResult();
-			OutResult.bSucceeded = false;
-			OutResult.ErrorCode = TEXT("E4001");
-			OutResult.Reason = TEXT("required_arg_missing");
-			return false;
+			return FHCIAbilityKitToolActionEvidenceBuilder::FailRequiredArgMissing(OutResult);
 		}
 
-		TargetRoot = HCI_TrimTrailingSlash(TargetRoot);
+		TargetRoot = HCIAbilityKitAssetPathUtils::TrimTrailingSlash(TargetRoot);
 		if (!TargetRoot.StartsWith(TEXT("/Game/")))
 		{
 			OutResult = FHCIAbilityKitAgentToolActionResult();
@@ -584,7 +584,7 @@ private:
 		{
 			const FString MiName = FString::Printf(TEXT("MI_%s"), *Group.Id);
 			const FString MiPackagePath = FString::Printf(TEXT("%s/%s"), *MaterialsDir, *MiName);
-			const FString MiObjectPath = HCI_ToObjectPath(MiPackagePath, MiName);
+			const FString MiObjectPath = HCIAbilityKitAssetPathUtils::ToObjectPath(MiPackagePath, MiName);
 			ProposedInstances.Add(FString::Printf(TEXT("%s -> %s"), *MiName, *MiObjectPath));
 
 			const FString MeshName = HCI_ExtractAssetNameFromObjectOrAssetPath(Group.MeshObjectPath);
@@ -815,4 +815,3 @@ TSharedPtr<IHCIAbilityKitAgentToolAction> HCIAbilityKitToolActionFactories::Make
 {
 	return MakeShared<FHCIAbilityKitAutoMaterialSetupByNameContractToolAction>();
 }
-

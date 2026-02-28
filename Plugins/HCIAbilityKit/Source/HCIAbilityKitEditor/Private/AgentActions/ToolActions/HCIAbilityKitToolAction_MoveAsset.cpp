@@ -1,7 +1,9 @@
 #include "AgentActions/ToolActions/HCIAbilityKitToolActionFactories.h"
 
-#include "AgentActions/ToolActions/HCIAbilityKitAgentToolActions_LegacyShared.h"
-#include "AgentActions/ToolActions/HCIAbilityKitToolAction_MoveRename_LegacyShared.h"
+#include "AgentActions/Support/HCIAbilityKitAssetPathUtils.h"
+#include "AgentActions/Support/HCIAbilityKitToolActionEvidenceBuilder.h"
+#include "AgentActions/Support/HCIAbilityKitToolActionMoveRenameSupport.h"
+#include "AgentActions/Support/HCIAbilityKitToolActionParamParser.h"
 
 #include "EditorAssetLibrary.h"
 
@@ -21,25 +23,22 @@ public:
 	{
 		FString SourceAssetPath;
 		FString TargetPath;
-		if (!HCI_TryReadRequiredStringArg(Request.Args, TEXT("asset_path"), SourceAssetPath) ||
-			!HCI_TryReadRequiredStringArg(Request.Args, TEXT("target_path"), TargetPath))
+		const FHCIAbilityKitToolActionParamParser Params(Request.Args);
+		if (!Params.TryGetRequiredString(TEXT("asset_path"), SourceAssetPath) ||
+			!Params.TryGetRequiredString(TEXT("target_path"), TargetPath))
 		{
-			OutResult = FHCIAbilityKitAgentToolActionResult();
-			OutResult.bSucceeded = false;
-			OutResult.ErrorCode = TEXT("E4001");
-			OutResult.Reason = TEXT("required_arg_missing");
-			return false;
+			return FHCIAbilityKitToolActionEvidenceBuilder::FailRequiredArgMissing(OutResult);
 		}
 
 		OutResult = FHCIAbilityKitAgentToolActionResult();
-		if (!HCI_ValidateSourceAssetExists(SourceAssetPath, OutResult))
+		if (!HCIAbilityKitToolActionMoveRenameSupport::ValidateSourceAssetExists(SourceAssetPath, OutResult))
 		{
 			return false;
 		}
 
 		FString SourcePackagePath;
 		FString SourceAssetName;
-		if (!HCI_TrySplitObjectPath(SourceAssetPath, SourcePackagePath, SourceAssetName))
+		if (!HCIAbilityKitAssetPathUtils::TrySplitObjectPath(SourceAssetPath, SourcePackagePath, SourceAssetName))
 		{
 			OutResult.bSucceeded = false;
 			OutResult.ErrorCode = TEXT("E4009");
@@ -101,19 +100,19 @@ public:
 
 		const int32 DotIndex = DestinationAssetPath.Find(TEXT("."), ESearchCase::CaseSensitive, ESearchDir::FromStart);
 		const FString DestinationPackagePath = (DotIndex == INDEX_NONE) ? DestinationAssetPath : DestinationAssetPath.Left(DotIndex);
-		const FString DestinationDir = HCI_GetDirectoryFromPackagePath(DestinationPackagePath);
+		const FString DestinationDir = HCIAbilityKitAssetPathUtils::GetDirectoryFromPackagePath(DestinationPackagePath);
 		if (!DestinationDir.IsEmpty())
 		{
 			UEditorAssetLibrary::MakeDirectory(DestinationDir);
 		}
 
-		const bool bMoved = HCI_MoveAssetWithAssetTools(SourceAssetPath, DestinationAssetPath);
+		const bool bMoved = HCIAbilityKitToolActionMoveRenameSupport::MoveAssetWithAssetTools(SourceAssetPath, DestinationAssetPath);
 		OutResult.bSucceeded = bMoved;
 		OutResult.ErrorCode = bMoved ? FString() : TEXT("E4204");
 		OutResult.Reason = bMoved ? TEXT("move_execute_ok") : TEXT("move_execute_failed");
 		if (bMoved)
 		{
-			HCI_FixupRedirectorReferencers(SourceAssetPath, OutResult);
+			HCIAbilityKitToolActionMoveRenameSupport::FixupRedirectorReferencers(SourceAssetPath, OutResult);
 		}
 		OutResult.Evidence.Add(TEXT("result"), bMoved ? TEXT("move_execute_ok") : TEXT("move_execute_failed"));
 		return bMoved;
@@ -125,4 +124,3 @@ TSharedPtr<IHCIAbilityKitAgentToolAction> HCIAbilityKitToolActionFactories::Make
 {
 	return MakeShared<FHCIAbilityKitMoveAssetToolAction>();
 }
-

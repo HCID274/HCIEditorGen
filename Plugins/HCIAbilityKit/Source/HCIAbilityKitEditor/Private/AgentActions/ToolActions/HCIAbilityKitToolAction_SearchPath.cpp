@@ -1,6 +1,8 @@
 #include "AgentActions/ToolActions/HCIAbilityKitToolActionFactories.h"
 
-#include "AgentActions/ToolActions/HCIAbilityKitAgentToolActions_LegacyShared.h"
+#include "AgentActions/Support/HCIAbilityKitAssetPathUtils.h"
+#include "AgentActions/Support/HCIAbilityKitToolActionEvidenceBuilder.h"
+#include "AgentActions/Support/HCIAbilityKitToolActionParamParser.h"
 
 #include "AssetRegistry/AssetRegistryModule.h"
 #include "Modules/ModuleManager.h"
@@ -200,13 +202,10 @@ private:
 		FHCIAbilityKitAgentToolActionResult& OutResult)
 	{
 		FString Keyword;
-		if (!HCI_TryReadRequiredStringArg(Request.Args, TEXT("keyword"), Keyword))
+		const FHCIAbilityKitToolActionParamParser Params(Request.Args);
+		if (!Params.TryGetRequiredString(TEXT("keyword"), Keyword))
 		{
-			OutResult = FHCIAbilityKitAgentToolActionResult();
-			OutResult.bSucceeded = false;
-			OutResult.ErrorCode = TEXT("E4001");
-			OutResult.Reason = TEXT("required_arg_missing");
-			return false;
+			return FHCIAbilityKitToolActionEvidenceBuilder::FailRequiredArgMissing(OutResult);
 		}
 
 		FAssetRegistryModule& AssetRegistryModule = FModuleManager::LoadModuleChecked<FAssetRegistryModule>(TEXT("AssetRegistry"));
@@ -356,4 +355,3 @@ TSharedPtr<IHCIAbilityKitAgentToolAction> HCIAbilityKitToolActionFactories::Make
 {
 	return MakeShared<FHCIAbilityKitSearchPathToolAction>();
 }
-

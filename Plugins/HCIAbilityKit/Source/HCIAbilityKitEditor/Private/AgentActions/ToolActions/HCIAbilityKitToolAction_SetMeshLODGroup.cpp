@@ -1,6 +1,8 @@
 #include "AgentActions/ToolActions/HCIAbilityKitToolActionFactories.h"
 
-#include "AgentActions/ToolActions/HCIAbilityKitAgentToolActions_LegacyShared.h"
+#include "AgentActions/Support/HCIAbilityKitToolActionAssetPathNormalizer.h"
+#include "AgentActions/Support/HCIAbilityKitToolActionEvidenceBuilder.h"
+#include "AgentActions/Support/HCIAbilityKitToolActionParamParser.h"
 
 #include "EditorAssetLibrary.h"
 #include "Engine/StaticMesh.h"
@@ -37,14 +39,11 @@ public:
 	{
 		TArray<FString> AssetPaths;
 		FString LODGroup;
-		if (!HCI_TryReadRequiredStringArrayArg(Request.Args, TEXT("asset_paths"), AssetPaths) ||
-			!HCI_TryReadRequiredStringArg(Request.Args, TEXT("lod_group"), LODGroup))
+		const FHCIAbilityKitToolActionParamParser Params(Request.Args);
+		if (!Params.TryGetRequiredStringArray(TEXT("asset_paths"), AssetPaths) ||
+			!Params.TryGetRequiredString(TEXT("lod_group"), LODGroup))
 		{
-			OutResult = FHCIAbilityKitAgentToolActionResult();
-			OutResult.bSucceeded = false;
-			OutResult.ErrorCode = TEXT("E4001");
-			OutResult.Reason = TEXT("required_arg_missing");
-			return false;
+			return FHCIAbilityKitToolActionEvidenceBuilder::FailRequiredArgMissing(OutResult);
 		}
 
 		TArray<FString> ModifiedAssets;
@@ -63,7 +62,7 @@ public:
 		{
 			FString AssetPath;
 			FString ObjectPath;
-			HCI_NormalizeAssetPathVariants(Path, AssetPath, ObjectPath);
+			FHCIAbilityKitToolActionAssetPathNormalizer::NormalizeAssetPathVariants(Path, AssetPath, ObjectPath);
 
 			if (!UEditorAssetLibrary::DoesAssetExist(AssetPath))
 			{
@@ -104,9 +103,9 @@ public:
 			OutResult.Reason = TEXT("lod_tool_nanite_enabled_blocked");
 			OutResult.EstimatedAffectedCount = 0;
 			OutResult.Evidence.Add(TEXT("target_lod_group"), LODGroup);
-			OutResult.Evidence.Add(TEXT("scanned_count"), FString::FromInt(AssetPaths.Num()));
+			FHCIAbilityKitToolActionEvidenceBuilder::AddEvidenceInt(OutResult, TEXT("scanned_count"), AssetPaths.Num());
 			OutResult.Evidence.Add(TEXT("modified_count"), TEXT("0"));
-			OutResult.Evidence.Add(TEXT("failed_count"), FString::FromInt(FailedAssets.Num()));
+			FHCIAbilityKitToolActionEvidenceBuilder::AddEvidenceInt(OutResult, TEXT("failed_count"), FailedAssets.Num());
 			OutResult.Evidence.Add(TEXT("failed_assets"), FString::Join(FailedAssets, TEXT(" | ")));
 			OutResult.Evidence.Add(TEXT("result"), TEXT("lod_tool_nanite_enabled_blocked"));
 			return false;
@@ -137,9 +136,9 @@ public:
 		OutResult.EstimatedAffectedCount = ModifiedAssets.Num();
 		
 		OutResult.Evidence.Add(TEXT("target_lod_group"), LODGroup);
-		OutResult.Evidence.Add(TEXT("scanned_count"), FString::FromInt(AssetPaths.Num()));
-		OutResult.Evidence.Add(TEXT("modified_count"), FString::FromInt(ModifiedAssets.Num()));
-		OutResult.Evidence.Add(TEXT("failed_count"), FString::FromInt(FailedAssets.Num()));
+		FHCIAbilityKitToolActionEvidenceBuilder::AddEvidenceInt(OutResult, TEXT("scanned_count"), AssetPaths.Num());
+		FHCIAbilityKitToolActionEvidenceBuilder::AddEvidenceInt(OutResult, TEXT("modified_count"), ModifiedAssets.Num());
+		FHCIAbilityKitToolActionEvidenceBuilder::AddEvidenceInt(OutResult, TEXT("failed_count"), FailedAssets.Num());
 		
 		if (ModifiedAssets.Num() > 0)
 		{
@@ -160,4 +159,3 @@ TSharedPtr<IHCIAbilityKitAgentToolAction> HCIAbilityKitToolActionFactories::Make
 {
 	return MakeShared<FHCIAbilityKitSetMeshLODGroupToolAction>();
 }
-

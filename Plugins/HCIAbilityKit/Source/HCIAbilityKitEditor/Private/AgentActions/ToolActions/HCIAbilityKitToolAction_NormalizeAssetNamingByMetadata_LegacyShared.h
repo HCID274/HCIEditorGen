@@ -3,6 +3,7 @@
 #include "CoreMinimal.h"
 
 #include "AgentActions/Support/HCIAbilityKitAssetMoveRenameUtils.h"
+#include "AgentActions/Support/HCIAbilityKitAssetNamingRules.h"
 
 #include "AssetRegistry/AssetData.h"
 #include "Dom/JsonObject.h"
@@ -108,13 +109,13 @@ static bool HCI_TryBuildNormalizedNameBaseFromAssetData(
 	FString SourceStem;
 	if (HCI_TryExtractImportSourceStemFromAssetData(AssetData, SourceStem))
 	{
-		OutBaseName = HCI_SanitizeIdentifier(HCI_RemoveKnownPrefixToken(SourceStem));
+		OutBaseName = HCIAbilityKitAssetNamingRules::SanitizeIdentifier(HCIAbilityKitAssetNamingRules::RemoveKnownPrefixToken(SourceStem));
 		if (!OutBaseName.IsEmpty())
 		{
 			if (OutBaseName.StartsWith(Prefix + TEXT("_"), ESearchCase::IgnoreCase))
 			{
 				OutBaseName.RightChopInline(Prefix.Len() + 1, false);
-				OutBaseName = HCI_SanitizeIdentifier(OutBaseName);
+				OutBaseName = HCIAbilityKitAssetNamingRules::SanitizeIdentifier(OutBaseName);
 			}
 			if (!OutBaseName.IsEmpty())
 			{
@@ -195,14 +196,14 @@ static FString HCI_DeriveBaseNameFromCurrentName(const FString& CurrentAssetName
 	{
 		Candidate.RightChopInline(PrefixWithUnderscore.Len(), false);
 	}
-	Candidate = HCI_RemoveKnownPrefixToken(Candidate);
+	Candidate = HCIAbilityKitAssetNamingRules::RemoveKnownPrefixToken(Candidate);
 
-	FString Sanitized = HCI_SanitizeIdentifier(Candidate);
+	FString Sanitized = HCIAbilityKitAssetNamingRules::SanitizeIdentifier(Candidate);
 	if (!Sanitized.IsEmpty())
 	{
 		return Sanitized;
 	}
-	return HCI_SanitizeIdentifier(CurrentAssetName);
+	return HCIAbilityKitAssetNamingRules::SanitizeIdentifier(CurrentAssetName);
 }
 
 static bool HCI_TryBuildNormalizedNameBase(
@@ -227,13 +228,13 @@ static bool HCI_TryBuildNormalizedNameBase(
 	FString SourceStem;
 	if (HCI_TryExtractImportSourceStem(Asset, SourceStem))
 	{
-		OutBaseName = HCI_SanitizeIdentifier(HCI_RemoveKnownPrefixToken(SourceStem));
+		OutBaseName = HCIAbilityKitAssetNamingRules::SanitizeIdentifier(HCIAbilityKitAssetNamingRules::RemoveKnownPrefixToken(SourceStem));
 		if (!OutBaseName.IsEmpty())
 		{
 			if (OutBaseName.StartsWith(Prefix + TEXT("_"), ESearchCase::IgnoreCase))
 			{
 				OutBaseName.RightChopInline(Prefix.Len() + 1, false);
-				OutBaseName = HCI_SanitizeIdentifier(OutBaseName);
+				OutBaseName = HCIAbilityKitAssetNamingRules::SanitizeIdentifier(OutBaseName);
 			}
 			if (!OutBaseName.IsEmpty())
 			{
@@ -369,7 +370,7 @@ static FHCIAbilityKitAssetRoutingRules HCI_LoadAssetRoutingRules()
 	if (Root->TryGetStringField(TEXT("shared_root"), SharedRoot))
 	{
 		SharedRoot.TrimStartAndEndInline();
-		SharedRoot = HCI_SanitizeIdentifier(SharedRoot);
+		SharedRoot = HCIAbilityKitAssetNamingRules::SanitizeIdentifier(SharedRoot);
 		if (!SharedRoot.IsEmpty())
 		{
 			Rules.SharedRoot = SharedRoot;
@@ -411,7 +412,7 @@ static FHCIAbilityKitAssetRoutingRules HCI_LoadAssetRoutingRules()
 
 			FString Val = It.Value->AsString();
 			Val.TrimStartAndEndInline();
-			Val = HCI_SanitizeIdentifier(Val);
+			Val = HCIAbilityKitAssetNamingRules::SanitizeIdentifier(Val);
 			Rules.SubfoldersByPrefix.Add(Key, Val);
 		}
 	}
@@ -510,4 +511,3 @@ static bool HCI_MoveAssetWithAssetTools(const FString& SourceAssetPath, const FS
 	return HCIAbilityKitAssetMoveRenameUtils::MoveAssetWithAssetTools(SourceAssetPath, DestinationAssetPath);
 }
 }
-

@@ -2,6 +2,8 @@
 
 #include "CoreMinimal.h"
 
+// Legacy snapshot (Global Step 2 refactor): kept for reference only; do not include from production ToolActions.
+
 #include "Agent/Tools/HCIAbilityKitAgentToolAction.h"
 #include "AgentActions/Support/HCIAbilityKitAssetMoveRenameUtils.h"
 #include "AgentActions/Support/HCIAbilityKitRedirectorFixup.h"
@@ -42,4 +44,3 @@ static bool HCI_MoveAssetWithAssetTools(const FString& SourceAssetPath, const FS
 	return HCIAbilityKitAssetMoveRenameUtils::MoveAssetWithAssetTools(SourceAssetPath, DestinationAssetPath);
 }
 }
-

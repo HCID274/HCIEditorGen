@@ -1,6 +1,7 @@
 #include "AgentActions/ToolActions/HCIAbilityKitToolActionFactories.h"
 
-#include "AgentActions/ToolActions/HCIAbilityKitAgentToolActions_LegacyShared.h"
+#include "AgentActions/Support/HCIAbilityKitToolActionEvidenceBuilder.h"
+#include "AgentActions/Support/HCIAbilityKitToolActionParamParser.h"
 
 #include "Components/StaticMeshComponent.h"
 #include "Editor.h"
@@ -41,17 +42,14 @@ private:
 		TArray<FString> Checks;
 		TArray<FString> RequestedActorNames;
 		int32 MaxActorCount = 0;
-		if (!HCI_TryReadRequiredStringArg(Request.Args, TEXT("scope"), Scope) ||
-			!HCI_TryReadRequiredStringArrayArg(Request.Args, TEXT("checks"), Checks) ||
-			!HCI_TryReadRequiredIntArg(Request.Args, TEXT("max_actor_count"), MaxActorCount))
+		const FHCIAbilityKitToolActionParamParser Params(Request.Args);
+		if (!Params.TryGetRequiredString(TEXT("scope"), Scope) ||
+			!Params.TryGetRequiredStringArray(TEXT("checks"), Checks) ||
+			!Params.TryGetRequiredInt(TEXT("max_actor_count"), MaxActorCount))
 		{
-			OutResult = FHCIAbilityKitAgentToolActionResult();
-			OutResult.bSucceeded = false;
-			OutResult.ErrorCode = TEXT("E4001");
-			OutResult.Reason = TEXT("required_arg_missing");
-			return false;
+			return FHCIAbilityKitToolActionEvidenceBuilder::FailRequiredArgMissing(OutResult);
 		}
-		if (!HCI_TryReadOptionalStringArrayArg(Request.Args, TEXT("actor_names"), RequestedActorNames))
+		if (!Params.TryGetOptionalStringArray(TEXT("actor_names"), RequestedActorNames))
 		{
 			OutResult = FHCIAbilityKitAgentToolActionResult();
 			OutResult.bSucceeded = false;
@@ -363,4 +361,3 @@ TSharedPtr<IHCIAbilityKitAgentToolAction> HCIAbilityKitToolActionFactories::Make
 {
 	return MakeShared<FHCIAbilityKitScanLevelMeshRisksToolAction>();
 }
-

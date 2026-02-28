@@ -43,6 +43,7 @@ Step 5 - JSON Generation:
 - `ui_presentation.intent_reason` SHOULD be filled for each step, explaining why this step is needed or why an exception is granted.
 - `ui_presentation.risk_warning` should be filled for write/destructive steps; omit for ordinary read-only steps.
 - For `SetTextureMaxSize.asset_paths` / `SetMeshLODGroup.asset_paths`, you MUST use pipeline input from `ScanAssets` evidence (`{{step_x.asset_paths}}`).
+- For `AutoMaterialSetupByNameContract.asset_paths`, you MUST use pipeline input from `ScanAssets` evidence (`{{step_x.asset_paths}}`).
 - For `intent = "batch_fix_asset_compliance"`, plan MUST contain at least one write step (`SetTextureMaxSize` or `SetMeshLODGroup`).
 - For pure chat / identity / capability / greeting / unclear non-operational input, DO NOT output any tool steps; return `steps: []` with `assistant_message`.
 - `fallback_scan_assets` is NOT allowed for pure chat.
@@ -51,6 +52,7 @@ Step 5 - JSON Generation:
 - `NormalizeAssetNamingByMetadata` / `RenameAsset` / `MoveAsset` are ALLOWED only when you have concrete UE asset paths from ONE of:
   - `ENV_CONTEXT` (explicit asset path list), OR
   - a `ScanAssets` step output (`{{step_x.asset_paths}}`) within the same plan.
+- `AutoMaterialSetupByNameContract` is ALLOWED only when you have concrete UE asset paths from a `ScanAssets` step output (`{{step_x.asset_paths}}`) within the same plan (do NOT invent `/Game/...` object paths).
 - If `ENV_CONTEXT` contains an `ingest_batch` block with a line `suggested_unreal_target_root: /Game/...` and user refers to "刚导入/最新批次/latest ingest batch", prefer using that target root as the directory scope for `ScanAssets` follow-ups.
 - When `ingest_batch` provides `suggested_unreal_target_root`, you MUST obtain concrete UE asset paths via `ScanAssets` on that directory, then feed `{{step_scan.asset_paths}}` into `NormalizeAssetNamingByMetadata.asset_paths` (or into `SetTextureMaxSize/SetMeshLODGroup`); do NOT attempt to rename/move assets by guessing `/Game/...` paths from filenames.
 
@@ -133,6 +135,16 @@ Step 5 - JSON Generation:
     - required chain:
       - `step_1_scan` -> `ScanAssets` with `{"directory":"<ENV_CONTEXT.ingest_batch[0].suggested_unreal_target_root>"}` (use the path from ENV_CONTEXT verbatim)
       - `step_2_normalize` -> `NormalizeAssetNamingByMetadata` with `asset_paths="{{step_1_scan.asset_paths}}"`, `metadata_source="auto"`, `prefix_mode="auto_by_asset_class"`, `target_root` = user's requested archive target (must be `/Game/...`)
+- Auto material setup (name contract, strict):
+  - `intent = "auto_material_setup_by_contract"`
+  - `route_reason = "material_setup_name_contract"`
+  - required chain:
+    - `step_1_scan` -> `ScanAssets` with user-provided explicit `/Game/...` directory (or `SearchPath -> ScanAssets` if user only gave a folder keyword)
+    - `step_2_link` -> `AutoMaterialSetupByNameContract` with:
+      - `asset_paths="{{step_1_scan.asset_paths}}"`
+      - `target_root` = the directory that will receive `Materials/MI_<ID>` (default: same as scan directory)
+      - omit `master_material_path` unless user explicitly provides it
+  - step 2 must be write-like and MUST set `requires_confirm=true` with a clear `ui_presentation.risk_warning`
 - Level risk scan:
   - `intent = "scan_level_mesh_risks"`
   - `route_reason = "level_risk_collision_material"`

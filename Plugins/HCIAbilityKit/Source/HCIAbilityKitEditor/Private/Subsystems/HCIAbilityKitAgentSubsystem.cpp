@@ -245,7 +245,17 @@ static FString HCI_BuildStepSummaryFallback(const FHCIAbilityKitAgentPlanStep& S
 	}
 	if (Step.ToolName == TEXT("NormalizeAssetNamingByMetadata"))
 	{
-		return TEXT("准备按元数据规范命名并归档资产");
+		const FString TargetRoot = HCI_GetStepArgString(Step, TEXT("target_root"));
+		return TargetRoot.IsEmpty()
+			? TEXT("准备按元数据规范命名并归档资产")
+			: FString::Printf(TEXT("准备按元数据规范命名并归档到 %s"), *TargetRoot);
+	}
+	if (Step.ToolName == TEXT("AutoMaterialSetupByNameContract"))
+	{
+		const FString TargetRoot = HCI_GetStepArgString(Step, TEXT("target_root"));
+		return TargetRoot.IsEmpty()
+			? TEXT("准备按契约自动创建材质实例并挂贴图（默认挂到 Slot0）")
+			: FString::Printf(TEXT("准备按契约自动连材质并挂到 Slot0（目标：%s）"), *TargetRoot);
 	}
 	if (Step.ToolName == TEXT("RenameAsset"))
 	{
@@ -733,9 +743,10 @@ static FString HCI_NormalizeUserInputPathsForPlanner(const FString& InText, bool
 			bOutChanged = true;
 		}
 	};
+	// Legacy mapping: older fixtures used "/Game/_HCI_Test". Keep this as a compatibility rewrite so user input always
+	// lands on the single canonical test root "/Game/__HCI_Test".
 	Replace(TEXT("/Game/_HCI_Test/"), TEXT("/Game/__HCI_Test/"));
 	Replace(TEXT("Game/_HCI_Test/"), TEXT("/Game/__HCI_Test/"));
-	Replace(TEXT("Game/__HCI_Test/"), TEXT("/Game/__HCI_Test/"));
 	// Common sticky input: "扫描/Game/..." (missing space) or "扫描Game/..." (missing slash+space).
 	Replace(TEXT("扫描/Game/"), TEXT("扫描 /Game/"));
 	Replace(TEXT("扫描Game/"), TEXT("扫描 /Game/"));
@@ -798,6 +809,13 @@ static FString HCI_NormalizeUserInputPathsForPlanner(const FString& InText, bool
 			i = End;
 		}
 		Out = MoveTemp(Fixed);
+	}
+
+	// Guardrail: never emit double slashes for /Game tokens (can happen if user already typed "/Game/..."
+	// and we later insert another leading slash for a "Game/..." substring).
+	while (Out.Contains(TEXT("//Game/")))
+	{
+		Replace(TEXT("//Game/"), TEXT("/Game/"));
 	}
 
 	return Out;
@@ -1501,6 +1519,128 @@ bool UHCIAbilityKitAgentSubsystem::BuildLastPlanApprovalCard(FHCIAbilityKitAgent
 					AppendPreviewSection(Preview, TEXT("失败项（示例）："), FailedRows, 6);
 				}
 			}
+
+			Preview.TrimStartAndEndInline();
+			if (!Preview.IsEmpty())
+			{
+				if (!OutCard.ImpactHint.IsEmpty())
+				{
+					OutCard.ImpactHint += TEXT("\n");
+				}
+				OutCard.ImpactHint += Preview;
+			}
+		}
+	}
+
+	// Enrich auto-material approval with concrete MI/param/assignment proposals from the cached dry-run step results.
+	if (bHasApprovalPreview && BestStep->ToolName == TEXT("AutoMaterialSetupByNameContract"))
+	{
+		const FHCIAbilityKitAgentExecutorStepResult* Matched = nullptr;
+		const FHCIAbilityKitAgentExecutorStepResult* ScanStep = nullptr;
+		for (const FHCIAbilityKitAgentExecutorStepResult& StepResult : ApprovalPreviewStepResults)
+		{
+			if (StepResult.ToolName.Equals(TEXT("ScanAssets"), ESearchCase::CaseSensitive))
+			{
+				ScanStep = &StepResult;
+			}
+			if (StepResult.StepId.Equals(BestStep->StepId, ESearchCase::CaseSensitive) &&
+				StepResult.ToolName.Equals(TEXT("AutoMaterialSetupByNameContract"), ESearchCase::CaseSensitive))
+			{
+				Matched = &StepResult;
+				break;
+			}
+		}
+
+		auto SplitEvidenceRows = [](const FString& Joined, TArray<FString>& OutRows)
+		{
+			OutRows.Reset();
+			if (Joined.IsEmpty() || Joined == TEXT("none"))
+			{
+				return;
+			}
+
+			TArray<FString> Parts;
+			Joined.ParseIntoArray(Parts, TEXT("|"), true);
+			for (FString Part : Parts)
+			{
+				Part.TrimStartAndEndInline();
+				if (!Part.IsEmpty())
+				{
+					OutRows.Add(MoveTemp(Part));
+				}
+			}
+		};
+
+		auto AppendPreviewSection = [](FString& InOutText, const FString& Title, const TArray<FString>& Rows, const int32 MaxRows)
+		{
+			if (Rows.Num() <= 0)
+			{
+				return;
+			}
+
+			InOutText += TEXT("\n");
+			InOutText += Title;
+			InOutText += TEXT("\n");
+			const int32 Count = FMath::Min(MaxRows, Rows.Num());
+			for (int32 Index = 0; Index < Count; ++Index)
+			{
+				InOutText += FString::Printf(TEXT(" - %s\n"), *Rows[Index]);
+			}
+			if (Rows.Num() > Count)
+			{
+				InOutText += FString::Printf(TEXT(" - ...以及 %d 条\n"), Rows.Num() - Count);
+			}
+		};
+
+		// If preview failed, still show scan count and failure reason.
+		if (!Matched || !Matched->bSucceeded)
+		{
+			FString Preview;
+			Preview = TEXT("预览（DryRun）：");
+			if (ScanStep)
+			{
+				const FString Count = ScanStep->Evidence.FindRef(TEXT("asset_count"));
+				if (!Count.IsEmpty())
+				{
+					Preview += FString::Printf(TEXT("\n扫描到资产数：%s"), *Count);
+				}
+			}
+			if (Matched && !Matched->Reason.IsEmpty())
+			{
+				Preview += FString::Printf(TEXT("\n预览失败原因：%s"), *Matched->Reason);
+			}
+			else
+			{
+				Preview += TEXT("\n预览失败原因：未能生成材质连线提案（可能未命中严格契约）。");
+			}
+			Preview.TrimStartAndEndInline();
+
+			if (!OutCard.ImpactHint.IsEmpty())
+			{
+				OutCard.ImpactHint += TEXT("\n");
+			}
+			OutCard.ImpactHint += Preview;
+		}
+
+		if (Matched)
+		{
+			TArray<FString> InstanceRows;
+			TArray<FString> AssignRows;
+			TArray<FString> BindingRows;
+			TArray<FString> MissingRows;
+
+			SplitEvidenceRows(Matched->Evidence.FindRef(TEXT("proposed_material_instances")), InstanceRows);
+			SplitEvidenceRows(Matched->Evidence.FindRef(TEXT("proposed_mesh_assignments")), AssignRows);
+			SplitEvidenceRows(Matched->Evidence.FindRef(TEXT("proposed_parameter_bindings")), BindingRows);
+			SplitEvidenceRows(Matched->Evidence.FindRef(TEXT("missing_groups")), MissingRows);
+
+			FString Preview;
+			Preview = TEXT("预览（DryRun，仅用于确认将创建的 MI / 参数绑定 / Mesh 挂载，不会修改资产）：");
+
+			AppendPreviewSection(Preview, TEXT("将创建 Material Instance："), InstanceRows, 6);
+			AppendPreviewSection(Preview, TEXT("将挂载到 Mesh（Slot0）："), AssignRows, 6);
+			AppendPreviewSection(Preview, TEXT("参数绑定（示例）："), BindingRows, 10);
+			AppendPreviewSection(Preview, TEXT("未命中严格契约（示例）："), MissingRows, 6);
 
 			Preview.TrimStartAndEndInline();
 			if (!Preview.IsEmpty())

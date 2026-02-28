@@ -1,6 +1,6 @@
 # AI 可调用接口总表（单一入口）
 
-> 更新时间：2026-02-26  
+> 更新时间：2026-02-27  
 > 目标：作为“语义识别 -> 工具调用 -> 提示词编写”的唯一查阅文件。  
 > 适用：`HCIAbilityKit` Agent Planner / Executor / Prompt 维护。
 
@@ -208,14 +208,34 @@
   - `after`
   - `redirector_fixup`
 
+### 4.10 AutoMaterialSetupByNameContract
+
+- `tool_name`: `AutoMaterialSetupByNameContract`
+- `capability`: `Write`
+- `args`:
+  - `asset_paths: string[]`（1~50，必须来自 `ScanAssets.asset_paths` 管道变量）
+  - `target_root: string`（`/Game/...`；将创建 `Materials/MI_<ID>`）
+- `master_material_path?: string`（可选；缺省时读取 `Saved/HCIAbilityKit/TestFixtures/MatLink/latest.json` 的 `snapshot_master_material_object_path`）
+- `执行接线状态`: `已实接可执行（待 Stage O-SliceO1 UE 手测门禁）`
+- `DryRun/Execute`:
+  - `DryRun`：只产出“将创建的 MI + 将绑定的参数 + 将修改的 Mesh Slot0”清单，不创建资产
+  - `Execute`：创建 `MaterialInstanceConstant` 并绑定贴图参数，默认挂载到 Mesh 的 Slot0（必须 `requires_confirm=true`）
+- `关键 evidence`:
+  - `group_count`
+  - `proposed_material_instances`
+  - `proposed_mesh_assignments`
+  - `proposed_parameter_bindings`
+  - `missing_groups`
+  - `result`
+
 ## 5. 当前接线结论（给提示词维护者）
 
-- 当前可规划：9/9（由 `tools_schema.json` 与 ToolRegistry 支持）
-- 当前已实接可执行：9/9
-- 当前未实接会模拟：0/9
+- 当前可规划：10/10（由 `tools_schema.json` 与 ToolRegistry 支持）
+- 当前已实接可执行：10/10
+- 当前未实接会模拟：0/10
 - 因此提示词写法要求：
-  - 可以规划全部 9 个工具；
-  - 9 个工具均已具备真实执行接线，仍需遵循既有确认门禁与风险分级。
+  - 可以规划全部 10 个工具；
+  - 10 个工具均已具备真实执行接线，仍需遵循既有确认门禁与风险分级。
 
 ## 6. UE 入口接口（人工触发）
 

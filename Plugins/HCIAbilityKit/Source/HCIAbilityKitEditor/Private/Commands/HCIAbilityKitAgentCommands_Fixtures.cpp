@@ -30,13 +30,14 @@ static const TCHAR* HCI_OrganizedRoot = TEXT("/Game/__HCI_Test/Organized/SeedCle
 
 static const TCHAR* HCI_MatLinkSnapshotRoot = TEXT("/Game/__HCI_Test/Fixtures/MatLinkSnapshot");
 static const TCHAR* HCI_MatLinkMastersRoot = TEXT("/Game/__HCI_Test/Masters");
-static const TCHAR* HCI_MatLinkChaosRoot = TEXT("/Game/_HCI_Test/Incoming/MatLinkChaos");
+static const TCHAR* HCI_MatLinkChaosRoot = TEXT("/Game/__HCI_Test/Incoming/MatLinkChaos");
 static const TCHAR* HCI_MatLinkCleanRoot = TEXT("/Game/__HCI_Test/Organized/MatLinkClean");
 
 static bool HCI_IsAllowedTestRoot(const FString& Path)
 {
 	return Path.StartsWith(TEXT("/Game/__HCI_Test/"), ESearchCase::CaseSensitive)
 		|| Path.StartsWith(TEXT("/Game/__HCI_Test"), ESearchCase::CaseSensitive)
+		// Legacy root kept only to allow one-shot cleanup on older workspaces.
 		|| Path.StartsWith(TEXT("/Game/_HCI_Test/"), ESearchCase::CaseSensitive)
 		|| Path.StartsWith(TEXT("/Game/_HCI_Test"), ESearchCase::CaseSensitive);
 }
@@ -149,7 +150,7 @@ static bool HCI_DeleteDirectoryWithConfirm(const FString& Directory, const FStri
 	}
 
 	const FString ConfirmText = FString::Printf(
-		TEXT("将删除测试目录（仅限 __HCI_Test / _HCI_Test）：\n\n%s\n\n目录：%s\n\n继续？"),
+		TEXT("将删除测试目录（仅限 __HCI_Test；同时支持清理 legacy /Game/_HCI_Test）：\n\n%s\n\n目录：%s\n\n继续？"),
 		*HumanLabel,
 		*Directory);
 	const EAppReturnType::Type Choice = FMessageDialog::Open(EAppMsgType::YesNo, FText::FromString(ConfirmText));
@@ -1519,7 +1520,15 @@ static void HCI_RunMatLinkResetCommand(const TArray<FString>& Args)
 		return;
 	}
 
-	// Delete only the two test dirs you approved for MatLink.
+	// Delete MatLink test dirs, and also clean up legacy root from older workspaces.
+	if (UEditorAssetLibrary::DoesDirectoryExist(TEXT("/Game/_HCI_Test")))
+	{
+		if (!HCI_DeleteDirectoryWithConfirm(TEXT("/Game/_HCI_Test"), TEXT("清理 legacy 测试根目录（/Game/_HCI_Test，已弃用）")))
+		{
+			return;
+		}
+	}
+
 	if (!HCI_DeleteDirectoryWithConfirm(HCI_MatLinkChaosRoot, TEXT("重置 MatLink 混乱输入目录（MatLinkChaos）")))
 	{
 		return;
@@ -1671,7 +1680,7 @@ void FHCIAbilityKitAgentDemoConsoleCommands::StartupFixtureCommands()
 	{
 		MatLinkResetCommand = MakeUnique<FAutoConsoleCommand>(
 			TEXT("HCIAbilityKit.MatLinkReset"),
-			TEXT("Stage O fixtures: reset MatLink chaos + clean (deletes /Game/_HCI_Test/Incoming/MatLinkChaos and /Game/__HCI_Test/Organized/MatLinkClean). Usage: HCIAbilityKit.MatLinkReset"),
+			TEXT("Stage O fixtures: reset MatLink chaos + clean (deletes /Game/__HCI_Test/Incoming/MatLinkChaos and /Game/__HCI_Test/Organized/MatLinkClean; also cleans legacy /Game/_HCI_Test if present). Usage: HCIAbilityKit.MatLinkReset"),
 			FConsoleCommandWithArgsDelegate::CreateStatic(&HCI_RunMatLinkResetCommand));
 	}
 }

@@ -247,6 +247,32 @@ void FHCIAbilityKitToolRegistry::ResetToDefaults()
 		Tool.ArgsSchema.Add(MoveTemp(TargetPathArg));
 		RegisterDefault(MoveTemp(Tool));
 	}
+
+	{
+		FHCIAbilityKitToolDescriptor Tool;
+		Tool.ToolName = TEXT("AutoMaterialSetupByNameContract");
+		Tool.Capability = EHCIAbilityKitToolCapability::Write;
+		Tool.bSupportsDryRun = true;
+		Tool.bSupportsUndo = true;
+		Tool.bDestructive = false;
+		Tool.Domain = TEXT("MaterialSetup");
+		Tool.Summary = TEXT("Create MaterialInstance(s) and bind BC/N/ORM textures by strict name contract, then assign to StaticMesh Slot0 (requires confirm).");
+
+		FHCIAbilityKitToolArgSchema AssetPathsArg = MakeStringArrayArg(TEXT("asset_paths"), 1, 50);
+		AssetPathsArg.bRequiresPipelineInput = true;
+		Tool.ArgsSchema.Add(MoveTemp(AssetPathsArg));
+
+		FHCIAbilityKitToolArgSchema TargetRootArg = MakeStringArg(TEXT("target_root"));
+		TargetRootArg.bMustStartWithGamePath = true;
+		Tool.ArgsSchema.Add(MoveTemp(TargetRootArg));
+
+		FHCIAbilityKitToolArgSchema MasterMaterialArg = MakeStringArg(TEXT("master_material_path"));
+		MasterMaterialArg.bRequired = false;
+		MasterMaterialArg.bMustStartWithGamePath = true;
+		Tool.ArgsSchema.Add(MoveTemp(MasterMaterialArg));
+
+		RegisterDefault(MoveTemp(Tool));
+	}
 }
 
 bool FHCIAbilityKitToolRegistry::RegisterTool(const FHCIAbilityKitToolDescriptor& InDescriptor, FString* OutError)

@@ -19,7 +19,7 @@
 1. UE 控制台执行：`HCIAbilityKit.SeedChaosReset`
 2. 打开：`HCIAbilityKit.AgentChatUI`
 3. 输入（故意脏路径）：
-   - `扫描/Game/_HCI_Test/Incoming/SeedChaos，然后按元数据规范命名并移动归档到，Game/__HCI_Test/   Organized/SeedClean.`
+   - `扫描Game/__HCI_Test/Incoming/SeedChaos，然后按元数据规范命名并移动归档到，Game/__HCI_Test/   Organized/SeedClean.`
 4. 观察：
    - 日志包含 `[HCIAbilityKit][AgentChatUI][NormalizeInput] before=... after=...`
    - 计划命中 `ScanAssets -> NormalizeAssetNamingByMetadata`
@@ -29,4 +29,3 @@
 ## 结果
 
 - Pass（UE 手测已确认）。
-

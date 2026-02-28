@@ -28,8 +28,8 @@
   "properties": {
     "allowed_tools": {
       "type": "array",
-      "minItems": 9,
-      "maxItems": 9,
+      "minItems": 10,
+      "maxItems": 10,
       "items": {
         "type": "string",
         "enum": [
@@ -41,7 +41,8 @@
           "ScanLevelMeshRisks",
           "NormalizeAssetNamingByMetadata",
           "RenameAsset",
-          "MoveAsset"
+          "MoveAsset",
+          "AutoMaterialSetupByNameContract"
         ]
       },
       "uniqueItems": true
@@ -58,7 +59,8 @@
         "ScanLevelMeshRisks",
         "NormalizeAssetNamingByMetadata",
         "RenameAsset",
-        "MoveAsset"
+        "MoveAsset",
+        "AutoMaterialSetupByNameContract"
       ],
       "properties": {
         "ScanAssets": {
@@ -284,6 +286,37 @@
               "$ref": "#/definitions/game_or_variable_path"
             }
           }
+        },
+        "AutoMaterialSetupByNameContract": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "asset_paths",
+            "target_root"
+          ],
+          "properties": {
+            "asset_paths": {
+              "anyOf": [
+                {
+                  "type": "array",
+                  "minItems": 1,
+                  "maxItems": 50,
+                  "items": {
+                    "$ref": "#/definitions/game_or_variable_path"
+                  }
+                },
+                {
+                  "$ref": "#/definitions/variable_template_string"
+                }
+              ]
+            },
+            "target_root": {
+              "$ref": "#/definitions/game_or_variable_path"
+            },
+            "master_material_path": {
+              "$ref": "#/definitions/game_or_variable_path"
+            }
+          }
         }
       }
     },
@@ -337,7 +370,8 @@
                   "ScanLevelMeshRisks",
                   "NormalizeAssetNamingByMetadata",
                   "RenameAsset",
-                  "MoveAsset"
+                  "MoveAsset",
+                  "AutoMaterialSetupByNameContract"
                 ]
               },
               "args": {
@@ -578,6 +612,36 @@
                       "items": {
                         "enum": [
                           "asset_path", "before", "after", "result", "redirector_fixup", "redirector_count"
+                        ]
+                      }
+                    }
+                  }
+                }
+              },
+              {
+                "if": {
+                  "properties": {
+                    "tool_name": {
+                      "const": "AutoMaterialSetupByNameContract"
+                    }
+                  }
+                },
+                "then": {
+                  "properties": {
+                    "args": {
+                      "$ref": "#/properties/tool_args_json_schema/properties/AutoMaterialSetupByNameContract"
+                    },
+                    "expected_evidence": {
+                      "items": {
+                        "enum": [
+                          "target_root",
+                          "master_material_path",
+                          "group_count",
+                          "proposed_material_instances",
+                          "proposed_mesh_assignments",
+                          "proposed_parameter_bindings",
+                          "missing_groups",
+                          "result"
                         ]
                       }
                     }

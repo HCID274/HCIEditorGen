@@ -456,7 +456,15 @@ private:
 
 		if (ChatMessages.IsValidIndex(ActiveThinkingBubbleIndex))
 		{
-			BufferedAssistantLineForActiveRequest = Text;
+			BufferedAssistantLinesForActiveRequest.Add(Text);
+			const int32 MaxBufferedLines = 12;
+			if (BufferedAssistantLinesForActiveRequest.Num() > MaxBufferedLines)
+			{
+				BufferedAssistantLinesForActiveRequest.RemoveAt(
+					0,
+					BufferedAssistantLinesForActiveRequest.Num() - MaxBufferedLines,
+					EAllowShrinking::No);
+			}
 			return;
 		}
 
@@ -498,6 +506,11 @@ private:
 			// Replace the placeholder bubble with a short, decision-focused sentence.
 			CachedSummaryText.Reset();
 			FinalizeThinkingBubbleWithText(TEXT("需要你确认后才会修改资产。"));
+			for (const FString& Line : BufferedAssistantLinesForActiveRequest)
+			{
+				AppendPersistentTextBubble(EHCIAbilityKitChatBubbleRole::Assistant, Line);
+			}
+			BufferedAssistantLinesForActiveRequest.Reset();
 		}
 		TryFinalizeThinkingBubbleIfReady();
 	}
@@ -524,7 +537,7 @@ private:
 		CurrentRequestLocateBubbleIndex = INDEX_NONE;
 		CachedSummaryText.Reset();
 		CachedStatusText.Reset();
-		BufferedAssistantLineForActiveRequest.Reset();
+		BufferedAssistantLinesForActiveRequest.Reset();
 	}
 
 	int32 AppendThinkingBubble(const FString& Text, const FString& SubText)
@@ -638,31 +651,33 @@ private:
 		{
 			return;
 		}
-		if (CachedSummaryText.IsEmpty())
-		{
-			if (UHCIAbilityKitAgentSubsystem* AgentSubsystem = GetAgentSubsystem())
-			{
-				const EHCIAbilityKitAgentSessionState State = AgentSubsystem->GetCurrentState();
-				if ((State == EHCIAbilityKitAgentSessionState::Failed || State == EHCIAbilityKitAgentSessionState::Cancelled) &&
-					!BufferedAssistantLineForActiveRequest.IsEmpty())
-				{
-					FinalizeThinkingBubbleWithText(BufferedAssistantLineForActiveRequest);
-					BufferedAssistantLineForActiveRequest.Reset();
-				}
-			}
-			return;
-		}
 
 		bool bReadyToFinalize = false;
+		EHCIAbilityKitAgentSessionState CurrentState = EHCIAbilityKitAgentSessionState::Idle;
+		bool bHasPlan = false;
 		if (UHCIAbilityKitAgentSubsystem* AgentSubsystem = GetAgentSubsystem())
 		{
-			const EHCIAbilityKitAgentSessionState State = AgentSubsystem->GetCurrentState();
-			const bool bHasPlan = AgentSubsystem->HasLastPlan();
-			bReadyToFinalize = !bHasPlan ||
-				State == EHCIAbilityKitAgentSessionState::AwaitUserConfirm ||
-				State == EHCIAbilityKitAgentSessionState::Completed ||
-				State == EHCIAbilityKitAgentSessionState::Failed ||
-				State == EHCIAbilityKitAgentSessionState::Cancelled;
+			CurrentState = AgentSubsystem->GetCurrentState();
+			bHasPlan = AgentSubsystem->HasLastPlan();
+
+			const bool bTerminalState =
+				CurrentState == EHCIAbilityKitAgentSessionState::Completed ||
+				CurrentState == EHCIAbilityKitAgentSessionState::Failed ||
+				CurrentState == EHCIAbilityKitAgentSessionState::Cancelled;
+
+			const bool bAwaitConfirm = (CurrentState == EHCIAbilityKitAgentSessionState::AwaitUserConfirm);
+
+			// Important: when LLM summary is suppressed (executable plans), CachedSummaryText is empty.
+			// In that case we must NOT finalize during Thinking/Executing, otherwise the UI shows "执行完成"
+			// too early and the user loses the "思考/执行" feedback.
+			if (!CachedSummaryText.IsEmpty())
+			{
+				bReadyToFinalize = !bHasPlan || bAwaitConfirm || bTerminalState;
+			}
+			else
+			{
+				bReadyToFinalize = bAwaitConfirm || bTerminalState;
+			}
 		}
 		else
 		{
@@ -674,9 +689,53 @@ private:
 			return;
 		}
 
-		FinalizeThinkingBubbleWithText(CachedSummaryText);
-		CachedSummaryText.Reset();
-		BufferedAssistantLineForActiveRequest.Reset();
+		if (!CachedSummaryText.IsEmpty())
+		{
+			FinalizeThinkingBubbleWithText(CachedSummaryText);
+			CachedSummaryText.Reset();
+			for (const FString& Line : BufferedAssistantLinesForActiveRequest)
+			{
+				AppendPersistentTextBubble(EHCIAbilityKitChatBubbleRole::Assistant, Line);
+			}
+			BufferedAssistantLinesForActiveRequest.Reset();
+			return;
+		}
+
+		// No summary provided (e.g. executable plans suppress LLM chatter): still finalize the thinking bubble
+		// so buffered deterministic tool result lines become visible.
+		if (CurrentState == EHCIAbilityKitAgentSessionState::Failed || CurrentState == EHCIAbilityKitAgentSessionState::Cancelled)
+		{
+			if (BufferedAssistantLinesForActiveRequest.Num() > 0)
+			{
+				const FString FinalLine = BufferedAssistantLinesForActiveRequest.Last().TrimStartAndEnd();
+				FinalizeThinkingBubbleWithText(FinalLine.IsEmpty() ? TEXT("请求失败。") : FinalLine);
+				BufferedAssistantLinesForActiveRequest.Pop(false);
+				for (const FString& Line : BufferedAssistantLinesForActiveRequest)
+				{
+					AppendPersistentTextBubble(EHCIAbilityKitChatBubbleRole::Assistant, Line);
+				}
+				BufferedAssistantLinesForActiveRequest.Reset();
+				return;
+			}
+			FinalizeThinkingBubbleWithText(TEXT("请求失败。"));
+			return;
+		}
+
+		// No summary provided (e.g. executable plans suppress LLM chatter): finalize with the first buffered
+		// deterministic result line so users immediately see the key outcome.
+		if (BufferedAssistantLinesForActiveRequest.Num() > 0)
+		{
+			const FString Head = BufferedAssistantLinesForActiveRequest[0].TrimStartAndEnd();
+			FinalizeThinkingBubbleWithText(Head.IsEmpty() ? TEXT("执行完成。") : Head);
+			for (int32 Index = 1; Index < BufferedAssistantLinesForActiveRequest.Num(); ++Index)
+			{
+				AppendPersistentTextBubble(EHCIAbilityKitChatBubbleRole::Assistant, BufferedAssistantLinesForActiveRequest[Index]);
+			}
+			BufferedAssistantLinesForActiveRequest.Reset();
+			return;
+		}
+
+		FinalizeThinkingBubbleWithText(TEXT("执行完成。"));
 	}
 
 	void RefreshReviewCardBubbleFromSubsystem()
@@ -1127,7 +1186,7 @@ private:
 	FString QuickCommandsLoadError;
 	FString CachedSummaryText;
 	FString CachedStatusText;
-	FString BufferedAssistantLineForActiveRequest;
+	TArray<FString> BufferedAssistantLinesForActiveRequest;
 	TArray<FString> HistoryLines;
 	TArray<FHCIAbilityKitAgentQuickCommand> QuickCommands;
 	TArray<FHCIAbilityKitChatBubbleMessage> ChatMessages;

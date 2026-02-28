@@ -1,6 +1,7 @@
 #include "Subsystems/HCIAbilityKitAgentSubsystem.h"
 
 #include "Agent/LLM/HCIAbilityKitAgentPromptBuilder.h"
+#include "Agent/Presentation/HCIAbilityKitAgentToolResultSummaryFormatter.h"
 #include "Async/Async.h"
 #include "Commands/HCIAbilityKitAgentCommand_ChatPlanAndSummary.h"
 #include "Editor.h"
@@ -2031,7 +2032,23 @@ bool UHCIAbilityKitAgentSubsystem::ExecuteLastPlan(
 		0.88f,
 		FString::Printf(TEXT("进度：执行完成（%d/%d 步），正在整理结果..."), ExecutedSteps, LastPlan.Steps.Num())));
 	SetCurrentState(EHCIAbilityKitAgentSessionState::Summarizing);
-	EmitAssistantLine(Report.SummaryText);
+
+	// UI-friendly deterministic result summary lines (do not rely on LLM summary, and do not emit "DryRun:"/"Commit:"
+	// prefixed lines which are suppressed by AgentChatUI).
+	{
+		HCIAbilityKitAgentToolResultSummaryFormatter::FHCIAbilityKitToolResultSummaryOptions SummaryOptions;
+		SummaryOptions.MaxLines = 3;
+		SummaryOptions.MaxItemsPerList = 2;
+		SummaryOptions.MaxCharsPerLine = 260;
+
+		TArray<FString> SummaryLines;
+		HCIAbilityKitAgentToolResultSummaryFormatter::BuildSummaryLines(Report.StepResults, SummaryOptions, SummaryLines);
+		for (const FString& Line : SummaryLines)
+		{
+			EmitAssistantLine(Line);
+		}
+	}
+
 	if (!Report.SearchPathEvidenceText.IsEmpty())
 	{
 		EmitAssistantLine(Report.SearchPathEvidenceText);
@@ -2062,6 +2079,7 @@ void UHCIAbilityKitAgentSubsystem::HandleCommandCompleted(const FHCIAbilityKitAg
 	ApprovalPreviewStepResults.Reset();
 	bool bCanProcessPlanBranch = false;
 	const bool bHasExecutablePlanPayload = Result.bHasPlanPayload && Result.Plan.Steps.Num() > 0;
+	const bool bHasMessageOnlyPlanPayload = Result.bHasPlanPayload && Result.Plan.Steps.Num() == 0 && !Result.Plan.AssistantMessage.IsEmpty();
 	if (bHasExecutablePlanPayload)
 	{
 		bHasLastPlan = true;
@@ -2075,8 +2093,14 @@ void UHCIAbilityKitAgentSubsystem::HandleCommandCompleted(const FHCIAbilityKitAg
 
 	if (Result.bSuccess)
 	{
-		EmitAssistantLine(Result.Message);
-		OnSummaryReceived.Broadcast(Result.Message);
+		// Keep AgentChatUI clean: for executable plans, suppress the LLM "摘要：" chatter and rely on deterministic
+		// execution/preview result lines (plus locate targets + approval card) to communicate the key outcome.
+		if (!bHasExecutablePlanPayload)
+		{
+			const FString MessageToShow = bHasMessageOnlyPlanPayload ? Result.Plan.AssistantMessage : Result.Message;
+			EmitAssistantLine(MessageToShow);
+			OnSummaryReceived.Broadcast(MessageToShow);
+		}
 	}
 	else if (Result.bSummaryFailure)
 	{
@@ -2155,6 +2179,21 @@ void UHCIAbilityKitAgentSubsystem::HandleCommandCompleted(const FHCIAbilityKitAg
 				StepResult.ErrorCode.IsEmpty() ? TEXT("-") : *StepResult.ErrorCode,
 				StepResult.Reason.IsEmpty() ? TEXT("-") : *StepResult.Reason,
 				*FString::Join(StepResult.EvidenceKeys, TEXT("|")));
+		}
+
+		// Provide deterministic preview summary in chat (do not depend on LLM summary timeouts).
+		{
+			HCIAbilityKitAgentToolResultSummaryFormatter::FHCIAbilityKitToolResultSummaryOptions SummaryOptions;
+			SummaryOptions.MaxLines = 3;
+			SummaryOptions.MaxItemsPerList = 2;
+			SummaryOptions.MaxCharsPerLine = 260;
+
+			TArray<FString> SummaryLines;
+			HCIAbilityKitAgentToolResultSummaryFormatter::BuildSummaryLines(PreviewReport.StepResults, SummaryOptions, SummaryLines);
+			for (const FString& Line : SummaryLines)
+			{
+				EmitAssistantLine(Line);
+			}
 		}
 
 		// Auto-repair: if ScanAssets returns empty, assume dirty path input and retry once with validated candidates injected.

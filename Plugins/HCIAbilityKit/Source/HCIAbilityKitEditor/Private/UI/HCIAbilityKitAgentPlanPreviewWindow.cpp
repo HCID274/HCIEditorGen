@@ -1,6 +1,7 @@
 #include "UI/HCIAbilityKitAgentPlanPreviewWindow.h"
 
 #include "Agent/Executor/HCIAbilityKitAgentExecutor.h"
+#include "Agent/Presentation/HCIAbilityKitAgentToolResultSummaryFormatter.h"
 #include "Agent/Tools/HCIAbilityKitToolRegistry.h"
 #include "AgentActions/HCIAbilityKitAgentToolActions.h"
 #include "AssetRegistry/AssetData.h"
@@ -398,6 +399,18 @@ public:
 			{
 				RunSummaryText->SetText(FText::FromString(Report.SummaryText));
 			}
+			if (ToolResultSummaryText.IsValid())
+			{
+				HCIAbilityKitAgentToolResultSummaryFormatter::FHCIAbilityKitToolResultSummaryOptions SummaryOptions;
+				SummaryOptions.MaxLines = 10;
+				SummaryOptions.MaxItemsPerList = 4;
+				SummaryOptions.MaxCharsPerLine = 260;
+
+				TArray<FString> Lines;
+				HCIAbilityKitAgentToolResultSummaryFormatter::BuildSummaryLines(Report.StepResults, SummaryOptions, Lines);
+				const FString Summary = Lines.Num() > 0 ? FString::Join(Lines, TEXT("\n")) : FString(TEXT("结果摘要：无"));
+				ToolResultSummaryText->SetText(FText::FromString(Summary));
+			}
 			if (SearchPathEvidenceText.IsValid())
 			{
 				SearchPathEvidenceText->SetText(FText::FromString(Report.SearchPathEvidenceText));
@@ -530,6 +543,13 @@ public:
 				.AutoHeight()
 				.Padding(0.0f, 0.0f, 0.0f, 8.0f)
 				[
+					SAssignNew(ToolResultSummaryText, STextBlock)
+					.Text(FText::FromString(TEXT("结果摘要：未执行")))
+				]
+				+ SVerticalBox::Slot()
+				.AutoHeight()
+				.Padding(0.0f, 0.0f, 0.0f, 8.0f)
+				[
 					SAssignNew(SearchPathEvidenceText, STextBlock)
 					.Text(FText::FromString(TEXT("SearchPath证据: 未执行")))
 				]
@@ -606,6 +626,7 @@ private:
 	TArray<TSharedPtr<FHCIAbilityKitAgentPlanPreviewRow>> Rows;
 	FHCIAbilityKitAgentPlanPreviewContext Context;
 	TSharedPtr<STextBlock> RunSummaryText;
+	TSharedPtr<STextBlock> ToolResultSummaryText;
 	TSharedPtr<STextBlock> SearchPathEvidenceText;
 };
 }
@@ -725,21 +746,18 @@ FString FHCIAbilityKitAgentPlanPreviewWindow::BuildSearchPathEvidenceSummary(con
 		const FString FallbackDirectory = HCI_GetEvidenceValue(StepResult.Evidence, TEXT("semantic_fallback_directory"), TEXT("-"));
 
 		const bool bSemanticFallbackUsed = FallbackUsed.Equals(TEXT("true"), ESearchCase::IgnoreCase);
-		const FString FallbackLabel = bSemanticFallbackUsed
-			? FString::Printf(TEXT("true(%s)"), *FallbackDirectory)
-			: TEXT("false");
+		const FString FallbackLabel = bSemanticFallbackUsed ? FallbackDirectory : FString(TEXT("false"));
 
 		return FString::Printf(
-			TEXT("SearchPath证据: keyword=%s | normalized=%s | expanded=%s | matched_count=%s | best_directory=%s | semantic_fallback=%s"),
-			*Keyword,
-			*Normalized,
-			*Expanded,
-			*MatchedCount,
-			*BestDirectory,
-			*FallbackLabel);
+			TEXT("SearchPath：%s -> %s（matched=%s fallback=%s）"),
+			Keyword.IsEmpty() ? TEXT("-") : *Keyword,
+			BestDirectory.IsEmpty() ? TEXT("-") : *BestDirectory,
+			MatchedCount.IsEmpty() ? TEXT("0") : *MatchedCount,
+			FallbackLabel.IsEmpty() ? TEXT("false") : *FallbackLabel);
 	}
 
-	return TEXT("SearchPath证据: 本计划不含 SearchPath 步骤");
+	// Keep UI clean: if no SearchPath step exists, return empty so callers can skip rendering.
+	return FString();
 }
 
 void FHCIAbilityKitAgentPlanPreviewWindow::BuildLocateTargetsFromStepResults(

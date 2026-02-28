@@ -2098,7 +2098,8 @@ void UHCIAbilityKitAgentSubsystem::HandleCommandCompleted(const FHCIAbilityKitAg
 		if (!bHasExecutablePlanPayload)
 		{
 			const FString MessageToShow = bHasMessageOnlyPlanPayload ? Result.Plan.AssistantMessage : Result.Message;
-			EmitAssistantLine(MessageToShow);
+			// For message-only replies, drive the ChatUI thinking bubble directly via OnSummaryReceived to avoid
+			// duplicating the same message as both a chat line and a summary event.
 			OnSummaryReceived.Broadcast(MessageToShow);
 		}
 	}

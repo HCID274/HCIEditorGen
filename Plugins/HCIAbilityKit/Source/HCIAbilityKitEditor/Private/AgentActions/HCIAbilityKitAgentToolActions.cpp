@@ -665,6 +665,7 @@ static bool HCI_TryReadRequiredIntArg(
 	return Args->TryGetNumberField(Field, OutValue);
 }
 
+#if 0 // moved to Private/AgentActions/ToolActions/*.cpp (Global Step2 ToolActions split)
 static bool HCI_ValidateSourceAssetExists(
 	const FString& SourceAssetPath,
 	FHCIAbilityKitAgentToolActionResult& OutResult)
@@ -2044,6 +2045,7 @@ public:
 		return bMoved;
 	}
 };
+#endif
 }
 
 void HCIAbilityKitAgentToolActions::BuildStageIDraftActions(TMap<FName, TSharedPtr<IHCIAbilityKitAgentToolAction>>& OutActions)
@@ -2051,12 +2053,12 @@ void HCIAbilityKitAgentToolActions::BuildStageIDraftActions(TMap<FName, TSharedP
 	OutActions.Reset();
 	OutActions.Add(TEXT("ScanAssets"), HCIAbilityKitToolActionFactories::MakeScanAssetsToolAction());
 	OutActions.Add(TEXT("ScanMeshTriangleCount"), HCIAbilityKitToolActionFactories::MakeScanMeshTriangleCountToolAction());
-	OutActions.Add(TEXT("SearchPath"), MakeShared<FHCIAbilityKitSearchPathToolAction>());
+	OutActions.Add(TEXT("SearchPath"), HCIAbilityKitToolActionFactories::MakeSearchPathToolAction());
 	OutActions.Add(TEXT("ScanLevelMeshRisks"), HCIAbilityKitToolActionFactories::MakeScanLevelMeshRisksToolAction());
 	OutActions.Add(TEXT("SetTextureMaxSize"), HCIAbilityKitToolActionFactories::MakeSetTextureMaxSizeToolAction());
 	OutActions.Add(TEXT("SetMeshLODGroup"), HCIAbilityKitToolActionFactories::MakeSetMeshLODGroupToolAction());
 	OutActions.Add(TEXT("NormalizeAssetNamingByMetadata"), HCIAbilityKitToolActionFactories::MakeNormalizeAssetNamingByMetadataToolAction());
-	OutActions.Add(TEXT("AutoMaterialSetupByNameContract"), MakeShared<FHCIAbilityKitAutoMaterialSetupByNameContractToolAction>());
-	OutActions.Add(TEXT("RenameAsset"), MakeShared<FHCIAbilityKitRenameAssetToolAction>());
-	OutActions.Add(TEXT("MoveAsset"), MakeShared<FHCIAbilityKitMoveAssetToolAction>());
+	OutActions.Add(TEXT("AutoMaterialSetupByNameContract"), HCIAbilityKitToolActionFactories::MakeAutoMaterialSetupByNameContractToolAction());
+	OutActions.Add(TEXT("RenameAsset"), HCIAbilityKitToolActionFactories::MakeRenameAssetToolAction());
+	OutActions.Add(TEXT("MoveAsset"), HCIAbilityKitToolActionFactories::MakeMoveAssetToolAction());
 }

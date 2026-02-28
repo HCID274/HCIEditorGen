@@ -1,6 +1,6 @@
 # AI 可调用接口总表（单一入口）
 
-> 更新时间：2026-02-27  
+> 更新时间：2026-02-28  
 > 目标：作为“语义识别 -> 工具调用 -> 提示词编写”的唯一查阅文件。  
 > 适用：`HCIAbilityKit` Agent Planner / Executor / Prompt 维护。
 
@@ -44,7 +44,7 @@
   - 支持 `{{step_id.evidence_key}}`
   - 支持 `{{step_id.evidence_key[index]}}`
 
-## 4. 工具接口总表（当前 9 个）
+## 4. 工具接口总表（当前 10 个）
 
 ### 4.1 ScanAssets
 

@@ -1,6 +1,7 @@
 #include "Search/HCIAbilityKitSearchIndexService.h"
 
 #include "AssetRegistry/AssetRegistryModule.h"
+#include "Audit/HCIAbilityKitAuditTagNames.h"
 #include "Common/HCIAbilityKitTimeFormat.h"
 #include "HCIAbilityKitAsset.h"
 #include "Modules/ModuleManager.h"
@@ -22,6 +23,39 @@ FHCIAbilityKitParsedData BuildParsedDataFromAsset(const UHCIAbilityKitAsset* Ass
 	ParsedData.DisplayName = Asset->DisplayName;
 	ParsedData.Damage = Asset->Damage;
 	return ParsedData;
+}
+
+bool BuildParsedDataFromAssetData(const FAssetData& AssetData, FHCIAbilityKitParsedData& OutParsedData)
+{
+	// Performance optimization: Read parsed data from Asset Registry tags.
+	// This avoids synchronous asset loading which is a significant performance bottleneck during large index rebuilds.
+	// If any required tag is missing (e.g. legacy assets), we return false to trigger the fallback path (loading the asset).
+
+	FString Id;
+	if (!AssetData.GetTagValue(HCIAbilityKitAuditTagNames::Id, Id))
+	{
+		return false;
+	}
+
+	FString DisplayName;
+	if (!AssetData.GetTagValue(HCIAbilityKitAuditTagNames::DisplayName, DisplayName))
+	{
+		return false;
+	}
+
+	FString DamageStr;
+	if (!AssetData.GetTagValue(HCIAbilityKitAuditTagNames::Damage, DamageStr))
+	{
+		return false;
+	}
+
+	OutParsedData.Id = Id;
+	OutParsedData.DisplayName = DisplayName;
+	LexFromString(OutParsedData.Damage, *DamageStr);
+	// SchemaVersion is not stored in tags, default to 1 as it's not used by search schema builder currently.
+	OutParsedData.SchemaVersion = 1;
+
+	return true;
 }
 }
 
@@ -65,14 +99,20 @@ void FHCIAbilityKitSearchIndexService::RebuildFromAssetRegistry()
 
 	for (const FAssetData& AssetData : AssetDatas)
 	{
-		const UHCIAbilityKitAsset* Asset = Cast<UHCIAbilityKitAsset>(AssetData.GetAsset());
-		if (!Asset)
+		// Try to build parsed data from tags first to avoid loading the asset
+		FHCIAbilityKitParsedData ParsedData;
+		if (!BuildParsedDataFromAssetData(AssetData, ParsedData))
 		{
-			continue;
+			// Fallback to loading the asset if tags are missing
+			const UHCIAbilityKitAsset* Asset = Cast<UHCIAbilityKitAsset>(AssetData.GetAsset());
+			if (!Asset)
+			{
+				continue;
+			}
+			ParsedData = BuildParsedDataFromAsset(Asset);
 		}
 
 		const FString AssetPath = AssetData.GetObjectPathString();
-		const FHCIAbilityKitParsedData ParsedData = BuildParsedDataFromAsset(Asset);
 		const FHCIAbilitySearchDocument Document = FHCIAbilitySearchSchema::BuildDocument(ParsedData, AssetPath);
 		if (!Index.AddDocument(Document))
 		{

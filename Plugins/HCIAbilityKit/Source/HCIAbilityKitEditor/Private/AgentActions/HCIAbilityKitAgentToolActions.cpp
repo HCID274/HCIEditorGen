@@ -2739,6 +2739,62 @@ private:
 		return true;
 	}
 
+	static FString HCI_BuildStrictContractOrphanReason(const FString& AssetName)
+	{
+		if (AssetName.StartsWith(TEXT("T_")))
+		{
+			TArray<FString> Parts;
+			AssetName.ParseIntoArray(Parts, TEXT("_"), true);
+			const FString Tail = Parts.Num() > 0 ? Parts.Last().ToUpper() : FString();
+			if (Tail == TEXT("COLOR") || Tail == TEXT("BASECOLOR") || Tail == TEXT("ALBEDO") || Tail == TEXT("DIFFUSE"))
+			{
+				return TEXT("贴图后缀不满足契约（末尾为 Color，期望: _BC）");
+			}
+			if (Tail == TEXT("NORMAL") || Tail == TEXT("NORMALMAP"))
+			{
+				return TEXT("贴图后缀不满足契约（末尾为 Normal，期望: _N）");
+			}
+			if (Tail.Contains(TEXT("ORM")) || Tail.Contains(TEXT("RMA")) || Tail.Contains(TEXT("ARM")))
+			{
+				return TEXT("贴图后缀不满足契约（期望: _ORM 或 _RMA）");
+			}
+			return TEXT("贴图命名不满足严格契约（期望: T_<ID>_BC / T_<ID>_N / T_<ID>_ORM）");
+		}
+
+		if (AssetName.StartsWith(TEXT("SM_")))
+		{
+			return TEXT("Mesh 命名不满足严格契约（期望: SM_<ID>）");
+		}
+
+		return TEXT("命名不满足严格契约（期望: SM_<ID> 或 T_<ID>_BC/N/ORM）");
+	}
+
+	static FString HCI_BuildReasonEvidenceString(const TMap<FString, FString>& ReasonByPath)
+	{
+		if (ReasonByPath.Num() <= 0)
+		{
+			return TEXT("none");
+		}
+
+		TArray<FString> Keys;
+		ReasonByPath.GetKeys(Keys);
+		Keys.Sort([](const FString& A, const FString& B) { return A < B; });
+
+		TArray<FString> Rows;
+		Rows.Reserve(Keys.Num());
+		for (const FString& Key : Keys)
+		{
+			const FString* Reason = ReasonByPath.Find(Key);
+			if (Reason == nullptr || Reason->IsEmpty())
+			{
+				continue;
+			}
+			Rows.Add(FString::Printf(TEXT("%s => %s"), *Key, **Reason));
+		}
+
+		return Rows.Num() > 0 ? FString::Join(Rows, TEXT(" | ")) : TEXT("none");
+	}
+
 	static void HCI_SelectTextureParameterNamesForRoles(
 		const TArray<FString>& InCandidates,
 		TArray<FName>& OutBaseColorParams,
@@ -2916,6 +2972,10 @@ private:
 		// Build strict contract groups.
 		TMap<FString, FHCIContractGroup> GroupsById;
 		TArray<FString> MissingGroups;
+		TArray<FString> OrphanAssets;
+		TSet<FString> UnresolvedAssetSet;
+		TMap<FString, FString> OrphanReasonByPath;
+		TMap<FString, FString> UnresolvedReasonByPath;
 
 		for (const FString& Path : AssetPaths)
 		{
@@ -2958,6 +3018,41 @@ private:
 				}
 				continue;
 			}
+
+			// Not matching strict contract (common in real projects): treat as orphan so artists can locate & fix.
+			if (!Path.IsEmpty())
+			{
+				OrphanAssets.Add(Path);
+				if (!OrphanReasonByPath.Contains(Path))
+				{
+					OrphanReasonByPath.Add(Path, HCI_BuildStrictContractOrphanReason(AssetName));
+				}
+			}
+		}
+
+		// Textures that look contract-ish but have no mesh partner are also orphans in practice.
+		for (const TPair<FString, FHCIContractGroup>& Pair : GroupsById)
+		{
+			const FHCIContractGroup& Group = Pair.Value;
+			if (!Group.MeshObjectPath.IsEmpty())
+			{
+				continue;
+			}
+			if (!Group.TextureBCObjectPath.IsEmpty())
+			{
+				OrphanAssets.AddUnique(Group.TextureBCObjectPath);
+				OrphanReasonByPath.FindOrAdd(Group.TextureBCObjectPath) = FString::Printf(TEXT("贴图疑似契约（ID=%s），但缺少配对 Mesh：SM_%s"), *Group.Id, *Group.Id);
+			}
+			if (!Group.TextureNObjectPath.IsEmpty())
+			{
+				OrphanAssets.AddUnique(Group.TextureNObjectPath);
+				OrphanReasonByPath.FindOrAdd(Group.TextureNObjectPath) = FString::Printf(TEXT("贴图疑似契约（ID=%s），但缺少配对 Mesh：SM_%s"), *Group.Id, *Group.Id);
+			}
+			if (!Group.TextureORMObjectPath.IsEmpty())
+			{
+				OrphanAssets.AddUnique(Group.TextureORMObjectPath);
+				OrphanReasonByPath.FindOrAdd(Group.TextureORMObjectPath) = FString::Printf(TEXT("贴图疑似契约（ID=%s），但缺少配对 Mesh：SM_%s"), *Group.Id, *Group.Id);
+			}
 		}
 
 		TArray<FHCIContractGroup> ReadyGroups;
@@ -2971,10 +3066,58 @@ private:
 			}
 			if (Group.TextureBCObjectPath.IsEmpty() || Group.TextureNObjectPath.IsEmpty() || Group.TextureORMObjectPath.IsEmpty())
 			{
+				TArray<FString> MissingRoles;
+				if (Group.TextureBCObjectPath.IsEmpty()) { MissingRoles.Add(TEXT("BC")); }
+				if (Group.TextureNObjectPath.IsEmpty()) { MissingRoles.Add(TEXT("N")); }
+				if (Group.TextureORMObjectPath.IsEmpty()) { MissingRoles.Add(TEXT("ORM")); }
+				const FString MissingLabel = MissingRoles.Num() > 0 ? FString::Join(MissingRoles, TEXT("/")) : TEXT("BC/N/ORM");
+
+				// Partial match: we found a mesh (and maybe some textures), but cannot complete a full PBR set.
+				UnresolvedAssetSet.Add(Group.MeshObjectPath);
+				UnresolvedReasonByPath.FindOrAdd(Group.MeshObjectPath) = FString::Printf(TEXT("Mesh ID=%s 缺少贴图：T_%s_%s"), *Group.Id, *Group.Id, *MissingLabel);
+				if (!Group.TextureBCObjectPath.IsEmpty())
+				{
+					UnresolvedAssetSet.Add(Group.TextureBCObjectPath);
+					UnresolvedReasonByPath.FindOrAdd(Group.TextureBCObjectPath) = FString::Printf(TEXT("该组 ID=%s 缺少贴图：%s"), *Group.Id, *MissingLabel);
+				}
+				if (!Group.TextureNObjectPath.IsEmpty())
+				{
+					UnresolvedAssetSet.Add(Group.TextureNObjectPath);
+					UnresolvedReasonByPath.FindOrAdd(Group.TextureNObjectPath) = FString::Printf(TEXT("该组 ID=%s 缺少贴图：%s"), *Group.Id, *MissingLabel);
+				}
+				if (!Group.TextureORMObjectPath.IsEmpty())
+				{
+					UnresolvedAssetSet.Add(Group.TextureORMObjectPath);
+					UnresolvedReasonByPath.FindOrAdd(Group.TextureORMObjectPath) = FString::Printf(TEXT("该组 ID=%s 缺少贴图：%s"), *Group.Id, *MissingLabel);
+				}
+
 				MissingGroups.Add(FString::Printf(TEXT("%s (missing_textures)"), *Group.Id));
 				continue;
 			}
 			ReadyGroups.Add(Group);
+		}
+
+		TArray<FString> UnresolvedAssets;
+		UnresolvedAssets.Reserve(UnresolvedAssetSet.Num());
+		for (const FString& P : UnresolvedAssetSet)
+		{
+			UnresolvedAssets.Add(P);
+		}
+		UnresolvedAssets.Sort([](const FString& A, const FString& B) { return A < B; });
+		OrphanAssets.Sort([](const FString& A, const FString& B) { return A < B; });
+		for (int32 Index = OrphanAssets.Num() - 1; Index > 0; --Index)
+		{
+			if (OrphanAssets[Index].Equals(OrphanAssets[Index - 1], ESearchCase::CaseSensitive))
+			{
+				OrphanAssets.RemoveAt(Index, 1, false);
+			}
+		}
+		for (int32 Index = UnresolvedAssets.Num() - 1; Index > 0; --Index)
+		{
+			if (UnresolvedAssets[Index].Equals(UnresolvedAssets[Index - 1], ESearchCase::CaseSensitive))
+			{
+				UnresolvedAssets.RemoveAt(Index, 1, false);
+			}
 		}
 
 		if (ReadyGroups.Num() <= 0)
@@ -2990,6 +3133,10 @@ private:
 			{
 				OutResult.Evidence.Add(TEXT("missing_groups"), FString::Join(MissingGroups, TEXT(" | ")));
 			}
+			OutResult.Evidence.Add(TEXT("orphan_assets"), OrphanAssets.Num() > 0 ? FString::Join(OrphanAssets, TEXT(" | ")) : TEXT("none"));
+			OutResult.Evidence.Add(TEXT("unresolved_assets"), UnresolvedAssets.Num() > 0 ? FString::Join(UnresolvedAssets, TEXT(" | ")) : TEXT("none"));
+			OutResult.Evidence.Add(TEXT("orphan_asset_reasons"), HCI_BuildReasonEvidenceString(OrphanReasonByPath));
+			OutResult.Evidence.Add(TEXT("unresolved_asset_reasons"), HCI_BuildReasonEvidenceString(UnresolvedReasonByPath));
 			OutResult.Evidence.Add(TEXT("result"), OutResult.Reason);
 			return false;
 		}
@@ -3037,6 +3184,10 @@ private:
 			OutResult.Evidence.Add(TEXT("proposed_mesh_assignments"), ProposedAssignments.Num() > 0 ? FString::Join(ProposedAssignments, TEXT(" | ")) : TEXT("none"));
 			OutResult.Evidence.Add(TEXT("proposed_parameter_bindings"), ProposedBindings.Num() > 0 ? FString::Join(ProposedBindings, TEXT(" | ")) : TEXT("none"));
 			OutResult.Evidence.Add(TEXT("missing_groups"), MissingGroups.Num() > 0 ? FString::Join(MissingGroups, TEXT(" | ")) : TEXT("none"));
+			OutResult.Evidence.Add(TEXT("orphan_assets"), OrphanAssets.Num() > 0 ? FString::Join(OrphanAssets, TEXT(" | ")) : TEXT("none"));
+			OutResult.Evidence.Add(TEXT("unresolved_assets"), UnresolvedAssets.Num() > 0 ? FString::Join(UnresolvedAssets, TEXT(" | ")) : TEXT("none"));
+			OutResult.Evidence.Add(TEXT("orphan_asset_reasons"), HCI_BuildReasonEvidenceString(OrphanReasonByPath));
+			OutResult.Evidence.Add(TEXT("unresolved_asset_reasons"), HCI_BuildReasonEvidenceString(UnresolvedReasonByPath));
 			OutResult.Evidence.Add(TEXT("result"), OutResult.Reason);
 			return true;
 		}
@@ -3099,6 +3250,10 @@ private:
 				OutResult.Evidence.Add(TEXT("master_material_path"), MasterMaterialPath);
 				OutResult.Evidence.Add(TEXT("group_count"), FString::FromInt(ReadyGroups.Num()));
 				OutResult.Evidence.Add(TEXT("missing_groups"), FString::Join(MissingGroups, TEXT(" | ")));
+				OutResult.Evidence.Add(TEXT("orphan_assets"), OrphanAssets.Num() > 0 ? FString::Join(OrphanAssets, TEXT(" | ")) : TEXT("none"));
+				OutResult.Evidence.Add(TEXT("unresolved_assets"), UnresolvedAssets.Num() > 0 ? FString::Join(UnresolvedAssets, TEXT(" | ")) : TEXT("none"));
+				OutResult.Evidence.Add(TEXT("orphan_asset_reasons"), HCI_BuildReasonEvidenceString(OrphanReasonByPath));
+				OutResult.Evidence.Add(TEXT("unresolved_asset_reasons"), HCI_BuildReasonEvidenceString(UnresolvedReasonByPath));
 				OutResult.Evidence.Add(TEXT("result"), OutResult.Reason);
 				return false;
 			}
@@ -3116,6 +3271,10 @@ private:
 				OutResult.Evidence.Add(TEXT("target_root"), TargetRoot);
 				OutResult.Evidence.Add(TEXT("master_material_path"), MasterMaterialPath);
 				OutResult.Evidence.Add(TEXT("group_count"), FString::FromInt(ReadyGroups.Num()));
+				OutResult.Evidence.Add(TEXT("orphan_assets"), OrphanAssets.Num() > 0 ? FString::Join(OrphanAssets, TEXT(" | ")) : TEXT("none"));
+				OutResult.Evidence.Add(TEXT("unresolved_assets"), UnresolvedAssets.Num() > 0 ? FString::Join(UnresolvedAssets, TEXT(" | ")) : TEXT("none"));
+				OutResult.Evidence.Add(TEXT("orphan_asset_reasons"), HCI_BuildReasonEvidenceString(OrphanReasonByPath));
+				OutResult.Evidence.Add(TEXT("unresolved_asset_reasons"), HCI_BuildReasonEvidenceString(UnresolvedReasonByPath));
 				OutResult.Evidence.Add(TEXT("result"), OutResult.Reason);
 				return false;
 			}
@@ -3203,6 +3362,10 @@ private:
 		OutResult.Evidence.Add(TEXT("proposed_mesh_assignments"), ProposedAssignments.Num() > 0 ? FString::Join(ProposedAssignments, TEXT(" | ")) : TEXT("none"));
 		OutResult.Evidence.Add(TEXT("proposed_parameter_bindings"), ProposedBindings.Num() > 0 ? FString::Join(ProposedBindings, TEXT(" | ")) : TEXT("none"));
 		OutResult.Evidence.Add(TEXT("missing_groups"), MissingGroups.Num() > 0 ? FString::Join(MissingGroups, TEXT(" | ")) : TEXT("none"));
+		OutResult.Evidence.Add(TEXT("orphan_assets"), OrphanAssets.Num() > 0 ? FString::Join(OrphanAssets, TEXT(" | ")) : TEXT("none"));
+		OutResult.Evidence.Add(TEXT("unresolved_assets"), UnresolvedAssets.Num() > 0 ? FString::Join(UnresolvedAssets, TEXT(" | ")) : TEXT("none"));
+		OutResult.Evidence.Add(TEXT("orphan_asset_reasons"), HCI_BuildReasonEvidenceString(OrphanReasonByPath));
+		OutResult.Evidence.Add(TEXT("unresolved_asset_reasons"), HCI_BuildReasonEvidenceString(UnresolvedReasonByPath));
 		OutResult.Evidence.Add(TEXT("result"), OutResult.Reason);
 		if (FailedRows.Num() > 0)
 		{

@@ -1617,14 +1617,25 @@ static void HCI_RunMatLinkResetCommand(const TArray<FString>& Args)
 	if (SnapshotTexturesByRole.Contains(TEXT("BC")))
 	{
 		Tasks.Add({SnapshotBC, S2Root + TEXT("/TexturesLoose"), *FString::Printf(TEXT("T_%s_New_Color"), *GroupHint), TEXT("S2_bc")});
+		// Extra BC-like candidate to force fuzzy matching ambiguity (non-contract suffix).
+		Tasks.Add({SnapshotBC, S2Root + TEXT("/tmp"), *FString::Printf(TEXT("T_%s_Color"), *GroupHint), TEXT("S2_bc_2")});
 	}
 	if (SnapshotTexturesByRole.Contains(TEXT("N")))
 	{
 		Tasks.Add({SnapshotN, S2Root + TEXT("/tmp"), *FString::Printf(TEXT("T_%s_NormalMap"), *GroupHint), TEXT("S2_n")});
+		// Extra N-like candidate to force fuzzy matching ambiguity (non-contract suffix).
+		Tasks.Add({SnapshotN, S2Root + TEXT("/TexturesLoose"), *FString::Printf(TEXT("T_%s_Normal"), *GroupHint), TEXT("S2_n_2")});
 	}
 	if (SnapshotTexturesByRole.Contains(TEXT("ORM")))
 	{
 		Tasks.Add({SnapshotORM, S2Root + TEXT("/tmp"), *FString::Printf(TEXT("T_%s_RMA"), *GroupHint), TEXT("S2_orm")});
+		// Extra ORM-like candidate to force fuzzy matching ambiguity (non-contract suffix).
+		Tasks.Add({SnapshotORM, S2Root + TEXT("/TexturesLoose"), *FString::Printf(TEXT("T_%s_ORMPacked"), *GroupHint), TEXT("S2_orm_2")});
+	}
+	// One obvious orphan (unrelated to any group hint) to test "orphan_assets" locate UX.
+	if (SnapshotTexturesByRole.Contains(TEXT("BC")))
+	{
+		Tasks.Add({SnapshotBC, S2Root + TEXT("/tmp"), TEXT("T_Orphan_Trash"), TEXT("S2_orphan_trash")});
 	}
 
 	// S3: no relation.

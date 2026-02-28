@@ -49,6 +49,7 @@ struct FHCIAbilityKitAgentExecutionLocateTarget
 	EHCIAbilityKitAgentExecutionLocateTargetKind Kind = EHCIAbilityKitAgentExecutionLocateTargetKind::Asset;
 	FString DisplayLabel;
 	FString TargetPath;
+	FString Detail;
 	FString SourceToolName;
 	FString SourceEvidenceKey;
 };

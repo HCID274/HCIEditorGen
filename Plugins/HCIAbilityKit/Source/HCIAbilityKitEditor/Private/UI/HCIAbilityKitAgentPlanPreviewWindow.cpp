@@ -260,6 +260,46 @@ static FString HCI_SanitizeAssetPathLikeToken(FString InValue)
 	return InValue;
 }
 
+static void HCI_ParseLocateReasonMapEvidence(
+	const FString& RawValue,
+	TMap<FString, FString>& InOutReasonByPath)
+{
+	if (RawValue.IsEmpty() || RawValue.Equals(TEXT("none"), ESearchCase::IgnoreCase))
+	{
+		return;
+	}
+
+	TArray<FString> Items;
+	HCI_SplitEvidenceList(RawValue, TEXT(" | "), Items);
+	if (Items.Num() <= 0)
+	{
+		HCI_SplitEvidenceList(RawValue, TEXT("|"), Items);
+	}
+
+	for (FString& Item : Items)
+	{
+		Item.TrimStartAndEndInline();
+		if (Item.IsEmpty())
+		{
+			continue;
+		}
+
+		FString Left;
+		FString Right;
+		if (!Item.Split(TEXT(" => "), &Left, &Right, ESearchCase::CaseSensitive))
+		{
+			continue;
+		}
+		Left.TrimStartAndEndInline();
+		Right.TrimStartAndEndInline();
+		Left = HCI_SanitizeAssetPathLikeToken(MoveTemp(Left));
+		if (!Left.IsEmpty() && !Right.IsEmpty())
+		{
+			InOutReasonByPath.Add(MoveTemp(Left), MoveTemp(Right));
+		}
+	}
+}
+
 static FString HCI_BuildLocateTargetLabelFromPath(
 	const FString& TargetPath,
 	const bool bActor,
@@ -297,6 +337,7 @@ static FString HCI_BuildLocateTargetLabelFromPath(
 static void HCI_AddLocateTargetUnique(
 	const EHCIAbilityKitAgentExecutionLocateTargetKind Kind,
 	const FString& RawTargetPath,
+	const FString& Detail,
 	const FString& ToolName,
 	const FString& EvidenceKey,
 	TSet<FString>& InOutKeys,
@@ -321,6 +362,7 @@ static void HCI_AddLocateTargetUnique(
 	Target.TargetPath = TargetPath;
 	Target.SourceToolName = ToolName;
 	Target.SourceEvidenceKey = EvidenceKey;
+	Target.Detail = Detail;
 	Target.DisplayLabel = HCI_BuildLocateTargetLabelFromPath(
 		TargetPath,
 		Kind == EHCIAbilityKitAgentExecutionLocateTargetKind::Actor,
@@ -707,81 +749,152 @@ void FHCIAbilityKitAgentPlanPreviewWindow::BuildLocateTargetsFromStepResults(
 	OutTargets.Reset();
 	TSet<FString> SeenKeys;
 	TArray<FString> Tokens;
+	TMap<FString, FString> OrphanReasonByPath;
+	TMap<FString, FString> UnresolvedReasonByPath;
 
 	for (const FHCIAbilityKitAgentExecutorStepResult& StepResult : StepResults)
 	{
-		auto AddActorEvidenceList = [&](const TCHAR* EvidenceKey)
+		if (const FString* Raw = StepResult.Evidence.Find(TEXT("orphan_asset_reasons")))
 		{
-			const FString* Raw = StepResult.Evidence.Find(EvidenceKey);
-			if (Raw == nullptr)
-			{
-				return;
-			}
-
-			HCI_SplitEvidenceList(*Raw, TEXT(" | "), Tokens);
-			if (Tokens.Num() <= 0)
-			{
-				HCI_SplitEvidenceList(*Raw, TEXT("|"), Tokens);
-			}
-
-			for (const FString& ActorPath : Tokens)
-			{
-				HCI_AddLocateTargetUnique(
-					EHCIAbilityKitAgentExecutionLocateTargetKind::Actor,
-					ActorPath,
-					StepResult.ToolName,
-					EvidenceKey,
-					SeenKeys,
-					OutTargets);
-			}
-		};
-
-		auto AddAssetEvidenceList = [&](const TCHAR* EvidenceKey, const TCHAR* Delimiter = TEXT(" | "))
+			HCI_ParseLocateReasonMapEvidence(*Raw, OrphanReasonByPath);
+		}
+		if (const FString* Raw = StepResult.Evidence.Find(TEXT("unresolved_asset_reasons")))
 		{
-			const FString* Raw = StepResult.Evidence.Find(EvidenceKey);
-			if (Raw == nullptr)
-			{
-				return;
-			}
+			HCI_ParseLocateReasonMapEvidence(*Raw, UnresolvedReasonByPath);
+		}
+	}
 
-			HCI_SplitEvidenceList(*Raw, Delimiter, Tokens);
-			if (Tokens.Num() <= 0 && FCString::Strcmp(Delimiter, TEXT("|")) != 0)
-			{
-				HCI_SplitEvidenceList(*Raw, TEXT("|"), Tokens);
-			}
-
-			for (const FString& Token : Tokens)
-			{
-				HCI_AddLocateTargetUnique(
-					EHCIAbilityKitAgentExecutionLocateTargetKind::Asset,
-					HCI_SanitizeAssetPathLikeToken(Token),
-					StepResult.ToolName,
-					EvidenceKey,
-					SeenKeys,
-					OutTargets);
-			}
-		};
-
-		auto AddSingleAssetEvidence = [&](const TCHAR* EvidenceKey)
+	auto AddActorEvidenceList = [&](const FHCIAbilityKitAgentExecutorStepResult& StepResult, const TCHAR* EvidenceKey)
+	{
+		const FString* Raw = StepResult.Evidence.Find(EvidenceKey);
+		if (Raw == nullptr)
 		{
-			const FString* Raw = StepResult.Evidence.Find(EvidenceKey);
-			if (Raw == nullptr)
-			{
-				return;
-			}
+			return;
+		}
 
+		HCI_SplitEvidenceList(*Raw, TEXT(" | "), Tokens);
+		if (Tokens.Num() <= 0)
+		{
+			HCI_SplitEvidenceList(*Raw, TEXT("|"), Tokens);
+		}
+
+		for (const FString& ActorPath : Tokens)
+		{
 			HCI_AddLocateTargetUnique(
-				EHCIAbilityKitAgentExecutionLocateTargetKind::Asset,
-				HCI_SanitizeAssetPathLikeToken(*Raw),
+				EHCIAbilityKitAgentExecutionLocateTargetKind::Actor,
+				ActorPath,
+				FString(),
 				StepResult.ToolName,
 				EvidenceKey,
 				SeenKeys,
 				OutTargets);
-		};
+		}
+	};
 
-		AddActorEvidenceList(TEXT("risky_actors"));
-		AddActorEvidenceList(TEXT("missing_collision_actors"));
-		AddActorEvidenceList(TEXT("default_material_actors"));
+	auto AddAssetEvidenceList = [&](const FHCIAbilityKitAgentExecutorStepResult& StepResult, const TCHAR* EvidenceKey, const TCHAR* Delimiter = TEXT(" | "))
+	{
+		const FString* Raw = StepResult.Evidence.Find(EvidenceKey);
+		if (Raw == nullptr)
+		{
+			return;
+		}
+
+		HCI_SplitEvidenceList(*Raw, Delimiter, Tokens);
+		if (Tokens.Num() <= 0 && FCString::Strcmp(Delimiter, TEXT("|")) != 0)
+		{
+			HCI_SplitEvidenceList(*Raw, TEXT("|"), Tokens);
+		}
+
+		for (const FString& Token : Tokens)
+		{
+			HCI_AddLocateTargetUnique(
+				EHCIAbilityKitAgentExecutionLocateTargetKind::Asset,
+				HCI_SanitizeAssetPathLikeToken(Token),
+				FString(),
+				StepResult.ToolName,
+				EvidenceKey,
+				SeenKeys,
+				OutTargets);
+		}
+	};
+
+	auto AddSingleAssetEvidence = [&](const FHCIAbilityKitAgentExecutorStepResult& StepResult, const TCHAR* EvidenceKey)
+	{
+		const FString* Raw = StepResult.Evidence.Find(EvidenceKey);
+		if (Raw == nullptr)
+		{
+			return;
+		}
+
+		HCI_AddLocateTargetUnique(
+			EHCIAbilityKitAgentExecutionLocateTargetKind::Asset,
+			HCI_SanitizeAssetPathLikeToken(*Raw),
+			FString(),
+			StepResult.ToolName,
+			EvidenceKey,
+			SeenKeys,
+			OutTargets);
+	};
+
+	// Pass 1: add "orphanish" locate items first so they win de-duplication over generic ScanAssets.asset_paths.
+	for (const FHCIAbilityKitAgentExecutorStepResult& StepResult : StepResults)
+	{
+		{
+			const FString* Raw = StepResult.Evidence.Find(TEXT("orphan_assets"));
+			if (Raw != nullptr)
+			{
+				HCI_SplitEvidenceList(*Raw, TEXT(" | "), Tokens);
+				if (Tokens.Num() <= 0)
+				{
+					HCI_SplitEvidenceList(*Raw, TEXT("|"), Tokens);
+				}
+				for (const FString& Token : Tokens)
+				{
+					const FString Path = HCI_SanitizeAssetPathLikeToken(Token);
+					const FString Detail = OrphanReasonByPath.FindRef(Path);
+					HCI_AddLocateTargetUnique(
+						EHCIAbilityKitAgentExecutionLocateTargetKind::Asset,
+						Path,
+						Detail,
+						StepResult.ToolName,
+						TEXT("orphan_assets"),
+						SeenKeys,
+						OutTargets);
+				}
+			}
+		}
+		{
+			const FString* Raw = StepResult.Evidence.Find(TEXT("unresolved_assets"));
+			if (Raw != nullptr)
+			{
+				HCI_SplitEvidenceList(*Raw, TEXT(" | "), Tokens);
+				if (Tokens.Num() <= 0)
+				{
+					HCI_SplitEvidenceList(*Raw, TEXT("|"), Tokens);
+				}
+				for (const FString& Token : Tokens)
+				{
+					const FString Path = HCI_SanitizeAssetPathLikeToken(Token);
+					const FString Detail = UnresolvedReasonByPath.FindRef(Path);
+					HCI_AddLocateTargetUnique(
+						EHCIAbilityKitAgentExecutionLocateTargetKind::Asset,
+						Path,
+						Detail,
+						StepResult.ToolName,
+						TEXT("unresolved_assets"),
+						SeenKeys,
+						OutTargets);
+				}
+			}
+		}
+	}
+
+	// Pass 2: add the rest of locate hints.
+	for (const FHCIAbilityKitAgentExecutorStepResult& StepResult : StepResults)
+	{
+		AddActorEvidenceList(StepResult, TEXT("risky_actors"));
+		AddActorEvidenceList(StepResult, TEXT("missing_collision_actors"));
+		AddActorEvidenceList(StepResult, TEXT("default_material_actors"));
 		{
 			const FString* ActorPath = StepResult.Evidence.Find(TEXT("actor_path"));
 			if (ActorPath != nullptr)
@@ -789,6 +902,7 @@ void FHCIAbilityKitAgentPlanPreviewWindow::BuildLocateTargetsFromStepResults(
 				HCI_AddLocateTargetUnique(
 					EHCIAbilityKitAgentExecutionLocateTargetKind::Actor,
 					*ActorPath,
+					FString(),
 					StepResult.ToolName,
 					TEXT("actor_path"),
 					SeenKeys,
@@ -796,14 +910,14 @@ void FHCIAbilityKitAgentPlanPreviewWindow::BuildLocateTargetsFromStepResults(
 			}
 		}
 
-		AddAssetEvidenceList(TEXT("asset_paths"), TEXT("|"));
-		AddAssetEvidenceList(TEXT("modified_assets"));
-		AddAssetEvidenceList(TEXT("failed_assets"));
-		AddAssetEvidenceList(TEXT("top_meshes"));
-		AddSingleAssetEvidence(TEXT("asset_path"));
-		AddSingleAssetEvidence(TEXT("max_triangle_asset"));
-		AddSingleAssetEvidence(TEXT("before"));
-		AddSingleAssetEvidence(TEXT("after"));
+		AddAssetEvidenceList(StepResult, TEXT("asset_paths"), TEXT("|"));
+		AddAssetEvidenceList(StepResult, TEXT("modified_assets"));
+		AddAssetEvidenceList(StepResult, TEXT("failed_assets"));
+		AddAssetEvidenceList(StepResult, TEXT("top_meshes"));
+		AddSingleAssetEvidence(StepResult, TEXT("asset_path"));
+		AddSingleAssetEvidence(StepResult, TEXT("max_triangle_asset"));
+		AddSingleAssetEvidence(StepResult, TEXT("before"));
+		AddSingleAssetEvidence(StepResult, TEXT("after"));
 	}
 }
 

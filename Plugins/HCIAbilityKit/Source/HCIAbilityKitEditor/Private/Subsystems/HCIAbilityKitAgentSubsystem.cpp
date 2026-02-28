@@ -1874,16 +1874,37 @@ void UHCIAbilityKitAgentSubsystem::ClearLocateTargets()
 void UHCIAbilityKitAgentSubsystem::SetLocateTargetsFromExecutionReport(const FHCIAbilityKitAgentPlanExecutionReport& Report)
 {
 	LastExecutionLocateTargets.Reset();
-	LastExecutionLocateTargets.Reserve(Report.LocateTargets.Num());
 
+	// Prefer showing orphan/unresolved assets when they exist, so the locate bubble becomes a focused "fix this" list
+	// instead of a noisy "everything scanned" list.
+	bool bHasOrphanish = false;
 	for (const FHCIAbilityKitAgentExecutionLocateTarget& Target : Report.LocateTargets)
 	{
+		if (Target.SourceEvidenceKey.Equals(TEXT("orphan_assets"), ESearchCase::IgnoreCase) ||
+			Target.SourceEvidenceKey.Equals(TEXT("unresolved_assets"), ESearchCase::IgnoreCase))
+		{
+			bHasOrphanish = true;
+			break;
+		}
+	}
+
+	LastExecutionLocateTargets.Reserve(Report.LocateTargets.Num());
+	for (const FHCIAbilityKitAgentExecutionLocateTarget& Target : Report.LocateTargets)
+	{
+		if (bHasOrphanish &&
+			!(Target.SourceEvidenceKey.Equals(TEXT("orphan_assets"), ESearchCase::IgnoreCase) ||
+			  Target.SourceEvidenceKey.Equals(TEXT("unresolved_assets"), ESearchCase::IgnoreCase)))
+		{
+			continue;
+		}
+
 		FHCIAbilityKitAgentUiLocateTarget& UiTarget = LastExecutionLocateTargets.AddDefaulted_GetRef();
 		UiTarget.Kind = (Target.Kind == EHCIAbilityKitAgentExecutionLocateTargetKind::Actor)
 			? EHCIAbilityKitAgentUiLocateTargetKind::Actor
 			: EHCIAbilityKitAgentUiLocateTargetKind::Asset;
 		UiTarget.DisplayLabel = Target.DisplayLabel;
 		UiTarget.TargetPath = Target.TargetPath;
+		UiTarget.Detail = Target.Detail;
 		UiTarget.SourceToolName = Target.SourceToolName;
 		UiTarget.SourceEvidenceKey = Target.SourceEvidenceKey;
 	}
@@ -2108,6 +2129,10 @@ void UHCIAbilityKitAgentSubsystem::HandleCommandCompleted(const FHCIAbilityKitAg
 		// a concrete reason + whatever evidence was produced.
 		bHasApprovalPreview = PreviewReport.StepResults.Num() > 0;
 		ApprovalPreviewStepResults = PreviewReport.StepResults;
+
+		// Surface locate targets (e.g. orphan/unresolved assets) for artists even when the preview fails.
+		// This drives the AgentChatUI "LocateTargets" bubble so users can click to locate problematic assets.
+		SetLocateTargetsFromExecutionReport(PreviewReport);
 
 		UE_LOG(
 			LogTemp,

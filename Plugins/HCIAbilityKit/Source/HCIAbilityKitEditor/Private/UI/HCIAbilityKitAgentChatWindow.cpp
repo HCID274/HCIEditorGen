@@ -908,21 +908,37 @@ private:
 				.ColorAndOpacity(FSlateColor(FLinearColor::White))
 			];
 
-			const int32 MaxButtons = FMath::Min(Msg.LocateTargets.Num(), 12);
-			for (int32 Index = 0; Index < MaxButtons; ++Index)
-			{
-				const FHCIAbilityKitAgentUiLocateTarget& Target = Msg.LocateTargets[Index];
+ 			const int32 MaxButtons = FMath::Min(Msg.LocateTargets.Num(), 12);
+ 			for (int32 Index = 0; Index < MaxButtons; ++Index)
+ 			{
+ 				const FHCIAbilityKitAgentUiLocateTarget& Target = Msg.LocateTargets[Index];
 				ContentBox->AddSlot().AutoHeight().Padding(0.0f, 6.0f, 0.0f, 0.0f)
-				[
-					SNew(SButton)
-					.Text(FText::FromString(Target.DisplayLabel))
-					.ToolTipText(FText::FromString(Target.TargetPath))
-					.OnClicked_Lambda([this, Index]()
-					{
-						return HandleLocateResultTargetClicked(Index);
-					})
-				];
-			}
+ 				[
+					SNew(SVerticalBox)
+					+ SVerticalBox::Slot()
+					.AutoHeight()
+					[
+						SNew(SButton)
+						.Text(FText::FromString(Target.DisplayLabel))
+						.ToolTipText(FText::FromString(Target.TargetPath))
+						.OnClicked_Lambda([this, Index]()
+						{
+							return HandleLocateResultTargetClicked(Index);
+						})
+					]
+					+ SVerticalBox::Slot()
+					.AutoHeight()
+					.Padding(10.0f, 4.0f, 0.0f, 0.0f)
+					[
+						SNew(STextBlock)
+						.Visibility(!Target.Detail.IsEmpty() ? EVisibility::Visible : EVisibility::Collapsed)
+						.Text(FText::FromString(Target.Detail))
+						.AutoWrapText(true)
+						.WrapTextAt(560.0f)
+						.ColorAndOpacity(FSlateColor(FLinearColor(0.82f, 0.82f, 0.86f, 1.0f)))
+					]
+ 				];
+ 			}
 
 			if (Msg.LocateTargets.Num() > MaxButtons)
 			{

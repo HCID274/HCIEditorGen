@@ -5,7 +5,7 @@
 #include "AgentActions/Support/HCIAbilityKitToolActionAssetPathNormalizer.h"
 #include "AgentActions/Support/HCIAbilityKitToolActionEvidenceBuilder.h"
 #include "AgentActions/Support/HCIAbilityKitToolActionParamParser.h"
-#include "AgentActions/ToolActions/HCIAbilityKitToolAction_NormalizeAssetNamingByMetadata_LegacyShared.h"
+#include "AgentActions/ToolActions/Wired/Internal/HCIAbilityKitNormalizeAssetNamingByMetadata_Internal.h"
 
 #include "AssetRegistry/AssetRegistryModule.h"
 #include "EditorAssetLibrary.h"

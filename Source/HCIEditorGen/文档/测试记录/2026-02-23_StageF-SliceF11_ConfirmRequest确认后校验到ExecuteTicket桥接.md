@@ -11,35 +11,35 @@
   - `HCIAbilityKitAgentExecutorExecuteTicketBridge.*`
   - `HCIAbilityKitAgentExecuteTicketJsonSerializer.*`
 - 新增 Editor 命令：
-  - `HCIAbilityKit.AgentExecutePlanReviewPrepareExecuteTicket [tamper=none|digest|apply|review]`
-  - `HCIAbilityKit.AgentExecutePlanReviewPrepareExecuteTicketJson [tamper=none|digest|apply|review]`
+  - `HCI.AgentExecutePlanReviewPrepareExecuteTicket [tamper=none|digest|apply|review]`
+  - `HCI.AgentExecutePlanReviewPrepareExecuteTicketJson [tamper=none|digest|apply|review]`
 - 编译：`Build.bat HCIEditorGenEditor Win64 Development ...` 通过
 - 自动化：
-  - `HCIAbilityKit.Editor.AgentExecutorExecuteTicket`（4/4）通过
-  - `HCIAbilityKit.Editor.AgentExecutorApplyConfirm`（回归）通过
-  - `HCIAbilityKit.Editor.AgentExecutorApply`（回归）通过
-  - `HCIAbilityKit.Editor.AgentExecutorReviewSelect`（回归）通过
+  - `HCI.Editor.AgentExecutorExecuteTicket`（4/4）通过
+  - `HCI.Editor.AgentExecutorApplyConfirm`（回归）通过
+  - `HCI.Editor.AgentExecutorApply`（回归）通过
+  - `HCI.Editor.AgentExecutorReviewSelect`（回归）通过
 
 ## 2. UE 手测步骤（用户执行）
 
 1. 生成可通过链路（Review -> Select -> Apply -> Confirm）
-   - `HCIAbilityKit.AgentExecutePlanReviewDemo ok_level_risk`
-   - `HCIAbilityKit.AgentExecutePlanReviewSelect 0`
-   - `HCIAbilityKit.AgentExecutePlanReviewPrepareApply`
-   - `HCIAbilityKit.AgentExecutePlanReviewPrepareConfirm 1 none`
+   - `HCI.AgentExecutePlanReviewDemo ok_level_risk`
+   - `HCI.AgentExecutePlanReviewSelect 0`
+   - `HCI.AgentExecutePlanReviewPrepareApply`
+   - `HCI.AgentExecutePlanReviewPrepareConfirm 1 none`
 2. 正常桥接（应通过）
-   - `HCIAbilityKit.AgentExecutePlanReviewPrepareExecuteTicket none`
+   - `HCI.AgentExecutePlanReviewPrepareExecuteTicket none`
 3. 输出 ExecuteTicket JSON
-   - `HCIAbilityKit.AgentExecutePlanReviewPrepareExecuteTicketJson none`
+   - `HCI.AgentExecutePlanReviewPrepareExecuteTicketJson none`
 4. digest 篡改（应拦截 `E4202`）
-   - `HCIAbilityKit.AgentExecutePlanReviewPrepareExecuteTicket digest`
+   - `HCI.AgentExecutePlanReviewPrepareExecuteTicket digest`
 5. apply_id 篡改（应拦截 `E4202`）
-   - `HCIAbilityKit.AgentExecutePlanReviewPrepareExecuteTicket apply`
+   - `HCI.AgentExecutePlanReviewPrepareExecuteTicket apply`
 6. review_id 篡改（应拦截 `E4202`）
-   - `HCIAbilityKit.AgentExecutePlanReviewPrepareExecuteTicket review`
+   - `HCI.AgentExecutePlanReviewPrepareExecuteTicket review`
 7. 未确认链路（应拦截 `E4005`）
-   - `HCIAbilityKit.AgentExecutePlanReviewPrepareConfirm 0 none`
-   - `HCIAbilityKit.AgentExecutePlanReviewPrepareExecuteTicket none`
+   - `HCI.AgentExecutePlanReviewPrepareConfirm 0 none`
+   - `HCI.AgentExecutePlanReviewPrepareExecuteTicket none`
 
 ## 3. Pass 判定标准
 

@@ -8,8 +8,8 @@
 
 ## 1. 测试步骤
 
-1. 用例 C：`HCIAbilityKit.AgentPlanValidateDemo fail_illegal_evidence_key`
-2. 用例 D：`HCIAbilityKit.Editor.AgentExecutor.PipelineBypassAfterSearchBlockedWithE4009`
+1. 用例 C：`HCI.AgentPlanValidateDemo fail_illegal_evidence_key`
+2. 用例 D：`HCI.Editor.AgentExecutor.PipelineBypassAfterSearchBlockedWithE4009`
 
 ## 2. 预期结果
 

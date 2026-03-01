@@ -37,10 +37,10 @@
 
 ## 5. UE 手测门禁（已通过）
 
-1. `HCIAbilityKit.AgentPlanWithRealLLMProbe "你是谁"`
-2. `HCIAbilityKit.AgentPlanWithRealLLMDemo "整理临时目录资产并归档"`
-3. `HCIAbilityKit.AgentPlanWithLLMFallbackDemo timeout "整理临时目录资产并归档"`
-4. `HCIAbilityKit.AgentPlanWithLLMMetricsDump`
+1. `HCI.AgentPlanWithRealLLMProbe "你是谁"`
+2. `HCI.AgentPlanWithRealLLMDemo "整理临时目录资产并归档"`
+3. `HCI.AgentPlanWithLLMFallbackDemo timeout "整理临时目录资产并归档"`
+4. `HCI.AgentPlanWithLLMMetricsDump`
 
 ## 6. UE 手测结果
 

@@ -31,9 +31,9 @@
 1. 编译验证：
    - `Build.bat HCIEditorGenEditor Win64 Development -Project="D:/1_Projects/04_GameDev/UE_Projects/HCIEditorGen/HCIEditorGen.uproject" -WaitMutex -FromMSBuild`
 2. UE 手测（用户）：
-   - `HCIAbilityKit.AuditScan 20`
-   - `HCIAbilityKit.AuditScanAsync 1 20`
-   - `HCIAbilityKit.AuditScanProgress`
+   - `HCI.AuditScan 20`
+   - `HCI.AuditScanAsync 1 20`
+   - `HCI.AuditScanProgress`
 
 ## 5. 预期结果
 

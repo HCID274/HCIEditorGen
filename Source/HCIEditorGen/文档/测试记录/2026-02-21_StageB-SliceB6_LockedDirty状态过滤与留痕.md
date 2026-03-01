@@ -28,13 +28,13 @@
 ## 4. 操作步骤（已执行）
 
 1. 基线扫描：
-   - `HCIAbilityKit.AuditScan 20`
+   - `HCI.AuditScan 20`
 2. 制造 Dirty 资产（修改 AbilityKit 资产字段且不保存）。
 3. 再次扫描并观察留痕：
-   - `HCIAbilityKit.AuditScan 20`
+   - `HCI.AuditScan 20`
 4. 异步链路一致性：
-   - `HCIAbilityKit.AuditScanAsync 1 20`
-   - `HCIAbilityKit.AuditScanProgress`
+   - `HCI.AuditScanAsync 1 20`
+   - `HCI.AuditScanProgress`
 5. （可选）只读路径：
    - 将目标 `.uasset` 标记只读后再次扫描，观察 `package_read_only`。
 

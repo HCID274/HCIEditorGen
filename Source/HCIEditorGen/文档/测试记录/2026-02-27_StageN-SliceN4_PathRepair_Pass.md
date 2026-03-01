@@ -16,8 +16,8 @@
 
 ## 步骤
 
-1. UE 控制台执行：`HCIAbilityKit.SeedChaosReset`
-2. 打开：`HCIAbilityKit.AgentChatUI`
+1. UE 控制台执行：`HCI.SeedChaosReset`
+2. 打开：`HCI.AgentChatUI`
 3. 输入（故意脏路径）：
    - `扫描Game/__HCI_Test/Incoming/SeedChaos，然后按元数据规范命名并移动归档到，Game/__HCI_Test/   Organized/SeedClean.`
 4. 观察：

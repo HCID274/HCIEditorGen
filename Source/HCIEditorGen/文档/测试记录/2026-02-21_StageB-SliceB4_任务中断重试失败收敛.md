@@ -31,17 +31,17 @@
 1. 代码实现：
    - 引入 `FHCIAbilityKitAuditScanAsyncController` 状态机；
    - 新增命令：
-     - `HCIAbilityKit.AuditScanAsyncStop`
-     - `HCIAbilityKit.AuditScanAsyncRetry`
-   - 强化 `HCIAbilityKit.AuditScanProgress` 的状态输出（running/cancelled/failed/idle）。
+     - `HCI.AuditScanAsyncStop`
+     - `HCI.AuditScanAsyncRetry`
+   - 强化 `HCI.AuditScanProgress` 的状态输出（running/cancelled/failed/idle）。
 2. 编译验证：
    - `Build.bat HCIEditorGenEditor Win64 Development -Project="D:/1_Projects/04_GameDev/UE_Projects/HCIEditorGen/HCIEditorGen.uproject" -WaitMutex -FromMSBuild`
 3. UE 手测（用户）：
    - `t.MaxFPS = "5"`
-   - `HCIAbilityKit.AuditScanAsync 1 20`
-   - `HCIAbilityKit.AuditScanAsyncStop`
-   - `HCIAbilityKit.AuditScanAsyncRetry`
-   - 异常参数回归：`HCIAbilityKit.AuditScanAsync 0 20`
+   - `HCI.AuditScanAsync 1 20`
+   - `HCI.AuditScanAsyncStop`
+   - `HCI.AuditScanAsyncRetry`
+   - 异常参数回归：`HCI.AuditScanAsync 0 20`
 
 ## 5. 预期结果
 
@@ -71,16 +71,16 @@
 ## 8. 证据
 
 - 用户 UE 日志关键片段：
-  - `Cmd: HCIAbilityKit.AuditScanAsync 1 20`
+  - `Cmd: HCI.AuditScanAsync 1 20`
   - `LogHCIAbilityKitAuditScan: Display: [HCIAbilityKit][AuditScanAsync] start total=209 batch_size=1`
-  - `Cmd: HCIAbilityKit.AuditScanAsyncStop`
+  - `Cmd: HCI.AuditScanAsyncStop`
   - `LogHCIAbilityKitAuditScan: Display: [HCIAbilityKit][AuditScanAsync] interrupted processed=9/209 can_retry=true`
-  - `Cmd: HCIAbilityKit.AuditScanAsyncRetry`
+  - `Cmd: HCI.AuditScanAsyncRetry`
   - `LogHCIAbilityKitAuditScan: Display: [HCIAbilityKit][AuditScanAsync] retry start total=209 batch_size=1`
   - `LogHCIAbilityKitAuditScan: Display: [HCIAbilityKit][AuditScanAsync] progress=10% processed=21/209`
   - `LogHCIAbilityKitAuditScan: Display: [HCIAbilityKit][AuditScanAsync] progress=20% processed=42/209`
-  - `Cmd: HCIAbilityKit.AuditScanAsync 0 20`
-  - `LogHCIAbilityKitAuditScan: Error: [HCIAbilityKit][AuditScanAsync] invalid_args reason=batch_size must be an integer >= 1 usage=HCIAbilityKit.AuditScanAsync [batch_size>=1] [log_top_n>=0]`
+  - `Cmd: HCI.AuditScanAsync 0 20`
+  - `LogHCIAbilityKitAuditScan: Error: [HCIAbilityKit][AuditScanAsync] invalid_args reason=batch_size must be an integer >= 1 usage=HCI.AuditScanAsync [batch_size>=1] [log_top_n>=0]`
 - 构建日志：`C:\Users\50428\AppData\Local\UnrealBuildTool\Log.txt`
 
 ## 9. 问题与后续动作

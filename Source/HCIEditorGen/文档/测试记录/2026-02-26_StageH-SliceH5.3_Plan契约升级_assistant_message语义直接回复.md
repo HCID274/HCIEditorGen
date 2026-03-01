@@ -24,7 +24,7 @@
 ## 2. UE 手测步骤（用户执行）
 
 1. 打开聊天入口：
-   - `HCIAbilityKit.AgentChatUI`
+   - `HCI.AgentChatUI`
 2. 纯问答（message-only）：
    - 输入：`你是谁`
    - 预期：直接回复，不触发计划执行分支。

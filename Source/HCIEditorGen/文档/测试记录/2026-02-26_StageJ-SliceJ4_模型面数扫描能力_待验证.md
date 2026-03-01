@@ -15,25 +15,25 @@
 1. 编译：
    - `Build.bat HCIEditorGenEditor Win64 Development ... -NoHotReloadFromIDE`
 2. 自动化：
-   - `Automation RunTests HCIAbilityKit.Editor.Agent`
+   - `Automation RunTests HCI.Editor.Agent`
 
 ## 3. 预期结果
 
 - 编译通过。
 - 自动化测试通过，关键新增用例为：
-  - `HCIAbilityKit.Editor.AgentPlan.PlannerSupportsMeshTriangleCountIntent`
-  - `HCIAbilityKit.Editor.AgentTools.RegistryWhitelistFrozen`（9 工具）
-  - `HCIAbilityKit.Editor.AgentTools.ScanMeshTriangleCountDryRunReturnsMeshTriangleEvidence`
+  - `HCI.Editor.AgentPlan.PlannerSupportsMeshTriangleCountIntent`
+  - `HCI.Editor.AgentTools.RegistryWhitelistFrozen`（9 工具）
+  - `HCI.Editor.AgentTools.ScanMeshTriangleCountDryRunReturnsMeshTriangleEvidence`
 
 ## 4. 实际结果
 
 - 编译：通过。
-- 自动化：通过（`HCIAbilityKit.Editor.Agent` 共 155 条，`EXIT CODE: 0`）。
+- 自动化：通过（`HCI.Editor.Agent` 共 155 条，`EXIT CODE: 0`）。
 
 ## 5. 证据
 
 - `Saved/Logs/HCIEditorGen.log` 关键片段：
-  - `Found 155 automation tests based on 'HCIAbilityKit.Editor.Agent'`
+  - `Found 155 automation tests based on 'HCI.Editor.Agent'`
   - `PlannerSupportsMeshTriangleCountIntent ... Result={成功}`
   - `RegistryWhitelistFrozen ... Result={成功}`
   - `ScanMeshTriangleCountDryRunReturnsMeshTriangleEvidence ... Result={成功}`
@@ -41,7 +41,7 @@
 
 ## 6. UE 门禁（已执行）
 
-1. `HCIAbilityKit.AgentChatUI`
+1. `HCI.AgentChatUI`
 2. 输入：`检查一下 /Game/HCI 目录下的模型面数`
 3. 实际结果：
    - 计划工具命中 `ScanMeshTriangleCount`；

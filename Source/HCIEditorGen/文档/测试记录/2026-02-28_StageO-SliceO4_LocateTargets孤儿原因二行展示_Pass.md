@@ -14,8 +14,8 @@
 
 ## 步骤
 
-1. 执行：`HCIAbilityKit.MatLinkReset`
-2. 打开：`HCIAbilityKit.AgentChatUI`
+1. 执行：`HCI.MatLinkReset`
+2. 打开：`HCI.AgentChatUI`
 3. 输入（严格契约，S2 预期失败）：  
    `扫描 /Game/__HCI_Test/Incoming/MatLinkChaos/S2_Fuzzy，然后按契约自动创建材质实例并挂贴图`
 4. 观察：

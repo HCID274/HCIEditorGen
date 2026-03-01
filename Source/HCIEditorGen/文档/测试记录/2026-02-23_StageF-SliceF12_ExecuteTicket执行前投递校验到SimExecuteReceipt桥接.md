@@ -11,15 +11,15 @@
   - `HCIAbilityKitAgentExecutorSimulateExecuteReceiptBridge.*`
   - `HCIAbilityKitAgentSimulateExecuteReceiptJsonSerializer.*`
 - 新增 Editor 命令：
-  - `HCIAbilityKit.AgentExecutePlanReviewPrepareSimExecuteReceipt [tamper=none|digest|apply|review|confirm|ready]`
-  - `HCIAbilityKit.AgentExecutePlanReviewPrepareSimExecuteReceiptJson [tamper=none|digest|apply|review|confirm|ready]`
+  - `HCI.AgentExecutePlanReviewPrepareSimExecuteReceipt [tamper=none|digest|apply|review|confirm|ready]`
+  - `HCI.AgentExecutePlanReviewPrepareSimExecuteReceiptJson [tamper=none|digest|apply|review|confirm|ready]`
 - 编译：`Build.bat HCIEditorGenEditor Win64 Development ...` 通过
 - 自动化（UE-Cmd `-TestExit="Automation Test Queue Empty"`，`-abslog` 分离留证）：
-  - `HCIAbilityKit.Editor.AgentExecutorSimExecuteReceipt`（4/4）通过
-  - `HCIAbilityKit.Editor.AgentExecutorExecuteTicket`（4/4，回归）通过
-  - `HCIAbilityKit.Editor.AgentExecutorApplyConfirm`（5/5，回归）通过
-  - `HCIAbilityKit.Editor.AgentExecutorApply`（前缀命中 8/8，含 `Apply + ApplyConfirm` 回归）通过
-  - `HCIAbilityKit.Editor.AgentExecutorReviewSelect`（3/3，回归）通过
+  - `HCI.Editor.AgentExecutorSimExecuteReceipt`（4/4）通过
+  - `HCI.Editor.AgentExecutorExecuteTicket`（4/4，回归）通过
+  - `HCI.Editor.AgentExecutorApplyConfirm`（5/5，回归）通过
+  - `HCI.Editor.AgentExecutorApply`（前缀命中 8/8，含 `Apply + ApplyConfirm` 回归）通过
+  - `HCI.Editor.AgentExecutorReviewSelect`（3/3，回归）通过
 - 自动化日志证据：
   - `Saved/Logs/Automation_F12_AgentExecutorSimExecuteReceipt_serial.log`
   - `Saved/Logs/Automation_F12_AgentExecutorExecuteTicket_serial.log`
@@ -30,25 +30,25 @@
 ## 2. UE 手测步骤（用户执行）
 
 1. 生成可通过链路（Review -> Select -> Apply -> Confirm -> ExecuteTicket）
-   - `HCIAbilityKit.AgentExecutePlanReviewDemo ok_level_risk`
-   - `HCIAbilityKit.AgentExecutePlanReviewSelect 0`
-   - `HCIAbilityKit.AgentExecutePlanReviewPrepareApply`
-   - `HCIAbilityKit.AgentExecutePlanReviewPrepareConfirm 1 none`
-   - `HCIAbilityKit.AgentExecutePlanReviewPrepareExecuteTicket none`
+   - `HCI.AgentExecutePlanReviewDemo ok_level_risk`
+   - `HCI.AgentExecutePlanReviewSelect 0`
+   - `HCI.AgentExecutePlanReviewPrepareApply`
+   - `HCI.AgentExecutePlanReviewPrepareConfirm 1 none`
+   - `HCI.AgentExecutePlanReviewPrepareExecuteTicket none`
 2. 正常桥接（应通过）
-   - `HCIAbilityKit.AgentExecutePlanReviewPrepareSimExecuteReceipt none`
+   - `HCI.AgentExecutePlanReviewPrepareSimExecuteReceipt none`
 3. 输出 SimExecuteReceipt JSON
-   - `HCIAbilityKit.AgentExecutePlanReviewPrepareSimExecuteReceiptJson none`
+   - `HCI.AgentExecutePlanReviewPrepareSimExecuteReceiptJson none`
 4. digest 篡改（应拦截 `E4202`）
-   - `HCIAbilityKit.AgentExecutePlanReviewPrepareSimExecuteReceipt digest`
+   - `HCI.AgentExecutePlanReviewPrepareSimExecuteReceipt digest`
 5. confirm_id 篡改（应拦截 `E4202`）
-   - `HCIAbilityKit.AgentExecutePlanReviewPrepareSimExecuteReceipt confirm`
+   - `HCI.AgentExecutePlanReviewPrepareSimExecuteReceipt confirm`
 6. 强制 not-ready（应拦截 `E4205`）
-   - `HCIAbilityKit.AgentExecutePlanReviewPrepareSimExecuteReceipt ready`
+   - `HCI.AgentExecutePlanReviewPrepareSimExecuteReceipt ready`
 7. 未确认链路（应拦截 `E4005`）
-   - `HCIAbilityKit.AgentExecutePlanReviewPrepareConfirm 0 none`
-   - `HCIAbilityKit.AgentExecutePlanReviewPrepareExecuteTicket none`
-   - `HCIAbilityKit.AgentExecutePlanReviewPrepareSimExecuteReceipt none`
+   - `HCI.AgentExecutePlanReviewPrepareConfirm 0 none`
+   - `HCI.AgentExecutePlanReviewPrepareExecuteTicket none`
+   - `HCI.AgentExecutePlanReviewPrepareSimExecuteReceipt none`
 
 ## 3. Pass 判定标准
 
@@ -104,7 +104,7 @@
 
 - 结果：`Pass`
 - 证据（用户日志结论摘要）：
-  - 正常场景 `HCIAbilityKit.AgentExecutePlanReviewPrepareSimExecuteReceipt none` 命中 `simulated_dispatch_accepted=true error_code=- reason=simulate_execute_receipt_ready`；
+  - 正常场景 `HCI.AgentExecutePlanReviewPrepareSimExecuteReceipt none` 命中 `simulated_dispatch_accepted=true error_code=- reason=simulate_execute_receipt_ready`；
   - 篡改与阻断场景命中：
     - `digest` -> `E4202 / selection_digest_mismatch`
     - `confirm` -> `E4202 / confirm_request_id_mismatch`

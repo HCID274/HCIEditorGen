@@ -36,24 +36,24 @@
 ## 4. 操作步骤（UE 手测）
 
 1. 生成可通过的审阅预览（Actor）
-   - `HCIAbilityKit.AgentExecutePlanReviewDemo ok_level_risk`
+   - `HCI.AgentExecutePlanReviewDemo ok_level_risk`
 2. 选择单行（可选，确保使用 F8 采纳子集）
-   - `HCIAbilityKit.AgentExecutePlanReviewSelect 0`
+   - `HCI.AgentExecutePlanReviewSelect 0`
 3. 生成 ApplyRequest（F9）
-   - `HCIAbilityKit.AgentExecutePlanReviewPrepareApply`
+   - `HCI.AgentExecutePlanReviewPrepareApply`
 4. 生成 ConfirmRequest（正常通过）
-   - `HCIAbilityKit.AgentExecutePlanReviewPrepareConfirm 1 none`
+   - `HCI.AgentExecutePlanReviewPrepareConfirm 1 none`
 5. 生成 ConfirmRequest JSON
-   - `HCIAbilityKit.AgentExecutePlanReviewPrepareConfirmJson 1 none`
+   - `HCI.AgentExecutePlanReviewPrepareConfirmJson 1 none`
 6. 未确认场景（应被确认前校验拦截）
-   - `HCIAbilityKit.AgentExecutePlanReviewPrepareConfirm 0 none`
+   - `HCI.AgentExecutePlanReviewPrepareConfirm 0 none`
 7. Digest 篡改场景（应命中 `E4202`）
-   - `HCIAbilityKit.AgentExecutePlanReviewPrepareConfirm 1 digest`
+   - `HCI.AgentExecutePlanReviewPrepareConfirm 1 digest`
 8. 生成阻断型 ApplyRequest（F9，`ready=false`）
-   - `HCIAbilityKit.AgentExecutePlanReviewDemo fail_confirm`
-   - `HCIAbilityKit.AgentExecutePlanReviewPrepareApply`
+   - `HCI.AgentExecutePlanReviewDemo fail_confirm`
+   - `HCI.AgentExecutePlanReviewPrepareApply`
 9. 对阻断型 ApplyRequest 执行确认前校验（应命中 `E4203`）
-   - `HCIAbilityKit.AgentExecutePlanReviewPrepareConfirm 1 none`
+   - `HCI.AgentExecutePlanReviewPrepareConfirm 1 none`
 
 ## 5. 预期结果（Pass 判定标准）
 
@@ -107,14 +107,14 @@
 - 编译：通过
   - `Build.bat HCIEditorGenEditor Win64 Development ...` 成功。
 - 自动化：通过（串行留证）
-  - `HCIAbilityKit.Editor.AgentExecutorApplyConfirm`：5/5 成功（F10 新增）
+  - `HCI.Editor.AgentExecutorApplyConfirm`：5/5 成功（F10 新增）
     - `DigestMismatchReturnsE4202`
     - `JsonIncludesReadyAndValidationFields`
     - `NotReadyApplyReturnsE4203`
     - `ReadyWhenConfirmedAndMatchingState`
     - `UnconfirmedReturnsE4005`
-  - `HCIAbilityKit.Editor.AgentExecutorApply`：通过（F9 回归；日志含 F9/F10 前缀测试结果）
-  - `HCIAbilityKit.Editor.AgentExecutorReviewSelect`：3/3 成功（F8 回归）
+  - `HCI.Editor.AgentExecutorApply`：通过（F9 回归；日志含 F9/F10 前缀测试结果）
+  - `HCI.Editor.AgentExecutorReviewSelect`：3/3 成功（F8 回归）
 - 留证日志：
   - `Saved/Logs/Automation_F10_AgentExecutorApplyConfirm_serial.log`
   - `Saved/Logs/Automation_F10_AgentExecutorApply_serial.log`

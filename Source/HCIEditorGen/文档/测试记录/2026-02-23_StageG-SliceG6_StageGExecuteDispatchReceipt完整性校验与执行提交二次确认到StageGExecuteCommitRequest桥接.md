@@ -14,7 +14,7 @@
 
 - Runtime：`StageGExecuteCommitRequest` 契约/桥接/JSON 序列化。
 - Editor：`AgentDemoConsoleCommands` 新增 `...PrepareStageGExecuteCommitRequest` / `...Json` 命令。
-- Tests：新增 `HCIAbilityKit.Editor.AgentExecutorStageGExecuteCommitRequest` 自动化测试；修复 G5 DispatchReceipt 测试 helper 命名冲突（Unity 构建）。
+- Tests：新增 `HCI.Editor.AgentExecutorStageGExecuteCommitRequest` 自动化测试；修复 G5 DispatchReceipt 测试 helper 命名冲突（Unity 构建）。
 
 ## 3. 前置条件
 
@@ -24,8 +24,8 @@
 ## 4. 操作步骤（UE 手测）
 
 1. 先跑通到 `StageGExecuteDispatchReceipt` 的可通过链路（`...ReviewDemo -> ...Select -> ...PrepareApply -> ...PrepareConfirm -> ...PrepareExecuteTicket -> ...PrepareSimExecuteReceipt -> ...PrepareSimFinalReport -> ...PrepareSimArchiveBundle -> ...PrepareSimHandoffEnvelope -> ...PrepareStageGExecuteIntent -> ...PrepareStageGWriteEnableRequest 1 none -> ...PrepareStageGExecutePermitTicket 1 none -> ...PrepareStageGExecuteDispatchRequest 1 none -> ...PrepareStageGExecuteDispatchReceipt none`）。
-2. 执行正常场景：`HCIAbilityKit.AgentExecutePlanReviewPrepareStageGExecuteCommitRequest 1 none`。
-3. 执行 JSON 输出：`HCIAbilityKit.AgentExecutePlanReviewPrepareStageGExecuteCommitRequestJson 1 none`。
+2. 执行正常场景：`HCI.AgentExecutePlanReviewPrepareStageGExecuteCommitRequest 1 none`。
+3. 执行 JSON 输出：`HCI.AgentExecutePlanReviewPrepareStageGExecuteCommitRequestJson 1 none`。
 4. 执行阻断场景：
    - `...PrepareStageGExecuteCommitRequest 0 none`
    - `...PrepareStageGExecuteCommitRequest 1 digest`

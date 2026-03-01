@@ -10,7 +10,7 @@
 - 完成 B2 元数据扫描主链路（不加载资产对象）：
   - Runtime 用 `AssetRegistry + FAssetData` 全量枚举 `UHCIAbilityKitAsset`；
   - 采集字段覆盖 `AssetPath/Id/DisplayName/Damage/RepresentingMeshPath`；
-  - Editor 暴露可手测入口命令 `HCIAbilityKit.AuditScan`。
+  - Editor 暴露可手测入口命令 `HCI.AuditScan`。
 
 ## 2. 影响范围
 
@@ -28,26 +28,26 @@
 
 ## 4. 操作步骤（已执行）
 
-1. 基线检查：确认仓库中不存在 `HCIAbilityKit.AuditScan` 命令与 B2 扫描服务实现（Red 基线）。
+1. 基线检查：确认仓库中不存在 `HCI.AuditScan` 命令与 B2 扫描服务实现（Red 基线）。
 2. 实现 Runtime 扫描服务与资产标签写入：
    - 新增 `FHCIAbilityKitAuditScanService::ScanFromAssetRegistry`；
    - `UHCIAbilityKitAsset::GetAssetRegistryTags` 写入 `hci_id/hci_display_name/hci_damage/hci_representing_mesh`。
 3. 实现 Editor 控制台命令：
-   - `HCIAbilityKit.AuditScan [log_top_n]`。
+   - `HCI.AuditScan [log_top_n]`。
 4. 运行 UE 编译：
    - `Build.bat HCIEditorGenEditor Win64 Development -Project="D:/1_Projects/04_GameDev/UE_Projects/HCIEditorGen/HCIEditorGen.uproject" -WaitMutex -FromMSBuild`
 
 ## 5. 预期结果
 
 - 编译通过；
-- 运行 `HCIAbilityKit.AuditScan` 时输出：
+- 运行 `HCI.AuditScan` 时输出：
   - 扫描摘要：资产总数、字段覆盖率、耗时；
   - 样本行：`asset/id/display_name/damage/representing_mesh`。
 - 扫描流程不调用 `GetAsset/LoadObject`。
 
 ## 6. 实际结果
 
-- 基线检查：`HCIAbilityKit.AuditScan` 相关实现原先不存在。
+- 基线检查：`HCI.AuditScan` 相关实现原先不存在。
 - 代码实现完成：
   - Runtime 新增 B2 扫描服务；
   - Runtime 资产标签已补齐；
@@ -72,7 +72,7 @@
 2. 先导入 1 个合法样例（或对现有 B1 资产执行 Reimport）：
    - `SourceData/AbilityKits/B1_ManualCases/HCI_B1_Valid_RepresentingMesh.hciabilitykit`
 3. 在控制台执行：
-   - `HCIAbilityKit.AuditScan 20`
+   - `HCI.AuditScan 20`
 4. 观察日志是否包含：
    - `[HCIAbilityKit][AuditScan] source=asset_registry_fassetdata assets=...`
    - 至少一条 row 行，且 `representing_mesh=/Game/...` 非空（针对已绑定样例）。

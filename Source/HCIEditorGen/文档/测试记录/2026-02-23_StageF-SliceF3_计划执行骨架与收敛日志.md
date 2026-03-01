@@ -12,7 +12,7 @@
   - 按步骤输出 `step_results[]`；
   - 产出收敛汇总 `FHCIAbilityKitAgentExecutorRunResult`；
   - 默认 `execution_mode=simulate_dry_run`（不执行真实资产写入）。
-- 落地 Editor 控制台演示命令 `HCIAbilityKit.AgentExecutePlanDemo [自然语言文本...]`：
+- 落地 Editor 控制台演示命令 `HCI.AgentExecutePlanDemo [自然语言文本...]`：
   - 默认 3 案例；
   - 输出 `route_reason + summary + row=` 收敛日志。
 - 保持既有 `AgentPlan / AgentPlanValidation` 行为不回归。
@@ -40,20 +40,20 @@
 1. 编译（助手已完成）
    - `Build.bat HCIEditorGenEditor Win64 Development -Project=... -WaitMutex -FromMSBuild`
 2. 自动化测试（助手已完成）
-   - `UnrealEditor-Cmd.exe ... -ExecCmds="Automation RunTests HCIAbilityKit.Editor.AgentExecutor; Quit"`
-   - `UnrealEditor-Cmd.exe ... -ExecCmds="Automation RunTests HCIAbilityKit.Editor.AgentPlan; Quit"`（F1 回归）
-   - `UnrealEditor-Cmd.exe ... -ExecCmds="Automation RunTests HCIAbilityKit.Editor.AgentPlanValidation; Quit"`（F2 回归）
+   - `UnrealEditor-Cmd.exe ... -ExecCmds="Automation RunTests HCI.Editor.AgentExecutor; Quit"`
+   - `UnrealEditor-Cmd.exe ... -ExecCmds="Automation RunTests HCI.Editor.AgentPlan; Quit"`（F1 回归）
+   - `UnrealEditor-Cmd.exe ... -ExecCmds="Automation RunTests HCI.Editor.AgentPlanValidation; Quit"`（F2 回归）
 3. UE 手测（默认 3 案例摘要）
-   - `HCIAbilityKit.AgentExecutePlanDemo`
+   - `HCI.AgentExecutePlanDemo`
 4. UE 手测（命名归档意图单案例）
-   - `HCIAbilityKit.AgentExecutePlanDemo 整理 临时目录 资产 按 规范 命名 并 归档`
+   - `HCI.AgentExecutePlanDemo 整理 临时目录 资产 按 规范 命名 并 归档`
 5. UE 手测（关卡排雷意图单案例）
-   - `HCIAbilityKit.AgentExecutePlanDemo 检查 当前 关卡 选中 物体 的 碰撞 和 默认材质`
+   - `HCI.AgentExecutePlanDemo 检查 当前 关卡 选中 物体 的 碰撞 和 默认材质`
 
 ## 5. 预期结果（Pass 判定标准）
 
 1. 上述 3 条命令（步骤 3~5）在合法参数下均无 `Error` 级日志。
-2. `HCIAbilityKit.AgentExecutePlanDemo`（无参）输出：
+2. `HCI.AgentExecutePlanDemo`（无参）输出：
    - 3 组案例 `route_reason` 行
    - 3 组案例 `summary` 行
    - 若干 `row=` 行（至少覆盖 3 条，资产合规案例可为 2 步）
@@ -94,17 +94,17 @@
 - 编译：通过
   - `Build.bat HCIEditorGenEditor Win64 Development ...` 成功。
 - 自动化：通过
-  - `HCIAbilityKit.Editor.AgentExecutor`：3/3 成功
+  - `HCI.Editor.AgentExecutor`：3/3 成功
     - `ValidPlanProducesStepResults`
     - `InvalidPlanRejectedByValidator`
     - `LevelRiskPlanProducesExpectedEvidenceKeys`
-  - `HCIAbilityKit.Editor.AgentPlan`：3/3 成功（回归）
-  - `HCIAbilityKit.Editor.AgentPlanValidation`：8/8 成功（回归，含 `LevelRiskDuplicateChecksReturnsE4011`）
+  - `HCI.Editor.AgentPlan`：3/3 成功（回归）
+  - `HCI.Editor.AgentPlanValidation`：8/8 成功（回归，含 `LevelRiskDuplicateChecksReturnsE4011`）
 - 说明：
   - `UnrealEditor-Cmd` 在当前环境常无控制台回显，以 `Saved/Logs/*.log` 中 `Result={成功}` 为准。
   - 已分离留证，避免 `HCIEditorGen.log` 被后续命令覆盖。
 - UE 手测：通过（用户反馈 `Pass`）
-  - `HCIAbilityKit.AgentExecutePlanDemo`（无参）可执行，无异常；
+  - `HCI.AgentExecutePlanDemo`（无参）可执行，无异常；
   - 命名归档单案例命中 `NormalizeAssetNamingByMetadata`；
   - 关卡排雷单案例命中 `ScanLevelMeshRisks`，证据键覆盖 `actor_path|issue|evidence`；
   - 日志口径符合门禁要求（`summary` 与 `row=` 关键字段完整）。

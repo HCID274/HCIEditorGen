@@ -36,13 +36,13 @@
 1. 编译插件（助手已完成本地验证）：
    - `Build.bat HCIEditorGenEditor Win64 Development -Project=... -WaitMutex -FromMSBuild`
 2. 自动化测试（助手已完成本地验证）：
-   - `UnrealEditor-Cmd.exe ... -ExecCmds="Automation RunTests HCIAbilityKit.Editor.AgentTools; Quit"`
-   - `UnrealEditor-Cmd.exe ... -ExecCmds="Automation RunTests HCIAbilityKit.Editor.AuditScanAsync; Quit"`（回归）
-   - `UnrealEditor-Cmd.exe ... -ExecCmds="Automation RunTests HCIAbilityKit.Editor.AuditResults; Quit"`（回归）
+   - `UnrealEditor-Cmd.exe ... -ExecCmds="Automation RunTests HCI.Editor.AgentTools; Quit"`
+   - `UnrealEditor-Cmd.exe ... -ExecCmds="Automation RunTests HCI.Editor.AuditScanAsync; Quit"`（回归）
+   - `UnrealEditor-Cmd.exe ... -ExecCmds="Automation RunTests HCI.Editor.AuditResults; Quit"`（回归）
 3. UE 手测：输出全量 Tool Registry 声明
-   - `HCIAbilityKit.ToolRegistryDump`
+   - `HCI.ToolRegistryDump`
 4. UE 手测：输出单工具（建议检查 LOD 工具的枚举冻结）
-   - `HCIAbilityKit.ToolRegistryDump SetMeshLODGroup`
+   - `HCI.ToolRegistryDump SetMeshLODGroup`
 5. 检查日志：
    - 是否出现 `tool=` 行（能力元信息）
    - 是否出现 `arg tool=...` 行（参数约束）
@@ -75,11 +75,11 @@
 
 - 编译：通过（助手本地已验证）。
 - 自动化：通过（助手本地已验证）。
-  - `HCIAbilityKit.Editor.AgentTools`：3/3 成功（`RegistryWhitelistFrozen / ArgsSchemaFrozen / DomainCoverageAndFlags`）。
-  - `HCIAbilityKit.Editor.AuditScanAsync`：5/5 成功（回归）。
-  - `HCIAbilityKit.Editor.AuditResults`：3/3 成功（回归）。
+  - `HCI.Editor.AgentTools`：3/3 成功（`RegistryWhitelistFrozen / ArgsSchemaFrozen / DomainCoverageAndFlags`）。
+  - `HCI.Editor.AuditScanAsync`：5/5 成功（回归）。
+  - `HCI.Editor.AuditResults`：3/3 成功（回归）。
 - UE 手测：通过。
-  - `HCIAbilityKit.ToolRegistryDump` 与 `HCIAbilityKit.ToolRegistryDump SetMeshLODGroup` 执行成功，全程无 `Error/Warning`。
+  - `HCI.ToolRegistryDump` 与 `HCI.ToolRegistryDump SetMeshLODGroup` 执行成功，全程无 `Error/Warning`。
   - 全量汇总行：`summary total_registered=7 printed=7 filter=- validation=ok`。
   - 单工具汇总行：`summary total_registered=7 printed=1 filter=SetMeshLODGroup validation=ok`。
   - 全量 `tool=` 行覆盖 7 个白名单工具：
@@ -108,12 +108,12 @@
 - 构建日志：`C:\Users\50428\AppData\Local\UnrealBuildTool\Log.txt`
 - 自动化日志：`Saved/Logs/HCIEditorGen.log`
 - 自动化关键证据（助手本地已验证）：
-  - `Found 3 automation tests based on 'HCIAbilityKit.Editor.AgentTools'`
+  - `Found 3 automation tests based on 'HCI.Editor.AgentTools'`
   - `Result={成功} Name={ArgsSchemaFrozen}`
   - `Result={成功} Name={DomainCoverageAndFlags}`
   - `Result={成功} Name={RegistryWhitelistFrozen}`
-  - `Found 5 automation tests based on 'HCIAbilityKit.Editor.AuditScanAsync'`
-  - `Found 3 automation tests based on 'HCIAbilityKit.Editor.AuditResults'`
+  - `Found 5 automation tests based on 'HCI.Editor.AuditScanAsync'`
+  - `Found 3 automation tests based on 'HCI.Editor.AuditResults'`
 - UE 手测关键证据（用户回传结论）：
   - 无 `Error/Warning`，命令执行成功
   - `summary total_registered=7 printed=7 filter=- validation=ok`

@@ -2,7 +2,7 @@
 
 ## 1. 目标
 
-- 在 `HCIAbilityKit.AgentPlanPreviewUI` 窗口内直接展示 `SearchPath` 语义匹配证据：
+- 在 `HCI.AgentPlanPreviewUI` 窗口内直接展示 `SearchPath` 语义匹配证据：
   - `keyword`
   - `keyword_normalized`
   - `keyword_expanded`
@@ -26,7 +26,7 @@
 
 ## 4. UE 手测门禁
 
-1. `HCIAbilityKit.AgentPlanPreviewUI "整理临时目录资产并归档"`
+1. `HCI.AgentPlanPreviewUI "整理临时目录资产并归档"`
 2. 在窗口点击 `确认并执行（Commit Changes）`，选择 `Yes`
 3. 预期窗口内可见 SearchPath 证据摘要，至少包含：
    - `best_directory=/Game/Temp`
@@ -43,8 +43,8 @@
   - 编译：
     - `Build.bat HCIEditorGenEditor Win64 Development -Project=... -WaitMutex -FromMSBuild -NoHotReloadFromIDE` 通过（exit code 0）。
   - 自动化：
-    - `Automation RunTests HCIAbilityKit.Editor.AgentPreviewUI.SearchPathEvidence`：2/2 成功。
-    - `Automation RunTests HCIAbilityKit.Editor.AgentPreviewUI`：5/5 成功（含新增 2 条 SearchPath 证据用例）。
+    - `Automation RunTests HCI.Editor.AgentPreviewUI.SearchPathEvidence`：2/2 成功。
+    - `Automation RunTests HCI.Editor.AgentPreviewUI`：5/5 成功（含新增 2 条 SearchPath 证据用例）。
   - 说明：
     - 命令行自动化需追加 `-NoDDC`，否则本机会触发 DDC 可写节点异常导致 UE-Cmd 启动失败（与业务代码无关）。
 - UE 手测：待执行

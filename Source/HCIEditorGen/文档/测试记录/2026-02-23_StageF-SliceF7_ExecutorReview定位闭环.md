@@ -7,7 +7,7 @@
 
 ## 1. 测试目标
 
-- 在 F6 `Executor -> DryRunDiff` 审阅桥接基础上，新增按行定位命令 `HCIAbilityKit.AgentExecutePlanReviewLocate [row_index]`。
+- 在 F6 `Executor -> DryRunDiff` 审阅桥接基础上，新增按行定位命令 `HCI.AgentExecutePlanReviewLocate [row_index]`。
 - 打通 `计划 -> 执行 -> 审阅 -> 定位` 最小交互闭环（仍为 `simulate_dry_run`，不触发真实资产写入）。
 - 保持 F6 `ReviewDemo/ReviewJson` 既有日志字段口径不变。
 - 覆盖两类定位策略：
@@ -38,19 +38,19 @@
 1. 编译（助手已完成）
    - `Build.bat HCIEditorGenEditor Win64 Development -Project=... -WaitMutex -FromMSBuild`
 2. 自动化测试（助手已完成）
-   - `HCIAbilityKit.Editor.AgentExecutorReviewLocate`（F7 新增）
-   - `HCIAbilityKit.Editor.AgentExecutorReview`（F6 回归）
-   - `HCIAbilityKit.Editor.AgentExecutor`（F3~F5 回归）
+   - `HCI.Editor.AgentExecutorReviewLocate`（F7 新增）
+   - `HCI.Editor.AgentExecutorReview`（F6 回归）
+   - `HCI.Editor.AgentExecutor`（F3~F5 回归）
 3. UE 手测（先生成 review 预览状态，Actor 案例）
-   - `HCIAbilityKit.AgentExecutePlanReviewDemo ok_level_risk`
+   - `HCI.AgentExecutePlanReviewDemo ok_level_risk`
 4. UE 手测（定位 Actor 行，通常 `row=0`）
-   - `HCIAbilityKit.AgentExecutePlanReviewLocate 0`
+   - `HCI.AgentExecutePlanReviewLocate 0`
 5. UE 手测（生成预检阻断审阅行，Asset 案例）
-   - `HCIAbilityKit.AgentExecutePlanReviewDemo fail_confirm`
+   - `HCI.AgentExecutePlanReviewDemo fail_confirm`
 6. UE 手测（定位 Asset 行，通常 `row=0`）
-   - `HCIAbilityKit.AgentExecutePlanReviewLocate 0`
+   - `HCI.AgentExecutePlanReviewLocate 0`
 7. UE 手测（边界：越界行号）
-   - `HCIAbilityKit.AgentExecutePlanReviewLocate 99`
+   - `HCI.AgentExecutePlanReviewLocate 99`
 
 ## 5. 预期结果（Pass 判定标准）
 
@@ -71,18 +71,18 @@
    - `reason=row_index_out_of_range`
    - `total=...`
 5. F6 命令回归不受影响（至少一条确认）：
-   - `HCIAbilityKit.AgentExecutePlanReviewDemo ...` 仍正常输出 `AgentExecutorReview summary + row=`
+   - `HCI.AgentExecutePlanReviewDemo ...` 仍正常输出 `AgentExecutorReview summary + row=`
 
 ## 6. 实际结果（助手本地验证）
 
 - 编译：通过
   - `Build.bat HCIEditorGenEditor Win64 Development ...` 成功。
 - 自动化：通过
-  - `HCIAbilityKit.Editor.AgentExecutorReviewLocate`：2/2 成功（F7 新增）
+  - `HCI.Editor.AgentExecutorReviewLocate`：2/2 成功（F7 新增）
     - `ResolveActorRowKeepsCameraFocusStrategy`
     - `ResolveRejectsOutOfRangeRow`
-  - `HCIAbilityKit.Editor.AgentExecutorReview`：通过（F6 回归）
-  - `HCIAbilityKit.Editor.AgentExecutor`：通过（F3~F5 回归，同时命中 Review 前缀相关测试属预期）
+  - `HCI.Editor.AgentExecutorReview`：通过（F6 回归）
+  - `HCI.Editor.AgentExecutor`：通过（F3~F5 回归，同时命中 Review 前缀相关测试属预期）
 - 说明：
   - `UnrealEditor-Cmd` 在当前环境控制台常无实时回显，已使用 `-abslog` 取证。
 - UE 手测：通过（用户反馈满足全部门禁）

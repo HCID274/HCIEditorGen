@@ -13,7 +13,7 @@
 ## 2. 影响范围
 
 - Runtime：`FHCIAbilityKitAgentLlmClient`（Provider 配置加载与模型选择）。
-- Editor 自动化：`HCIAbilityKit.Editor.AgentPlanLLM.Router*`。
+- Editor 自动化：`HCI.Editor.AgentPlanLLM.Router*`。
 - 数据侧：`Saved/HCIAbilityKit/Config/llm_router.local.json`（由真实压测产出）。
 
 ## 3. 前置条件
@@ -26,8 +26,8 @@
 
 1. 执行 Python 压测：17 模型 * 每模型 3 次，生成中文报告与 `llm_router.local.json`。
 2. 编译 `HCIEditorGenEditor Win64 Development`。
-3. 执行 UE 自动化：`Automation RunTests HCIAbilityKit.Editor.AgentPlanLLM.Router`。
-4. 执行真实探针：`HCIAbilityKit.AgentPlanWithRealLLMProbe "你是谁"`，检查路由日志与返回状态。
+3. 执行 UE 自动化：`Automation RunTests HCI.Editor.AgentPlanLLM.Router`。
+4. 执行真实探针：`HCI.AgentPlanWithRealLLMProbe "你是谁"`，检查路由日志与返回状态。
 
 ## 5. 预期结果
 

@@ -11,12 +11,12 @@
 
 ## 操作步骤
 
-1. 执行 `HCIAbilityKit.AgentExecutePlanReviewPrepareStageGExecutionReadiness 1 none`
-2. 执行 `HCIAbilityKit.AgentExecutePlanReviewPrepareStageGExecutionReadiness 0 none`
-3. 执行 `HCIAbilityKit.AgentExecutePlanReviewPrepareStageGExecutionReadiness 1 digest`
-4. 执行 `HCIAbilityKit.AgentExecutePlanReviewPrepareStageGExecutionReadiness 1 archive`
-5. 执行 `HCIAbilityKit.AgentExecutePlanReviewPrepareStageGExecutionReadiness 1 mode`
-6. 执行 `HCIAbilityKit.AgentExecutePlanReviewPrepareStageGExecutionReadinessJson 1 none`
+1. 执行 `HCI.AgentExecutePlanReviewPrepareStageGExecutionReadiness 1 none`
+2. 执行 `HCI.AgentExecutePlanReviewPrepareStageGExecutionReadiness 0 none`
+3. 执行 `HCI.AgentExecutePlanReviewPrepareStageGExecutionReadiness 1 digest`
+4. 执行 `HCI.AgentExecutePlanReviewPrepareStageGExecutionReadiness 1 archive`
+5. 执行 `HCI.AgentExecutePlanReviewPrepareStageGExecutionReadiness 1 mode`
+6. 执行 `HCI.AgentExecutePlanReviewPrepareStageGExecutionReadinessJson 1 none`
 
 ## 预期结果
 

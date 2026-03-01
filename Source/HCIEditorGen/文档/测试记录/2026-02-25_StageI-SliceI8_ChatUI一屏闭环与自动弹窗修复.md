@@ -27,7 +27,7 @@
 
 ## 4. UE 手测门禁
 
-1. `HCIAbilityKit.AgentChatUI`
+1. `HCI.AgentChatUI`
 2. 输入：`帮我看看那个MNew文件夹里有什么`
 3. 预期：出现计划卡片；不自动弹窗；点击 `打开预览` 后才弹出 `PlanPreview`。
 4. 输入：`整理临时目录资产并归档`

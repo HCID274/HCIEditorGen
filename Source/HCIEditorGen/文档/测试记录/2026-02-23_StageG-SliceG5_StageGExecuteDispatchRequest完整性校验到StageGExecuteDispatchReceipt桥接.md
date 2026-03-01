@@ -10,13 +10,13 @@
 - 已完成：
   - Runtime 新增 `StageGExecuteDispatchReceipt` 契约 / 桥接 / JSON 序列化器。
   - Editor 新增命令：
-    - `HCIAbilityKit.AgentExecutePlanReviewPrepareStageGExecuteDispatchReceipt`
-    - `HCIAbilityKit.AgentExecutePlanReviewPrepareStageGExecuteDispatchReceiptJson`
+    - `HCI.AgentExecutePlanReviewPrepareStageGExecuteDispatchReceipt`
+    - `HCI.AgentExecutePlanReviewPrepareStageGExecuteDispatchReceiptJson`
   - 支持 `tamper=none|digest|intent|handoff|dispatch|ready` 篡改/阻断验证。
 - 编译：`Build.bat HCIEditorGenEditor Win64 Development ...` ✅ 通过
 - 自动化：
-  - `HCIAbilityKit.Editor.AgentExecutorStageGExecuteDispatchReceipt` ✅ `4/4`
-  - `HCIAbilityKit.Editor.AgentExecutorStageGExecuteDispatchRequest`（G4 回归）✅ `4/4`
+  - `HCI.Editor.AgentExecutorStageGExecuteDispatchReceipt` ✅ `4/4`
+  - `HCI.Editor.AgentExecutorStageGExecuteDispatchRequest`（G4 回归）✅ `4/4`
 - 证据日志：
   - `Saved/Logs/Automation_G5_StageGExecuteDispatchReceipt.log`
   - `Saved/Logs/Automation_G5_StageGExecuteDispatchRequestRegression.log`
@@ -25,37 +25,37 @@
 
 ### 2.1 先生成可通过链路（到 G4）
 
-1. `HCIAbilityKit.AgentExecutePlanReviewDemo ok_level_risk`
-2. `HCIAbilityKit.AgentExecutePlanReviewSelect 0`
-3. `HCIAbilityKit.AgentExecutePlanReviewPrepareApply`
-4. `HCIAbilityKit.AgentExecutePlanReviewPrepareConfirm 1 none`
-5. `HCIAbilityKit.AgentExecutePlanReviewPrepareExecuteTicket none`
-6. `HCIAbilityKit.AgentExecutePlanReviewPrepareSimExecuteReceipt none`
-7. `HCIAbilityKit.AgentExecutePlanReviewPrepareSimFinalReport none`
-8. `HCIAbilityKit.AgentExecutePlanReviewPrepareSimArchiveBundle none`
-9. `HCIAbilityKit.AgentExecutePlanReviewPrepareSimHandoffEnvelope none`
-10. `HCIAbilityKit.AgentExecutePlanReviewPrepareStageGExecuteIntent none`
-11. `HCIAbilityKit.AgentExecutePlanReviewPrepareStageGWriteEnableRequest 1 none`
-12. `HCIAbilityKit.AgentExecutePlanReviewPrepareStageGExecutePermitTicket 1 none`
-13. `HCIAbilityKit.AgentExecutePlanReviewPrepareStageGExecuteDispatchRequest 1 none`
+1. `HCI.AgentExecutePlanReviewDemo ok_level_risk`
+2. `HCI.AgentExecutePlanReviewSelect 0`
+3. `HCI.AgentExecutePlanReviewPrepareApply`
+4. `HCI.AgentExecutePlanReviewPrepareConfirm 1 none`
+5. `HCI.AgentExecutePlanReviewPrepareExecuteTicket none`
+6. `HCI.AgentExecutePlanReviewPrepareSimExecuteReceipt none`
+7. `HCI.AgentExecutePlanReviewPrepareSimFinalReport none`
+8. `HCI.AgentExecutePlanReviewPrepareSimArchiveBundle none`
+9. `HCI.AgentExecutePlanReviewPrepareSimHandoffEnvelope none`
+10. `HCI.AgentExecutePlanReviewPrepareStageGExecuteIntent none`
+11. `HCI.AgentExecutePlanReviewPrepareStageGWriteEnableRequest 1 none`
+12. `HCI.AgentExecutePlanReviewPrepareStageGExecutePermitTicket 1 none`
+13. `HCI.AgentExecutePlanReviewPrepareStageGExecuteDispatchRequest 1 none`
 
 ### 2.2 G5 正常桥接与 JSON
 
-14. `HCIAbilityKit.AgentExecutePlanReviewPrepareStageGExecuteDispatchReceipt none`
-15. `HCIAbilityKit.AgentExecutePlanReviewPrepareStageGExecuteDispatchReceiptJson none`
+14. `HCI.AgentExecutePlanReviewPrepareStageGExecuteDispatchReceipt none`
+15. `HCI.AgentExecutePlanReviewPrepareStageGExecuteDispatchReceiptJson none`
 
 ### 2.3 G5 篡改/阻断校验
 
-16. `HCIAbilityKit.AgentExecutePlanReviewPrepareStageGExecuteDispatchReceipt digest`
-17. `HCIAbilityKit.AgentExecutePlanReviewPrepareStageGExecuteDispatchReceipt intent`
-18. `HCIAbilityKit.AgentExecutePlanReviewPrepareStageGExecuteDispatchReceipt handoff`
-19. `HCIAbilityKit.AgentExecutePlanReviewPrepareStageGExecuteDispatchReceipt dispatch`
-20. `HCIAbilityKit.AgentExecutePlanReviewPrepareStageGExecuteDispatchReceipt ready`
+16. `HCI.AgentExecutePlanReviewPrepareStageGExecuteDispatchReceipt digest`
+17. `HCI.AgentExecutePlanReviewPrepareStageGExecuteDispatchReceipt intent`
+18. `HCI.AgentExecutePlanReviewPrepareStageGExecuteDispatchReceipt handoff`
+19. `HCI.AgentExecutePlanReviewPrepareStageGExecuteDispatchReceipt dispatch`
+20. `HCI.AgentExecutePlanReviewPrepareStageGExecuteDispatchReceipt ready`
 
 ### 2.4 （可选）未确认链路穿透回溯
 
-21. `HCIAbilityKit.AgentExecutePlanReviewPrepareStageGExecuteDispatchRequest 0 none`
-22. `HCIAbilityKit.AgentExecutePlanReviewPrepareStageGExecuteDispatchReceipt none`
+21. `HCI.AgentExecutePlanReviewPrepareStageGExecuteDispatchRequest 0 none`
+22. `HCI.AgentExecutePlanReviewPrepareStageGExecuteDispatchReceipt none`
 
 ## 3. 预期结果（Pass 判定标准）
 

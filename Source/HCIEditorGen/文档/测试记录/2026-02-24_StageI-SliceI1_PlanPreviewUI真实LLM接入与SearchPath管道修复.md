@@ -6,7 +6,7 @@
 
 ## 1. 测试目标
 
-- 验证 `HCIAbilityKit.AgentPlanPreviewUI` 必须走真实 LLM 异步链路，而非本地 Demo 规划器。
+- 验证 `HCI.AgentPlanPreviewUI` 必须走真实 LLM 异步链路，而非本地 Demo 规划器。
 - 验证目录模糊词可触发搜索发现链路：`MNew` 能命中实际目录 `M_New`。
 - 验证目录类请求在 Prompt 约束下走 `SearchPath -> ScanAssets` 管道，不再单步 `fallback_scan_assets`。
 
@@ -23,7 +23,7 @@
 
 ## 4. 操作步骤
 
-1. 执行命令：`HCIAbilityKit.AgentPlanPreviewUI "帮我看看那个MNew文件夹里有什么"`。
+1. 执行命令：`HCI.AgentPlanPreviewUI "帮我看看那个MNew文件夹里有什么"`。
 2. 观察是否先输出真实 LLM 分发日志：`[HCIAbilityKit][AgentPlanLLM][H3] dispatched ... source=AgentPlanPreviewUI`。
 3. 观察计划是否走目录搜索管道（非单步 fallback）。
 4. 观察 UI 是否在异步结果返回后再打开。

@@ -12,7 +12,7 @@
   - 顶层失败步骤元数据（`failed_step_index/failed_step_id/failed_tool_name`）；
   - 终止策略 `stop_on_first_failure / continue_on_failure`；
   - `stop_on_first_failure` 下后续步骤输出 `status=skipped` 行。
-- 新增 F4 UE 演示命令 `HCIAbilityKit.AgentExecutePlanFailDemo`，用于验证失败场景日志口径。
+- 新增 F4 UE 演示命令 `HCI.AgentExecutePlanFailDemo`，用于验证失败场景日志口径。
 - 保持 F3/F2 主链路与计划契约不回归。
 
 ## 2. 影响范围
@@ -37,20 +37,20 @@
 1. 编译（助手已完成）
    - `Build.bat HCIEditorGenEditor Win64 Development -Project=... -WaitMutex -FromMSBuild`
 2. 自动化测试（助手已完成）
-   - `HCIAbilityKit.Editor.AgentExecutor`（含 F4 新用例）
-   - `HCIAbilityKit.Editor.AgentPlan`（前缀回归）
-   - `HCIAbilityKit.Editor.AgentPlanValidation`（F2 回归）
+   - `HCI.Editor.AgentExecutor`（含 F4 新用例）
+   - `HCI.Editor.AgentPlan`（前缀回归）
+   - `HCI.Editor.AgentPlanValidation`（F2 回归）
 3. UE 手测（默认三案例摘要）
-   - `HCIAbilityKit.AgentExecutePlanFailDemo`
+   - `HCI.AgentExecutePlanFailDemo`
 4. UE 手测（Stop 策略失败单案例）
-   - `HCIAbilityKit.AgentExecutePlanFailDemo fail_stop`
+   - `HCI.AgentExecutePlanFailDemo fail_stop`
 5. UE 手测（Continue 策略失败单案例）
-   - `HCIAbilityKit.AgentExecutePlanFailDemo fail_continue`
+   - `HCI.AgentExecutePlanFailDemo fail_continue`
 
 ## 5. 预期结果（Pass 判定标准）
 
 1. 上述 3 条 UE 命令（步骤 3~5）在合法参数下均无 `Error` 级日志。
-2. `HCIAbilityKit.AgentExecutePlanFailDemo`（无参）输出：
+2. `HCI.AgentExecutePlanFailDemo`（无参）输出：
    - 3 条案例前置日志（`[HCIAbilityKit][AgentExecutorFail] case=...`）
    - 每案例 `AgentExecutor` 的 `summary + row=`
    - 1 条 F4 总摘要，且包含：
@@ -94,19 +94,19 @@
 - 编译：通过
   - `Build.bat HCIEditorGenEditor Win64 Development ...` 成功。
 - 自动化：通过
-  - `HCIAbilityKit.Editor.AgentExecutor`：5/5 成功
+  - `HCI.Editor.AgentExecutor`：5/5 成功
     - `ValidPlanProducesStepResults`
     - `InvalidPlanRejectedByValidator`
     - `LevelRiskPlanProducesExpectedEvidenceKeys`
     - `StepFailureStopOnFirstPolicyConverges`
     - `StepFailureContinuePolicyKeepsRunning`
-  - `HCIAbilityKit.Editor.AgentPlan`：前缀回归成功（日志显示 Found 11，含 `AgentPlanValidation` 前缀测试）
-  - `HCIAbilityKit.Editor.AgentPlanValidation`：8/8 成功（独立回归）
+  - `HCI.Editor.AgentPlan`：前缀回归成功（日志显示 Found 11，含 `AgentPlanValidation` 前缀测试）
+  - `HCI.Editor.AgentPlanValidation`：8/8 成功（独立回归）
 - 说明：
   - F4 开发中顺带修复了 `AgentDemoConsoleCommands.cpp` 与 `EditorModule.cpp` 在 Unity 编译下重复定义 `LogHCIAbilityKitAuditScan` 的构建问题（改为独立日志分类 `LogHCIAbilityKitAgentDemo`），不改变外部日志前缀字符串口径。
   - `UnrealEditor-Cmd` 在当前环境通常无控制台实时回显，以 `Saved/Logs/*.log` 为证据。
 - UE 手测：通过（用户反馈 `Pass`）
-  - `HCIAbilityKit.AgentExecutePlanFailDemo`（无参）无 Error，摘要命中 `total_cases=3 stop_policy_cases=2 continue_policy_cases=1 execution_mode=simulate_dry_run validation=ok`；
+  - `HCI.AgentExecutePlanFailDemo`（无参）无 Error，摘要命中 `total_cases=3 stop_policy_cases=2 continue_policy_cases=1 execution_mode=simulate_dry_run validation=ok`；
   - `AgentExecutor summary` 行包含 `termination_policy/skipped_steps/failed_step_index/failed_step_id/failed_tool_name`；
   - `fail_stop` 命中 `terminal_status=failed`、`E4101` 且含 `status=skipped` 行；
   - `fail_continue` 命中 `terminal_status=completed_with_failures`、`E4102` 且同时含失败行与成功行。

@@ -21,15 +21,15 @@
   - `BuildLastPlanCardLines` 改为人话主展示，保留 `step_id/risk` 元信息
 - 编译：`Build.bat HCIEditorGenEditor Win64 Development ...` 通过
 - 自动化（新增用例已编译通过，本轮未在 UE 内执行）：
-  - `HCIAbilityKit.Editor.AgentPlanValidation.UiPresentationEmptySummaryRejected`
-  - `HCIAbilityKit.Editor.AgentPlanValidation.UiPresentationRiskWarningTooLongRejected`
-  - `HCIAbilityKit.Editor.AgentChat.UiPresentation.StepSummaryPreferredOverFallback`
-  - `HCIAbilityKit.Editor.AgentChat.UiPresentation.MissingSummaryFallsBackToCppHumanText`
+  - `HCI.Editor.AgentPlanValidation.UiPresentationEmptySummaryRejected`
+  - `HCI.Editor.AgentPlanValidation.UiPresentationRiskWarningTooLongRejected`
+  - `HCI.Editor.AgentChat.UiPresentation.StepSummaryPreferredOverFallback`
+  - `HCI.Editor.AgentChat.UiPresentation.MissingSummaryFallsBackToCppHumanText`
 
 ## 2. UE 手测步骤（用户执行）
 
 1. 打开聊天入口
-   - `HCIAbilityKit.AgentChatUI`
+   - `HCI.AgentChatUI`
 2. 只读风险扫描（验证人话步骤）
    - `扫描缺碰撞和默认材质问题`
 3. 写请求（验证风险提示 + 未确认不执行）

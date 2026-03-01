@@ -2,7 +2,7 @@
 
 ## 1. 现象
 
-- 用户执行 `HCIAbilityKit.AgentPlanPreviewUI` 时，日志缺失：
+- 用户执行 `HCI.AgentPlanPreviewUI` 时，日志缺失：
   - `[HCIAbilityKit][AgentPlanLLM][H3] dispatched ...`
 - 计划直接出现 `route_reason=fallback_scan_assets`，只产出 `ScanAssets` 单步骤。
 - 结果：`SearchPath` 新逻辑未被调用，`MNew -> M_New` 修复失效于业务链路层。

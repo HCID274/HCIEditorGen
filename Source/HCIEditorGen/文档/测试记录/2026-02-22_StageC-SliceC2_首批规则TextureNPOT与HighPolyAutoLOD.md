@@ -23,7 +23,7 @@
 ## 3. 前置条件
 
 - 工程编译通过。
-- 本地可运行自动化测试 `HCIAbilityKit.Editor.AuditRules`。
+- 本地可运行自动化测试 `HCI.Editor.AuditRules`。
 - 项目内存在至少一个 `UHCIAbilityKitAsset` 且可通过 `RepresentingMesh` 指向 `UStaticMesh`（用于 `HighPolyAutoLODRule` UE 手测观测）。
 
 ## 4. 操作步骤
@@ -31,10 +31,10 @@
 1. 编译插件：
    - `Build.bat HCIEditorGenEditor Win64 Development -Project=... -WaitMutex -FromMSBuild`
 2. 自动化测试：
-   - `UnrealEditor-Cmd.exe ... -ExecCmds="Automation RunTests HCIAbilityKit.Editor.AuditRules; Quit" -TestExit="Automation Test Queue Empty"`
+   - `UnrealEditor-Cmd.exe ... -ExecCmds="Automation RunTests HCI.Editor.AuditRules; Quit" -TestExit="Automation Test Queue Empty"`
 3. UE 手测（控制台）：
-   - `HCIAbilityKit.AuditScan 20`
-   - `HCIAbilityKit.AuditScanAsync 1 20`
+   - `HCI.AuditScan 20`
+   - `HCI.AuditScanAsync 1 20`
 4. 检查行日志是否包含新增字段：
    - `class=...`
    - `mesh_lods=...`
@@ -46,7 +46,7 @@
 
 ## 5. 预期结果
 
-- 自动化测试发现 4 条 `HCIAbilityKit.Editor.AuditRules.*` 用例并全部通过：
+- 自动化测试发现 4 条 `HCI.Editor.AuditRules.*` 用例并全部通过：
   - `HighPolyAutoLODWarn`
   - `TextureNPOTError`
   - `TriangleExpectedMismatchWarn`
@@ -76,7 +76,7 @@
 - 构建日志：`C:\Users\50428\AppData\Local\UnrealBuildTool\Log.txt`
 - 自动化日志：`Saved/Logs/HCIEditorGen.log`
 - 自动化关键证据：
-  - `Found 4 automation tests based on 'HCIAbilityKit.Editor.AuditRules'`
+  - `Found 4 automation tests based on 'HCI.Editor.AuditRules'`
   - `Result={成功} Name={HighPolyAutoLODWarn}`
   - `Result={成功} Name={TextureNPOTError}`
 - UE 手测关键证据（用户回传结论）：

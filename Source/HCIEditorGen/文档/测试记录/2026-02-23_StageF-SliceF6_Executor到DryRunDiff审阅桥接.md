@@ -39,22 +39,22 @@
 1. 编译（助手已完成）
    - `Build.bat HCIEditorGenEditor Win64 Development -Project=... -WaitMutex -FromMSBuild`
 2. 自动化测试（助手已完成）
-   - `HCIAbilityKit.Editor.AgentExecutorReview`（F6 新增）
-   - `HCIAbilityKit.Editor.AgentExecutor`（F3~F5 回归）
-   - `HCIAbilityKit.Editor.AgentDryRun`（E2 契约回归）
+   - `HCI.Editor.AgentExecutorReview`（F6 新增）
+   - `HCI.Editor.AgentExecutor`（F3~F5 回归）
+   - `HCI.Editor.AgentDryRun`（E2 契约回归）
 3. UE 手测（默认 3 案例摘要）
-   - `HCIAbilityKit.AgentExecutePlanReviewDemo`
+   - `HCI.AgentExecutePlanReviewDemo`
 4. UE 手测（Actor 定位策略映射）
-   - `HCIAbilityKit.AgentExecutePlanReviewDemo ok_level_risk`
+   - `HCI.AgentExecutePlanReviewDemo ok_level_risk`
 5. UE 手测（预检失败桥接为审阅阻断项）
-   - `HCIAbilityKit.AgentExecutePlanReviewDemo fail_confirm`
+   - `HCI.AgentExecutePlanReviewDemo fail_confirm`
 6. UE 手测（桥接后 JSON 预览）
-   - `HCIAbilityKit.AgentExecutePlanReviewJson fail_confirm`
+   - `HCI.AgentExecutePlanReviewJson fail_confirm`
 
 ## 5. 预期结果（Pass 判定标准）
 
 1. 上述 4 条 UE 命令（步骤 3~6）在合法参数下均无 `Error` 级日志（失败案例出现 `Warning` 属预期）。
-2. `HCIAbilityKit.AgentExecutePlanReviewDemo`（无参）输出：
+2. `HCI.AgentExecutePlanReviewDemo`（无参）输出：
    - 3 个案例（`ok_naming / ok_level_risk / fail_confirm`）
    - 每案例可见：
      - `AgentExecutor summary + row=`（原 F3/F4/F5 收敛日志）
@@ -85,7 +85,7 @@
    - `skip_reason` 包含 `confirm_gate`
    - `object_type=asset`
    - `locate_strategy=sync_browser`
-6. `HCIAbilityKit.AgentExecutePlanReviewJson fail_confirm` 输出 JSON，且包含：
+6. `HCI.AgentExecutePlanReviewJson fail_confirm` 输出 JSON，且包含：
    - `"request_id"`
    - `"summary"`
    - `"diff_items"`
@@ -98,21 +98,21 @@
 - 编译：通过
   - `Build.bat HCIEditorGenEditor Win64 Development ...` 成功。
 - 自动化：通过
-  - `HCIAbilityKit.Editor.AgentExecutorReview`：3/3 成功（F6 新增）
+  - `HCI.Editor.AgentExecutorReview`：3/3 成功（F6 新增）
     - `BridgeMapsLevelRiskToActorLocate`
     - `BridgeMapsPreflightFailureToBlockedDiffItem`
     - `BridgeJsonIncludesBlockedDiffFields`
-  - `HCIAbilityKit.Editor.AgentExecutor`：13/13 成功（含 F3~F5 + F6 新增测试被同前缀命中）
-  - `HCIAbilityKit.Editor.AgentDryRun`：2/2 成功（E2 回归）
+  - `HCI.Editor.AgentExecutor`：13/13 成功（含 F3~F5 + F6 新增测试被同前缀命中）
+  - `HCI.Editor.AgentDryRun`：2/2 成功（E2 回归）
 - 说明：
   - `UnrealEditor-Cmd` 在当前环境仍可能无控制台实时回显，已使用 `-abslog` 取证。
-  - `AgentExecutor` 前缀回归会同时包含 `AgentExecutorReview.*` 用例（测试命名以 `HCIAbilityKit.Editor.AgentExecutorReview` 开头），属预期。
+  - `AgentExecutor` 前缀回归会同时包含 `AgentExecutorReview.*` 用例（测试命名以 `HCI.Editor.AgentExecutorReview` 开头），属预期。
 - UE 手测：通过（用户反馈满足全部门禁）
   - 标准 1：4 条命令均无 `Error`（仅 `fail_confirm` 案例出现预期 `Warning`）。
   - 标准 2：无参摘要命中 `summary total_cases=3 bridge_ok_cases=3 failed_cases=0 execution_mode=simulate_dry_run review_contract=dry_run_diff validation=ok`。
   - 标准 3：`ok_level_risk` 桥接 `row=` 命中 `tool_name=ScanLevelMeshRisks object_type=actor locate_strategy=camera_focus evidence_key=actor_path`。
   - 标准 4：`fail_confirm` 桥接 `row=` 命中 `tool_name=SetTextureMaxSize`，且 `skip_reason` 包含 `E4005` 与 `confirm_gate`，同时 `object_type=asset locate_strategy=sync_browser`。
-  - 标准 5：`HCIAbilityKit.AgentExecutePlanReviewJson fail_confirm` 输出 JSON，包含 `request_id/summary/diff_items/skip_reason/locate_strategy`。
+  - 标准 5：`HCI.AgentExecutePlanReviewJson fail_confirm` 输出 JSON，包含 `request_id/summary/diff_items/skip_reason/locate_strategy`。
 
 ## 7. 结论
 

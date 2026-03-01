@@ -15,12 +15,12 @@
 
 ## 3. UE 手测命令
 
-1. `HCIAbilityKit.AgentPlanWithLLMStabilityDemo reset_metrics`
-2. `HCIAbilityKit.AgentPlanWithLLMStabilityDemo retry_success "整理临时目录资产并归档"`
-3. `HCIAbilityKit.AgentPlanWithLLMStabilityDemo retry_fallback "整理临时目录资产并归档"`
-4. `HCIAbilityKit.AgentPlanWithLLMStabilityDemo circuit_open "整理临时目录资产并归档"`
-5. `HCIAbilityKit.AgentPlanWithLLMStabilityDemo all`
-6. `HCIAbilityKit.AgentPlanWithLLMMetricsDump`
+1. `HCI.AgentPlanWithLLMStabilityDemo reset_metrics`
+2. `HCI.AgentPlanWithLLMStabilityDemo retry_success "整理临时目录资产并归档"`
+3. `HCI.AgentPlanWithLLMStabilityDemo retry_fallback "整理临时目录资产并归档"`
+4. `HCI.AgentPlanWithLLMStabilityDemo circuit_open "整理临时目录资产并归档"`
+5. `HCI.AgentPlanWithLLMStabilityDemo all`
+6. `HCI.AgentPlanWithLLMMetricsDump`
 
 ## 4. 预期结果
 

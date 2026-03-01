@@ -36,21 +36,21 @@
 1. 编译（助手已完成）
    - `Build.bat HCIEditorGenEditor Win64 Development -Project=... -WaitMutex -FromMSBuild`
 2. 自动化测试（助手已完成）
-   - `HCIAbilityKit.Editor.AgentExecutorReviewSelect`（F8 新增）
-   - `HCIAbilityKit.Editor.AgentExecutorReviewLocate`（F7 回归）
-   - `HCIAbilityKit.Editor.AgentExecutorReview`（F6 回归）
+   - `HCI.Editor.AgentExecutorReviewSelect`（F8 新增）
+   - `HCI.Editor.AgentExecutorReviewLocate`（F7 回归）
+   - `HCI.Editor.AgentExecutorReview`（F6 回归）
 3. UE 手测（生成 Actor 审阅预览）
-   - `HCIAbilityKit.AgentExecutePlanReviewDemo ok_level_risk`
+   - `HCI.AgentExecutePlanReviewDemo ok_level_risk`
 4. UE 手测（选择行，重复输入用于验证去重）
-   - `HCIAbilityKit.AgentExecutePlanReviewSelect 0,0`
+   - `HCI.AgentExecutePlanReviewSelect 0,0`
 5. UE 手测（复用 F7 定位，验证选择后预览状态已替换）
-   - `HCIAbilityKit.AgentExecutePlanReviewLocate 0`
+   - `HCI.AgentExecutePlanReviewLocate 0`
 6. UE 手测（生成预检阻断审阅预览）
-   - `HCIAbilityKit.AgentExecutePlanReviewDemo fail_confirm`
+   - `HCI.AgentExecutePlanReviewDemo fail_confirm`
 7. UE 手测（选择并输出 JSON）
-   - `HCIAbilityKit.AgentExecutePlanReviewSelectJson 0`
+   - `HCI.AgentExecutePlanReviewSelectJson 0`
 8. UE 手测（越界）
-   - `HCIAbilityKit.AgentExecutePlanReviewSelect 99`
+   - `HCI.AgentExecutePlanReviewSelect 99`
 
 ## 5. 预期结果（Pass 判定标准）
 
@@ -99,12 +99,12 @@
 - 编译：通过
   - `Build.bat HCIEditorGenEditor Win64 Development ...` 成功。
 - 自动化：通过
-  - `HCIAbilityKit.Editor.AgentExecutorReviewSelect`：3/3 成功（F8 新增）
+  - `HCI.Editor.AgentExecutorReviewSelect`：3/3 成功（F8 新增）
     - `SelectedJsonKeepsLocateAndSkipReasonFields`
     - `SelectRowsDedupPreservesOrder`
     - `SelectRowsRejectsOutOfRange`
-  - `HCIAbilityKit.Editor.AgentExecutorReviewLocate`：2/2 成功（F7 回归）
-  - `HCIAbilityKit.Editor.AgentExecutorReview`：通过（含 F6/F7/F8 前缀覆盖回归）
+  - `HCI.Editor.AgentExecutorReviewLocate`：2/2 成功（F7 回归）
+  - `HCI.Editor.AgentExecutorReview`：通过（含 F6/F7/F8 前缀覆盖回归）
 - 说明：
   - `UnrealEditor-Cmd` 在当前环境无稳定实时回显，已使用 `-abslog` 留证。
   - F8 新增 Runtime 过滤器为纯数据转换，不依赖 Editor-only 模块。

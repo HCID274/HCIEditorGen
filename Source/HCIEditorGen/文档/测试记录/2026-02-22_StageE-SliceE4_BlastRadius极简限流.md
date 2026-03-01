@@ -35,21 +35,21 @@
 1. 编译插件（助手已完成本地验证）
    - `Build.bat HCIEditorGenEditor Win64 Development -Project=... -WaitMutex -FromMSBuild`
 2. 自动化测试（助手已完成本地验证）
-   - `UnrealEditor-Cmd.exe ... -ExecCmds="Automation RunTests HCIAbilityKit.Editor.AgentExec; Quit"`（扩展至 6 条）
-   - `UnrealEditor-Cmd.exe ... -ExecCmds="Automation RunTests HCIAbilityKit.Editor.AgentTools; Quit"`（回归）
-   - `UnrealEditor-Cmd.exe ... -ExecCmds="Automation RunTests HCIAbilityKit.Editor.AgentDryRun; Quit"`（回归）
+   - `UnrealEditor-Cmd.exe ... -ExecCmds="Automation RunTests HCI.Editor.AgentExec; Quit"`（扩展至 6 条）
+   - `UnrealEditor-Cmd.exe ... -ExecCmds="Automation RunTests HCI.Editor.AgentTools; Quit"`（回归）
+   - `UnrealEditor-Cmd.exe ... -ExecCmds="Automation RunTests HCI.Editor.AgentDryRun; Quit"`（回归）
 3. UE 手测（默认三案例摘要）
-   - `HCIAbilityKit.AgentBlastRadiusDemo`
+   - `HCI.AgentBlastRadiusDemo`
 4. UE 手测（超阈值写操作，期望被拦截）
-   - `HCIAbilityKit.AgentBlastRadiusDemo RenameAsset 51`
+   - `HCI.AgentBlastRadiusDemo RenameAsset 51`
 5. UE 手测（边界值写操作，期望放行）
-   - `HCIAbilityKit.AgentBlastRadiusDemo SetTextureMaxSize 50`
+   - `HCI.AgentBlastRadiusDemo SetTextureMaxSize 50`
 6. UE 手测（只读工具大数量，期望不受限）
-   - `HCIAbilityKit.AgentBlastRadiusDemo ScanAssets 999`
+   - `HCI.AgentBlastRadiusDemo ScanAssets 999`
 
 ## 5. 预期结果
 
-- `HCIAbilityKit.AgentBlastRadiusDemo`（无参数）输出 3 条案例日志 + 1 条摘要日志：
+- `HCI.AgentBlastRadiusDemo`（无参数）输出 3 条案例日志 + 1 条摘要日志：
   - 案例字段包含：
     - `case`
     - `tool_name`
@@ -84,27 +84,27 @@
 - 编译：通过。
   - `Build.bat HCIEditorGenEditor Win64 Development ...` 成功。
 - 自动化：通过。
-  - `HCIAbilityKit.Editor.AgentExec`：6/6 成功
+  - `HCI.Editor.AgentExec`：6/6 成功
     - `BlastRadiusBlocksOverLimit`
     - `BlastRadiusAllowsAtLimit`
     - `BlastRadiusSkipsReadOnlyTool`
     - `ConfirmGateBlocksUnconfirmedWrite`
     - `ConfirmGateAllowsReadOnlyWithoutConfirm`
     - `ConfirmGateAllowsConfirmedWrite`
-  - `HCIAbilityKit.Editor.AgentTools`：3/3 成功（回归）
-  - `HCIAbilityKit.Editor.AgentDryRun`：2/2 成功（回归）
+  - `HCI.Editor.AgentTools`：3/3 成功（回归）
+  - `HCI.Editor.AgentDryRun`：2/2 成功（回归）
 - 说明（日志留证方式）：
   - 使用 `-abslog=` 分离日志文件，避免并发运行 `UnrealEditor-Cmd` 时覆盖 `Saved/Logs/HCIEditorGen.log`。
   - 包装层偶发 `UnrealEditorServer-HCIEditorGen` 网络报错出现在 UE-Cmd 退出阶段，不属于插件测试失败依据；以自动化测试结果行（`Result={成功}`）为准。
 - UE 手测：通过。
-  - `HCIAbilityKit.AgentBlastRadiusDemo`（无参）无 `Error`，输出 3 条案例日志 + 1 条摘要日志：
+  - `HCI.AgentBlastRadiusDemo`（无参）无 `Error`，输出 3 条案例日志 + 1 条摘要日志：
     - `summary total_cases=3 allowed=2 blocked=1 max_limit=50 expected_blocked_code=E4004 validation=ok`
-  - `HCIAbilityKit.AgentBlastRadiusDemo RenameAsset 51`：
+  - `HCI.AgentBlastRadiusDemo RenameAsset 51`：
     - 命中 `capability=write allowed=false error_code=E4004 reason=modify_limit_exceeded`
     - 为预期限流拦截场景，出现 `Warning` 日志但无 `Error`
-  - `HCIAbilityKit.AgentBlastRadiusDemo SetTextureMaxSize 50`：
+  - `HCI.AgentBlastRadiusDemo SetTextureMaxSize 50`：
     - 命中 `capability=write target_modify_count=50 allowed=true`
-  - `HCIAbilityKit.AgentBlastRadiusDemo ScanAssets 999`：
+  - `HCI.AgentBlastRadiusDemo ScanAssets 999`：
     - 命中 `capability=read_only write_like=false allowed=true`
 
 ## 7. 结论
@@ -119,12 +119,12 @@
   - `Saved/Logs/Automation_AgentTools_E4.log`
   - `Saved/Logs/Automation_AgentDryRun_E4.log`
 - 自动化关键证据（助手本地已验证）：
-  - `Found 6 automation tests based on 'HCIAbilityKit.Editor.AgentExec'`
+  - `Found 6 automation tests based on 'HCI.Editor.AgentExec'`
   - `Result={成功} Name={BlastRadiusBlocksOverLimit}`
   - `Result={成功} Name={BlastRadiusAllowsAtLimit}`
   - `Result={成功} Name={BlastRadiusSkipsReadOnlyTool}`
-  - `Found 3 automation tests based on 'HCIAbilityKit.Editor.AgentTools'`
-  - `Found 2 automation tests based on 'HCIAbilityKit.Editor.AgentDryRun'`
+  - `Found 3 automation tests based on 'HCI.Editor.AgentTools'`
+  - `Found 2 automation tests based on 'HCI.Editor.AgentDryRun'`
 - UE 手测关键证据（用户回传结论）：
   - 无参命令输出 `3` 条案例日志 + `1` 条摘要日志，摘要命中 `total_cases=3 max_limit=50 expected_blocked_code=E4004 validation=ok`
   - `RenameAsset 51` 命中 `capability=write allowed=false error_code=E4004 reason=modify_limit_exceeded`

@@ -22,11 +22,11 @@
 
 ## 4. UE 手测门禁
 
-1. 控制台输入：`HCIAbilityKit.AgentChatUI`
+1. 控制台输入：`HCI.AgentChatUI`
 2. 在聊天窗口点击 `查看MNew目录`，确认自动发送并命中真实规划：
    - 日志出现 `[HCIAbilityKit][AgentPlanLLM][H3] dispatched ... source=AgentChatUI`
    - 自动弹出 `PlanPreview`
-3. 关闭聊天窗口后再次执行 `HCIAbilityKit.AgentChatUI`：
+3. 关闭聊天窗口后再次执行 `HCI.AgentChatUI`：
    - 预期历史区自动恢复上次消息（持久化生效）
 4. 再次发送 `整理临时目录资产并归档`（可用快捷按钮）：
    - 预期聊天区出现由 LLM 生成的摘要文案（来自 `Skills/I7_AgentChatSummary/prompt.md`）

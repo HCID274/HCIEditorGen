@@ -12,7 +12,7 @@
 
 ## 复现步骤（Fail 记录）
 
-1. 打开：`HCIAbilityKit.AgentChatUI`
+1. 打开：`HCI.AgentChatUI`
 2. 输入：`搜索 MNew 目录`
 3. 观察：同一条系统回复在聊天窗口中出现两次（重复气泡）。
 

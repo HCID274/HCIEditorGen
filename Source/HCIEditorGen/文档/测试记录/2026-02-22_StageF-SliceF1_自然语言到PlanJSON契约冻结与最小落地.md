@@ -40,21 +40,21 @@
 1. 编译（助手已完成本地验证）
    - `Build.bat HCIEditorGenEditor Win64 Development -Project=... -WaitMutex -FromMSBuild`
 2. 自动化测试（助手已完成本地验证）
-   - `UnrealEditor-Cmd.exe ... -ExecCmds="Automation RunTests HCIAbilityKit.Editor.AgentPlan; Quit"`（新增 F1 用例）
-   - `UnrealEditor-Cmd.exe ... -ExecCmds="Automation RunTests HCIAbilityKit.Editor.AgentTools; Quit"`（回归）
+   - `UnrealEditor-Cmd.exe ... -ExecCmds="Automation RunTests HCI.Editor.AgentPlan; Quit"`（新增 F1 用例）
+   - `UnrealEditor-Cmd.exe ... -ExecCmds="Automation RunTests HCI.Editor.AgentTools; Quit"`（回归）
 3. UE 手测（默认三案例摘要 + 步骤列表）
-   - `HCIAbilityKit.AgentPlanDemo`
+   - `HCI.AgentPlanDemo`
 4. UE 手测（命名归档意图，自定义输入）
-   - `HCIAbilityKit.AgentPlanDemo 整理 临时目录 资产 按 规范 命名 并 归档`
+   - `HCI.AgentPlanDemo 整理 临时目录 资产 按 规范 命名 并 归档`
 5. UE 手测（关卡排雷意图，自定义输入）
-   - `HCIAbilityKit.AgentPlanDemo 检查 当前 关卡 选中 物体 的 碰撞 和 默认材质`
+   - `HCI.AgentPlanDemo 检查 当前 关卡 选中 物体 的 碰撞 和 默认材质`
 6. UE 手测（Plan JSON 契约输出）
-   - `HCIAbilityKit.AgentPlanDemoJson 整理 临时目录 资产`
+   - `HCI.AgentPlanDemoJson 整理 临时目录 资产`
 
 ## 5. 预期结果（Pass 判定标准）
 
 1. 上述 4 条命令（步骤 3~6）在合法参数下均无 `Error` 级日志。
-2. `HCIAbilityKit.AgentPlanDemo`（无参）输出 3 条案例摘要 + 1 条总摘要，且总摘要包含：
+2. `HCI.AgentPlanDemo`（无参）输出 3 条案例摘要 + 1 条总摘要，且总摘要包含：
    - `summary total_cases=3`
    - `supports_intents=naming_traceability|level_risk|asset_compliance`
    - `validation=ok`
@@ -62,7 +62,7 @@
    - 命名归档案例（`intent=normalize_temp_assets_by_metadata`）
    - 关卡排雷案例（`intent=scan_level_mesh_risks`）
    - 资产合规案例（`intent=batch_fix_asset_compliance`）
-4. `HCIAbilityKit.AgentPlanDemo 整理 ...` 输出命中：
+4. `HCI.AgentPlanDemo 整理 ...` 输出命中：
    - `case=custom summary`
    - `intent=normalize_temp_assets_by_metadata`
    - `route_reason=naming_traceability_temp_assets`
@@ -75,14 +75,14 @@
      - `args=` 中包含 `metadata_source":"auto"`
      - `args=` 中包含 `prefix_mode":"auto_by_asset_class"`
      - `args=` 中包含 `target_root":"/Game/`
-5. `HCIAbilityKit.AgentPlanDemo 检查 ... 碰撞 ... 默认材质` 输出命中：
+5. `HCI.AgentPlanDemo 检查 ... 碰撞 ... 默认材质` 输出命中：
    - `intent=scan_level_mesh_risks`
    - `route_reason=level_risk_collision_material`
    - 至少一条 `row=` 日志包含：
      - `tool_name=ScanLevelMeshRisks`
      - `risk_level=read_only`
      - `requires_confirm=false`
-6. `HCIAbilityKit.AgentPlanDemoJson 整理 临时目录 资产` 输出 JSON 字符串，且包含：
+6. `HCI.AgentPlanDemoJson 整理 临时目录 资产` 输出 JSON 字符串，且包含：
    - `"plan_version"`
    - `"request_id"`
    - `"intent"`
@@ -99,11 +99,11 @@
 - 编译：通过
   - `Build.bat HCIEditorGenEditor Win64 Development ...` 成功。
 - 自动化：通过
-  - `HCIAbilityKit.Editor.AgentPlan`：3/3 成功
+  - `HCI.Editor.AgentPlan`：3/3 成功
     - `PlannerSupportsNamingArchiveIntent`
     - `PlannerSupportsLevelRiskIntent`
     - `JsonSerializerIncludesCoreContractFields`
-  - `HCIAbilityKit.Editor.AgentTools`：3/3 成功（回归）
+  - `HCI.Editor.AgentTools`：3/3 成功（回归）
 - 说明：
   - `UnrealEditor-Cmd` 在当前环境下常无控制台回显，以 `Saved/Logs/HCIEditorGen.log` 中 `Result={成功}` 为准。
   - 并行启动两个 `UnrealEditor-Cmd` 进程会争抢日志文件，本次 `AgentTools` 已串行重跑留证。

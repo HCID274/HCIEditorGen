@@ -27,18 +27,18 @@
 
 ## 5. UE 手测门禁（已执行）
 
-1. `HCIAbilityKit.AgentExecutePlanReviewPrepareStageGExecutionReadiness 1 none`
-2. `HCIAbilityKit.AgentExecutePlanReviewPrepareStageGExecutionReadiness 0 none`
-3. `HCIAbilityKit.AgentExecutePlanReviewPrepareStageGExecutionReadiness 1 digest`
-4. `HCIAbilityKit.AgentExecutePlanReviewPrepareStageGExecutionReadiness 1 archive`
-5. `HCIAbilityKit.AgentExecutePlanReviewPrepareStageGExecutionReadiness 1 mode`
-6. `HCIAbilityKit.AgentExecutePlanReviewPrepareStageGExecutionReadinessJson 1 none`
+1. `HCI.AgentExecutePlanReviewPrepareStageGExecutionReadiness 1 none`
+2. `HCI.AgentExecutePlanReviewPrepareStageGExecutionReadiness 0 none`
+3. `HCI.AgentExecutePlanReviewPrepareStageGExecutionReadiness 1 digest`
+4. `HCI.AgentExecutePlanReviewPrepareStageGExecutionReadiness 1 archive`
+5. `HCI.AgentExecutePlanReviewPrepareStageGExecutionReadiness 1 mode`
+6. `HCI.AgentExecutePlanReviewPrepareStageGExecutionReadinessJson 1 none`
 
 ## 6. UE 手测结果
 
 - 结果：`Pass`
 - 证据（关键日志）：
-  - `HCIAbilityKit.AgentExecutePlanReviewPrepareStageGExecutionReadiness 1 none`
+  - `HCI.AgentExecutePlanReviewPrepareStageGExecutionReadiness 1 none`
     - `warmup=done source=auto_bootstrap_chain`
     - `ready_for_h1_planner_integration=true`
     - `reason=stage_g_execution_readiness_ready`

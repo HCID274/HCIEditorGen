@@ -33,17 +33,17 @@
 1. 编译插件：
    - `Build.bat HCIEditorGenEditor Win64 Development -Project=... -WaitMutex -FromMSBuild`
 2. 自动化测试（本地已执行，用于记录证据）：
-   - `UnrealEditor-Cmd.exe ... -ExecCmds="Automation RunTests HCIAbilityKit.Editor.AuditScanAsync; Quit"`
-   - `UnrealEditor-Cmd.exe ... -ExecCmds="Automation RunTests HCIAbilityKit.Editor.AuditResults; Quit"`（回归）
+   - `UnrealEditor-Cmd.exe ... -ExecCmds="Automation RunTests HCI.Editor.AuditScanAsync; Quit"`
+   - `UnrealEditor-Cmd.exe ... -ExecCmds="Automation RunTests HCI.Editor.AuditResults; Quit"`（回归）
 3. UE 手测（控制台，深度模式开启）：
-   - `HCIAbilityKit.AuditScanAsync 1 20 1`
+   - `HCI.AuditScanAsync 1 20 1`
 4. 扫描完成后观察日志：
    - 启动日志含 `deep_mesh_check=true`
    - 摘要后出现深度统计行：`[HCIAbilityKit][AuditScanAsync][Deep] ...`
 5. （可选）验证中断/重试在深度模式下仍可用：
-   - `HCIAbilityKit.AuditScanAsync 1 20 1`
-   - 期间执行 `HCIAbilityKit.AuditScanAsyncStop`
-   - 再执行 `HCIAbilityKit.AuditScanAsyncRetry`
+   - `HCI.AuditScanAsync 1 20 1`
+   - 期间执行 `HCI.AuditScanAsyncStop`
+   - 再执行 `HCI.AuditScanAsyncRetry`
    - 观察 `retry start ... deep_mesh_check=true`
 
 ## 5. 预期结果
@@ -62,10 +62,10 @@
 
 - 编译：通过。
 - 自动化：通过。
-  - `HCIAbilityKit.Editor.AuditScanAsync`：3/3 成功（含新增 `DeepModeRetryPersistence`）。
-  - `HCIAbilityKit.Editor.AuditResults`：3/3 成功（回归）。
+  - `HCI.Editor.AuditScanAsync`：3/3 成功（含新增 `DeepModeRetryPersistence`）。
+  - `HCI.Editor.AuditResults`：3/3 成功（回归）。
 - UE 手测：通过。
-  - `HCIAbilityKit.AuditScanAsync 1 20 1` 两次（首次 + 重试）均完成到 `progress=100% processed=274/274`，无 `Error` 级日志。
+  - `HCI.AuditScanAsync 1 20 1` 两次（首次 + 重试）均完成到 `progress=100% processed=274/274`，无 `Error` 级日志。
   - 首次启动日志命中：`start total=274 batch_size=1 deep_mesh_check=true`。
   - 重试启动日志命中：`retry start total=274 batch_size=1 deep_mesh_check=true`（深度模式开关未丢失）。
   - 完成日志命中深度统计行：`[HCIAbilityKit][AuditScanAsync][Deep] load_attempts=0 load_success=0 handle_releases=0 triangle_resolved=0 mesh_signals_resolved=0`。
@@ -81,9 +81,9 @@
 - 构建日志：`C:\Users\50428\AppData\Local\UnrealBuildTool\Log.txt`
 - 自动化日志：`Saved/Logs/HCIEditorGen.log`
 - 自动化关键证据：
-  - `Found 3 automation tests based on 'HCIAbilityKit.Editor.AuditScanAsync'`
+  - `Found 3 automation tests based on 'HCI.Editor.AuditScanAsync'`
   - `Result={成功} Name={DeepModeRetryPersistence}`
-  - `Found 3 automation tests based on 'HCIAbilityKit.Editor.AuditResults'`
+  - `Found 3 automation tests based on 'HCI.Editor.AuditResults'`
   - `Result={成功} Name={JsonSerializerIncludesCoreTraceFields}`
 - UE 手测关键证据（用户回传结论）：
   - `start total=274 batch_size=1 deep_mesh_check=true`

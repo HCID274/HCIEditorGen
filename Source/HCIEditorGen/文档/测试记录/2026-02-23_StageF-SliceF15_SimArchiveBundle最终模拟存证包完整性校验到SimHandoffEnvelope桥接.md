@@ -14,30 +14,30 @@
 ## 3. UE 手测步骤
 
 1. 生成可通过链路：
-   - `HCIAbilityKit.AgentExecutePlanReviewDemo ok_level_risk`
-   - `HCIAbilityKit.AgentExecutePlanReviewSelect 0`
-   - `HCIAbilityKit.AgentExecutePlanReviewPrepareApply`
-   - `HCIAbilityKit.AgentExecutePlanReviewPrepareConfirm 1 none`
-   - `HCIAbilityKit.AgentExecutePlanReviewPrepareExecuteTicket none`
-   - `HCIAbilityKit.AgentExecutePlanReviewPrepareSimExecuteReceipt none`
-   - `HCIAbilityKit.AgentExecutePlanReviewPrepareSimFinalReport none`
-   - `HCIAbilityKit.AgentExecutePlanReviewPrepareSimArchiveBundle none`
+   - `HCI.AgentExecutePlanReviewDemo ok_level_risk`
+   - `HCI.AgentExecutePlanReviewSelect 0`
+   - `HCI.AgentExecutePlanReviewPrepareApply`
+   - `HCI.AgentExecutePlanReviewPrepareConfirm 1 none`
+   - `HCI.AgentExecutePlanReviewPrepareExecuteTicket none`
+   - `HCI.AgentExecutePlanReviewPrepareSimExecuteReceipt none`
+   - `HCI.AgentExecutePlanReviewPrepareSimFinalReport none`
+   - `HCI.AgentExecutePlanReviewPrepareSimArchiveBundle none`
 2. 正常桥接（应通过）：
-   - `HCIAbilityKit.AgentExecutePlanReviewPrepareSimHandoffEnvelope none`
+   - `HCI.AgentExecutePlanReviewPrepareSimHandoffEnvelope none`
 3. 输出 JSON：
-   - `HCIAbilityKit.AgentExecutePlanReviewPrepareSimHandoffEnvelopeJson none`
+   - `HCI.AgentExecutePlanReviewPrepareSimHandoffEnvelopeJson none`
 4. 篡改/阻断校验：
-   - `HCIAbilityKit.AgentExecutePlanReviewPrepareSimHandoffEnvelope digest`
-   - `HCIAbilityKit.AgentExecutePlanReviewPrepareSimHandoffEnvelope confirm`
-   - `HCIAbilityKit.AgentExecutePlanReviewPrepareSimHandoffEnvelope archive`
-   - `HCIAbilityKit.AgentExecutePlanReviewPrepareSimHandoffEnvelope ready`
+   - `HCI.AgentExecutePlanReviewPrepareSimHandoffEnvelope digest`
+   - `HCI.AgentExecutePlanReviewPrepareSimHandoffEnvelope confirm`
+   - `HCI.AgentExecutePlanReviewPrepareSimHandoffEnvelope archive`
+   - `HCI.AgentExecutePlanReviewPrepareSimHandoffEnvelope ready`
 5. 未确认链路（应拦截 `E4005`）：
-   - `HCIAbilityKit.AgentExecutePlanReviewPrepareConfirm 0 none`
-   - `HCIAbilityKit.AgentExecutePlanReviewPrepareExecuteTicket none`
-   - `HCIAbilityKit.AgentExecutePlanReviewPrepareSimExecuteReceipt none`
-   - `HCIAbilityKit.AgentExecutePlanReviewPrepareSimFinalReport none`
-   - `HCIAbilityKit.AgentExecutePlanReviewPrepareSimArchiveBundle none`
-   - `HCIAbilityKit.AgentExecutePlanReviewPrepareSimHandoffEnvelope none`
+   - `HCI.AgentExecutePlanReviewPrepareConfirm 0 none`
+   - `HCI.AgentExecutePlanReviewPrepareExecuteTicket none`
+   - `HCI.AgentExecutePlanReviewPrepareSimExecuteReceipt none`
+   - `HCI.AgentExecutePlanReviewPrepareSimFinalReport none`
+   - `HCI.AgentExecutePlanReviewPrepareSimArchiveBundle none`
+   - `HCI.AgentExecutePlanReviewPrepareSimHandoffEnvelope none`
 
 ## 4. 预期结果（Pass 标准）
 
@@ -69,7 +69,7 @@
 ## 5. 本地实现验证（助手）
 
 - 编译：`Build.bat HCIEditorGenEditor Win64 Development ...` 通过。
-- 自动化：`HCIAbilityKit.Editor.AgentExecutorSimHandoffEnvelope`（4/4）通过。
+- 自动化：`HCI.Editor.AgentExecutorSimHandoffEnvelope`（4/4）通过。
 - 证据日志：`Saved/Logs/Automation_F15_AgentExecutorSimHandoffEnvelope_serial.log`。
 
 ## 6. 结果
@@ -88,6 +88,6 @@
     - 未确认链路 -> `E4005 / user_not_confirmed`
   - `PrepareSimHandoffEnvelopeJson` 输出 JSON 字段完整，包含 `handoff_target=stage_g_execute`、`transaction_mode`、`termination_policy`、`summary/items` 与定位字段。
 - 证据：
-  - UE 控制台日志（用户手测）：`HCIAbilityKit.AgentExecutePlanReviewPrepareSimHandoffEnvelope*`
+  - UE 控制台日志（用户手测）：`HCI.AgentExecutePlanReviewPrepareSimHandoffEnvelope*`
   - 自动化日志（助手本地）：`Saved/Logs/Automation_F15_AgentExecutorSimHandoffEnvelope_serial.log`
 - 结论：`Pass`（用户 UE 手测通过）。Stage F（F1~F15）dry-run 链路收官，可作为 Stage G 真执行链路的稳定输入基线。

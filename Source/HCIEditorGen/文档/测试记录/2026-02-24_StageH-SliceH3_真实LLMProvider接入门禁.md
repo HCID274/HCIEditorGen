@@ -21,13 +21,13 @@
 
 ## 4. UE 手测命令
 
-1. `HCIAbilityKit.AgentPlanWithRealLLMDemo "整理临时目录资产并归档"`
-2. `HCIAbilityKit.AgentPlanWithRealLLMDemo "扫描关卡里缺碰撞和默认材质"`
-3. `HCIAbilityKit.AgentPlanWithRealLLMDemo "把高面数网格做LOD检查"`
-4. `HCIAbilityKit.AgentPlanWithRealLLMProbe "你是谁"`（原始响应探针）
-5. `HCIAbilityKit.AgentPlanWithRealLLMDemo config_missing "整理临时目录资产并归档"`
-6. `HCIAbilityKit.AgentPlanWithRealLLMDemo http_fail "整理临时目录资产并归档"`
-7. `HCIAbilityKit.AgentPlanWithLLMMetricsDump`
+1. `HCI.AgentPlanWithRealLLMDemo "整理临时目录资产并归档"`
+2. `HCI.AgentPlanWithRealLLMDemo "扫描关卡里缺碰撞和默认材质"`
+3. `HCI.AgentPlanWithRealLLMDemo "把高面数网格做LOD检查"`
+4. `HCI.AgentPlanWithRealLLMProbe "你是谁"`（原始响应探针）
+5. `HCI.AgentPlanWithRealLLMDemo config_missing "整理临时目录资产并归档"`
+6. `HCI.AgentPlanWithRealLLMDemo http_fail "整理临时目录资产并归档"`
+7. `HCI.AgentPlanWithLLMMetricsDump`
 
 ## 5. 预期结果
 

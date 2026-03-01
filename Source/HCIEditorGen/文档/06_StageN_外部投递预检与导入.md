@@ -34,8 +34,8 @@
 - Ingest 发现：监听/扫描最新 `manifest.hci.json`，缓存为“最近批次”。
 - 上下文注入：将“最近批次摘要”注入 Planner 的 `ENV_CONTEXT`，减少对话漂移与上下文工程。
 - 规则注入：读取 `Saved/HCIAbilityKit/Rules/Project_Rules.md`（可选），以 `project_rules_md` 形式注入 `ENV_CONTEXT`（最大注入 `12000` 字符，超出截断）。
-- Dump 命令：提供只读诊断入口 `HCIAbilityKit.IngestDumpLatest`，快速确认“最近批次”与预检结果。
-- 导入命令：提供确定性入口 `HCIAbilityKit.IngestImportLatest`，把 staged 文件导入到 `suggested_unreal_target_root`。
+- Dump 命令：提供只读诊断入口 `HCI.IngestDumpLatest`，快速确认“最近批次”与预检结果。
+- 导入命令：提供确定性入口 `HCI.IngestImportLatest`，把 staged 文件导入到 `suggested_unreal_target_root`。
 
 > 说明：N1 不引入新的 Planner 工具；导入属于“确定性工程动作”，由命令触发。导入后再由 Agent 复用既有工具闭环（命名/归档/LOD/贴图等）。
 
@@ -93,9 +93,9 @@
 ## 6. 面试演示脚本（建议）
 
 1. 外部：运行投递器生成批次与清单（录屏）。
-2. UE：执行 `HCIAbilityKit.IngestDumpLatest`，确认最近批次与 `preflight_ok=true`（录屏）。
-3. UE：执行 `HCIAbilityKit.IngestImportLatest`，确认导入（录屏）。
-4. UE：打开 `HCIAbilityKit.AgentChatUI`，输入“帮我规范化刚导入的批次，并归档到 /Game/Art/Organized”。
+2. UE：执行 `HCI.IngestDumpLatest`，确认最近批次与 `preflight_ok=true`（录屏）。
+3. UE：执行 `HCI.IngestImportLatest`，确认导入（录屏）。
+4. UE：打开 `HCI.AgentChatUI`，输入“帮我规范化刚导入的批次，并归档到 /Game/Art/Organized”。
 5. 展示：Agent 计划卡（含写审批卡），你点“通过”后执行、定位、输出摘要。
 
 关键呈现点：
@@ -154,8 +154,8 @@
 
 1. 运行投递器：
    - `python SourceData/AbilityKits/Python/hci_ingest_stage.py --input <你的测试资产目录> --source-app manual --suggest-target-root /Game/__HCI_Test/Incoming`
-2. UE：`HCIAbilityKit.IngestImportLatest`
-3. UE：`HCIAbilityKit.AgentChatUI`
+2. UE：`HCI.IngestImportLatest`
+3. UE：`HCI.AgentChatUI`
 4. 输入：
    - `帮我规范化刚导入的批次，并归档到 /Game/__HCI_Test/Organized`
 5. 审批卡：
@@ -175,10 +175,10 @@
 
 ### 8.2 夹具命令（只影响 __HCI_Test，Seed 只读）
 
-1. `HCIAbilityKit.SeedChaosBuildSnapshot`
+1. `HCI.SeedChaosBuildSnapshot`
    - 从 `/Game/Seed`（只读）挑选并复制 `<= 50` 个资产到：
      - `/Game/__HCI_Test/Fixtures/SeedChaosSnapshot`
-2. `HCIAbilityKit.SeedChaosReset`
+2. `HCI.SeedChaosReset`
    - 弹确认框后，仅删除并重建：
      - `/Game/__HCI_Test/Incoming/SeedChaos`
      - `/Game/__HCI_Test/Organized/SeedClean`
@@ -199,11 +199,11 @@
 ### 8.4 UE 手测脚本（N3）
 
 1. 首次生成快照：
-   - `HCIAbilityKit.SeedChaosBuildSnapshot`
+   - `HCI.SeedChaosBuildSnapshot`
 2. 每次回归重置：
-   - `HCIAbilityKit.SeedChaosReset`
+   - `HCI.SeedChaosReset`
 3. Agent 整理：
-   - `HCIAbilityKit.AgentChatUI`
+   - `HCI.AgentChatUI`
    - 输入：
      - `扫描 /Game/__HCI_Test/Incoming/SeedChaos，然后按元数据规范命名并移动归档到 /Game/__HCI_Test/Organized/SeedClean。`
 4. 审批卡点击 `通过`：

@@ -36,21 +36,21 @@
 1. 编译插件（助手已完成本地验证）
    - `Build.bat HCIEditorGenEditor Win64 Development -Project=... -WaitMutex -FromMSBuild`
 2. 自动化测试（助手已完成本地验证）
-   - `UnrealEditor-Cmd.exe ... -ExecCmds="Automation RunTests HCIAbilityKit.Editor.AgentExec; Quit"`（扩展至 13 条）
-   - `UnrealEditor-Cmd.exe ... -ExecCmds="Automation RunTests HCIAbilityKit.Editor.AgentTools; Quit"`（回归）
-   - `UnrealEditor-Cmd.exe ... -ExecCmds="Automation RunTests HCIAbilityKit.Editor.AgentDryRun; Quit"`（回归）
+   - `UnrealEditor-Cmd.exe ... -ExecCmds="Automation RunTests HCI.Editor.AgentExec; Quit"`（扩展至 13 条）
+   - `UnrealEditor-Cmd.exe ... -ExecCmds="Automation RunTests HCI.Editor.AgentTools; Quit"`（回归）
+   - `UnrealEditor-Cmd.exe ... -ExecCmds="Automation RunTests HCI.Editor.AgentDryRun; Quit"`（回归）
 3. UE 手测（默认三案例摘要）
-   - `HCIAbilityKit.AgentSourceControlDemo`
+   - `HCI.AgentSourceControlDemo`
 4. UE 手测（离线本地模式：写工具，期望 Warning + 放行）
-   - `HCIAbilityKit.AgentSourceControlDemo RenameAsset 0 0`
+   - `HCI.AgentSourceControlDemo RenameAsset 0 0`
 5. UE 手测（Fail-Fast：启用 SC 且 Checkout 失败，期望拦截）
-   - `HCIAbilityKit.AgentSourceControlDemo RenameAsset 1 0`
+   - `HCI.AgentSourceControlDemo RenameAsset 1 0`
 6. UE 手测（启用 SC 且 Checkout 成功，期望放行）
-   - `HCIAbilityKit.AgentSourceControlDemo MoveAsset 1 1`
+   - `HCI.AgentSourceControlDemo MoveAsset 1 1`
 
 ## 5. 预期结果
 
-- `HCIAbilityKit.AgentSourceControlDemo`（无参数）输出 3 条案例日志 + 1 条摘要日志：
+- `HCI.AgentSourceControlDemo`（无参数）输出 3 条案例日志 + 1 条摘要日志：
   - 案例字段包含：
     - `request_id`
     - `tool_name`
@@ -70,20 +70,20 @@
     - `fail_fast=true`
     - `expected_blocked_code=E4006`
     - `validation=ok`
-- `HCIAbilityKit.AgentSourceControlDemo RenameAsset 0 0` 命中：
+- `HCI.AgentSourceControlDemo RenameAsset 0 0` 命中：
   - `capability=write`
   - `source_control_enabled=false`
   - `offline_local_mode=true`
   - `checkout_attempted=false`
   - `allowed=true`
-- `HCIAbilityKit.AgentSourceControlDemo RenameAsset 1 0` 命中：
+- `HCI.AgentSourceControlDemo RenameAsset 1 0` 命中：
   - `capability=write`
   - `source_control_enabled=true`
   - `checkout_attempted=true`
   - `allowed=false`
   - `error_code=E4006`
   - `reason=source_control_checkout_failed_fail_fast`
-- `HCIAbilityKit.AgentSourceControlDemo MoveAsset 1 1` 命中：
+- `HCI.AgentSourceControlDemo MoveAsset 1 1` 命中：
   - `capability=write`
   - `source_control_enabled=true`
   - `checkout_attempted=true`
@@ -95,26 +95,26 @@
 - 编译：通过。
   - `Build.bat HCIEditorGenEditor Win64 Development ...` 成功。
 - 自动化：通过。
-  - `HCIAbilityKit.Editor.AgentExec`：13/13 成功
+  - `HCI.Editor.AgentExec`：13/13 成功
     - 新增 `SourceControlAllowsOfflineLocalModeWhenDisabled`
     - 新增 `SourceControlBlocksEnabledCheckoutFailure`
     - 新增 `SourceControlAllowsReadOnlyWithoutCheckout`
     - 新增 `SourceControlAllowsEnabledCheckoutSuccess`
-  - `HCIAbilityKit.Editor.AgentTools`：3/3 成功（回归）
-  - `HCIAbilityKit.Editor.AgentDryRun`：2/2 成功（回归）
+  - `HCI.Editor.AgentTools`：3/3 成功（回归）
+  - `HCI.Editor.AgentDryRun`：2/2 成功（回归）
 - 说明（日志留证方式）：
   - 使用 `-abslog=` 分离日志文件，避免覆盖 `Saved/Logs/HCIEditorGen.log`。
   - 包装层偶发 `UnrealEditorServer-HCIEditorGen` 网络报错出现在 UE-Cmd 退出阶段，不属于插件测试失败依据；以自动化测试结果行（`Result={成功}`）为准。
 - UE 手测：通过。
-  - `HCIAbilityKit.AgentSourceControlDemo`（无参）无 `Error`，输出 3 条案例日志 + 1 条摘要日志：
+  - `HCI.AgentSourceControlDemo`（无参）无 `Error`，输出 3 条案例日志 + 1 条摘要日志：
     - `summary total_cases=3 allowed=2 blocked=1 offline_local_mode_cases=1 fail_fast=true expected_blocked_code=E4006 validation=ok`
-  - `HCIAbilityKit.AgentSourceControlDemo RenameAsset 0 0`：
+  - `HCI.AgentSourceControlDemo RenameAsset 0 0`：
     - 命中 `capability=write source_control_enabled=false offline_local_mode=true checkout_attempted=false allowed=true`
     - 为预期“离线本地模式”场景，出现 `Warning` 日志但无 `Error`
-  - `HCIAbilityKit.AgentSourceControlDemo RenameAsset 1 0`：
+  - `HCI.AgentSourceControlDemo RenameAsset 1 0`：
     - 命中 `capability=write source_control_enabled=true checkout_attempted=true allowed=false error_code=E4006 reason=source_control_checkout_failed_fail_fast`
     - 为预期 `Fail-Fast` 拦截场景，出现 `Warning` 日志但无 `Error`
-  - `HCIAbilityKit.AgentSourceControlDemo MoveAsset 1 1`：
+  - `HCI.AgentSourceControlDemo MoveAsset 1 1`：
     - 命中 `capability=write source_control_enabled=true checkout_attempted=true checkout_succeeded=true allowed=true`
 
 ## 7. 结论
@@ -129,13 +129,13 @@
   - `Saved/Logs/Automation_AgentTools_E6.log`
   - `Saved/Logs/Automation_AgentDryRun_E6.log`
 - 自动化关键证据（助手本地已验证）：
-  - `Found 13 automation tests based on 'HCIAbilityKit.Editor.AgentExec'`
+  - `Found 13 automation tests based on 'HCI.Editor.AgentExec'`
   - `Result={成功} Name={SourceControlAllowsOfflineLocalModeWhenDisabled}`
   - `Result={成功} Name={SourceControlBlocksEnabledCheckoutFailure}`
   - `Result={成功} Name={SourceControlAllowsReadOnlyWithoutCheckout}`
   - `Result={成功} Name={SourceControlAllowsEnabledCheckoutSuccess}`
-  - `Found 3 automation tests based on 'HCIAbilityKit.Editor.AgentTools'`
-  - `Found 2 automation tests based on 'HCIAbilityKit.Editor.AgentDryRun'`
+  - `Found 3 automation tests based on 'HCI.Editor.AgentTools'`
+  - `Found 2 automation tests based on 'HCI.Editor.AgentDryRun'`
 
 ## 9. 问题与后续动作
 

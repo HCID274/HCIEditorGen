@@ -11,10 +11,10 @@
   - `HCIAbilityKitAgentExecutorSimulateExecuteFinalReportBridge.*`
   - `HCIAbilityKitAgentSimulateExecuteFinalReportJsonSerializer.*`
 - 新增 Editor 命令：
-  - `HCIAbilityKit.AgentExecutePlanReviewPrepareSimFinalReport [tamper=none|digest|apply|review|confirm|receipt|ready]`
-  - `HCIAbilityKit.AgentExecutePlanReviewPrepareSimFinalReportJson [tamper=none|digest|apply|review|confirm|receipt|ready]`
+  - `HCI.AgentExecutePlanReviewPrepareSimFinalReport [tamper=none|digest|apply|review|confirm|receipt|ready]`
+  - `HCI.AgentExecutePlanReviewPrepareSimFinalReportJson [tamper=none|digest|apply|review|confirm|receipt|ready]`
 - 新增自动化测试：
-  - `HCIAbilityKit.Editor.AgentExecutorSimFinalReport.*`（成功 / `E4206` / `E4202` / JSON 字段）
+  - `HCI.Editor.AgentExecutorSimFinalReport.*`（成功 / `E4206` / `E4202` / JSON 字段）
 - 编译：`Build.bat HCIEditorGenEditor Win64 Development ...` 通过
 - 自动化（说明）：
   - 已补齐 F13 自动化测试代码，但本机 `UE-Cmd` 在执行自动化时再次触发退出期 `ScopeLock` 断言噪音，导致 `abslog` 未稳定产出测试结果行；
@@ -23,29 +23,29 @@
 ## 2. UE 手测步骤（用户执行）
 
 1. 生成可通过链路（Review -> Select -> Apply -> Confirm -> ExecuteTicket -> SimExecuteReceipt）
-   - `HCIAbilityKit.AgentExecutePlanReviewDemo ok_level_risk`
-   - `HCIAbilityKit.AgentExecutePlanReviewSelect 0`
-   - `HCIAbilityKit.AgentExecutePlanReviewPrepareApply`
-   - `HCIAbilityKit.AgentExecutePlanReviewPrepareConfirm 1 none`
-   - `HCIAbilityKit.AgentExecutePlanReviewPrepareExecuteTicket none`
-   - `HCIAbilityKit.AgentExecutePlanReviewPrepareSimExecuteReceipt none`
+   - `HCI.AgentExecutePlanReviewDemo ok_level_risk`
+   - `HCI.AgentExecutePlanReviewSelect 0`
+   - `HCI.AgentExecutePlanReviewPrepareApply`
+   - `HCI.AgentExecutePlanReviewPrepareConfirm 1 none`
+   - `HCI.AgentExecutePlanReviewPrepareExecuteTicket none`
+   - `HCI.AgentExecutePlanReviewPrepareSimExecuteReceipt none`
 2. 正常桥接（应通过）
-   - `HCIAbilityKit.AgentExecutePlanReviewPrepareSimFinalReport none`
+   - `HCI.AgentExecutePlanReviewPrepareSimFinalReport none`
 3. 输出 JSON
-   - `HCIAbilityKit.AgentExecutePlanReviewPrepareSimFinalReportJson none`
+   - `HCI.AgentExecutePlanReviewPrepareSimFinalReportJson none`
 4. digest 篡改（应拦截 `E4202`）
-   - `HCIAbilityKit.AgentExecutePlanReviewPrepareSimFinalReport digest`
+   - `HCI.AgentExecutePlanReviewPrepareSimFinalReport digest`
 5. confirm_id 篡改（应拦截 `E4202`）
-   - `HCIAbilityKit.AgentExecutePlanReviewPrepareSimFinalReport confirm`
+   - `HCI.AgentExecutePlanReviewPrepareSimFinalReport confirm`
 6. 强制回执未接受（应拦截 `E4206`）
-   - `HCIAbilityKit.AgentExecutePlanReviewPrepareSimFinalReport receipt`
+   - `HCI.AgentExecutePlanReviewPrepareSimFinalReport receipt`
 7. 强制 not-ready（应拦截 `E4205`）
-   - `HCIAbilityKit.AgentExecutePlanReviewPrepareSimFinalReport ready`
+   - `HCI.AgentExecutePlanReviewPrepareSimFinalReport ready`
 8. 未确认链路（应拦截 `E4005`）
-   - `HCIAbilityKit.AgentExecutePlanReviewPrepareConfirm 0 none`
-   - `HCIAbilityKit.AgentExecutePlanReviewPrepareExecuteTicket none`
-   - `HCIAbilityKit.AgentExecutePlanReviewPrepareSimExecuteReceipt none`
-   - `HCIAbilityKit.AgentExecutePlanReviewPrepareSimFinalReport none`
+   - `HCI.AgentExecutePlanReviewPrepareConfirm 0 none`
+   - `HCI.AgentExecutePlanReviewPrepareExecuteTicket none`
+   - `HCI.AgentExecutePlanReviewPrepareSimExecuteReceipt none`
+   - `HCI.AgentExecutePlanReviewPrepareSimFinalReport none`
 
 ## 3. Pass 判定标准
 
@@ -108,7 +108,7 @@
 
 - 结果：`Pass`
 - 证据（用户日志结论摘要）：
-  - 正常场景 `HCIAbilityKit.AgentExecutePlanReviewPrepareSimFinalReport none` 命中 `simulation_completed=true terminal_status=completed error_code=- reason=simulate_execute_final_report_ready`；
+  - 正常场景 `HCI.AgentExecutePlanReviewPrepareSimFinalReport none` 命中 `simulation_completed=true terminal_status=completed error_code=- reason=simulate_execute_final_report_ready`；
   - 篡改与阻断场景命中：
     - `digest` -> `E4202 / selection_digest_mismatch`
     - `confirm` -> `E4202 / confirm_request_id_mismatch`

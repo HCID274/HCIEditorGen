@@ -38,23 +38,23 @@
 1. 编译插件（助手已完成本地验证）
    - `Build.bat HCIEditorGenEditor Win64 Development -Project=... -WaitMutex -FromMSBuild`
 2. 自动化测试（助手已完成本地验证）
-   - `UnrealEditor-Cmd.exe ... -ExecCmds="Automation RunTests HCIAbilityKit.Editor.AgentExec; Quit"`（扩展至 17 条）
-   - `UnrealEditor-Cmd.exe ... -ExecCmds="Automation RunTests HCIAbilityKit.Editor.AgentTools; Quit"`（回归）
-   - `UnrealEditor-Cmd.exe ... -ExecCmds="Automation RunTests HCIAbilityKit.Editor.AgentDryRun; Quit"`（回归）
+   - `UnrealEditor-Cmd.exe ... -ExecCmds="Automation RunTests HCI.Editor.AgentExec; Quit"`（扩展至 17 条）
+   - `UnrealEditor-Cmd.exe ... -ExecCmds="Automation RunTests HCI.Editor.AgentTools; Quit"`（回归）
+   - `UnrealEditor-Cmd.exe ... -ExecCmds="Automation RunTests HCI.Editor.AgentDryRun; Quit"`（回归）
 3. UE 手测（默认三案例摘要 + 自动写本地日志）
-   - `HCIAbilityKit.AgentRbacDemo`
+   - `HCI.AgentRbacDemo`
 4. UE 手测（Guest 回退写操作：应拦截）
-   - `HCIAbilityKit.AgentRbacDemo unknown_guest RenameAsset 1`
+   - `HCI.AgentRbacDemo unknown_guest RenameAsset 1`
 5. UE 手测（Guest 回退只读：应放行）
-   - `HCIAbilityKit.AgentRbacDemo unknown_guest ScanAssets 0`
+   - `HCI.AgentRbacDemo unknown_guest ScanAssets 0`
 6. UE 手测（已授权用户写操作：应放行）
-   - `HCIAbilityKit.AgentRbacDemo artist_a SetTextureMaxSize 3`
+   - `HCI.AgentRbacDemo artist_a SetTextureMaxSize 3`
 7. （可选）在资源管理器或文本编辑器打开审计日志文件确认行内容
    - `Saved/HCIAbilityKit/Audit/agent_exec_log.jsonl`
 
 ## 5. 预期结果
 
-- `HCIAbilityKit.AgentRbacDemo`（无参数）输出 3 条案例日志 + 1 条摘要日志 + 路径日志：
+- `HCI.AgentRbacDemo`（无参数）输出 3 条案例日志 + 1 条摘要日志 + 路径日志：
   - 案例字段包含：
     - `request_id`
     - `user`
@@ -78,7 +78,7 @@
   - 路径日志包含：
     - `config_path=...SourceData/AbilityKits/Config/agent_rbac_mock.json`
     - `audit_log_path=...Saved/HCIAbilityKit/Audit/agent_exec_log.jsonl`
-- `HCIAbilityKit.AgentRbacDemo unknown_guest RenameAsset 1` 命中：
+- `HCI.AgentRbacDemo unknown_guest RenameAsset 1` 命中：
   - `resolved_role=Guest`
   - `user_in_whitelist=false`
   - `guest_fallback=true`
@@ -87,12 +87,12 @@
   - `error_code=E4008`
   - `reason=guest_read_only_write_blocked`
   - `audit_log_appended=true`
-- `HCIAbilityKit.AgentRbacDemo unknown_guest ScanAssets 0` 命中：
+- `HCI.AgentRbacDemo unknown_guest ScanAssets 0` 命中：
   - `resolved_role=Guest`
   - `capability=read_only`
   - `allowed=true`
   - `reason=guest_read_only_allowed`
-- `HCIAbilityKit.AgentRbacDemo artist_a SetTextureMaxSize 3` 命中：
+- `HCI.AgentRbacDemo artist_a SetTextureMaxSize 3` 命中：
   - `resolved_role=Artist`
   - `user_in_whitelist=true`
   - `capability=write`
@@ -112,25 +112,25 @@
 - 编译：通过。
   - `Build.bat HCIEditorGenEditor Win64 Development ...` 成功。
 - 自动化：通过。
-  - `HCIAbilityKit.Editor.AgentExec`：17/17 成功
+  - `HCI.Editor.AgentExec`：17/17 成功
     - 新增 `MockRbacBlocksGuestWriteFallback`
     - 新增 `MockRbacAllowsGuestReadOnlyFallback`
     - 新增 `MockRbacAllowsConfiguredWriteUser`
     - 新增 `LocalAuditLogJsonLineIncludesCoreFields`
-  - `HCIAbilityKit.Editor.AgentTools`：3/3 成功（回归）
-  - `HCIAbilityKit.Editor.AgentDryRun`：2/2 成功（回归）
+  - `HCI.Editor.AgentTools`：3/3 成功（回归）
+  - `HCI.Editor.AgentDryRun`：2/2 成功（回归）
 - 说明（日志留证方式）：
   - 使用 `-abslog=` 分离日志文件，避免覆盖 `Saved/Logs/HCIEditorGen.log`。
   - `UnrealEditorServer-HCIEditorGen` 网络噪音日志出现在 UE-Cmd 退出阶段，不作为插件测试失败依据；以 `Result={成功}` 为准。
 - UE 手测：通过。
-  - `HCIAbilityKit.AgentRbacDemo`（无参）无 `Error`，输出 3 条案例日志 + 摘要日志：
+  - `HCI.AgentRbacDemo`（无参）无 `Error`，输出 3 条案例日志 + 摘要日志：
     - `summary total_cases=3 allowed=2 blocked=1 guest_fallback_cases=2 audit_log_appends=3 config_users=3 validation=ok`
-  - `HCIAbilityKit.AgentRbacDemo unknown_guest RenameAsset 1`：
+  - `HCI.AgentRbacDemo unknown_guest RenameAsset 1`：
     - 命中 `resolved_role=Guest user_in_whitelist=false guest_fallback=true capability=write allowed=false error_code=E4008 reason=guest_read_only_write_blocked audit_log_appended=true`
     - 为预期 Guest 写操作阻断场景，出现 `Warning` 日志但无 `Error`
-  - `HCIAbilityKit.AgentRbacDemo unknown_guest ScanAssets 0`：
+  - `HCI.AgentRbacDemo unknown_guest ScanAssets 0`：
     - 命中 `resolved_role=Guest capability=read_only allowed=true reason=guest_read_only_allowed`
-  - `HCIAbilityKit.AgentRbacDemo artist_a SetTextureMaxSize 3`：
+  - `HCI.AgentRbacDemo artist_a SetTextureMaxSize 3`：
     - 命中 `resolved_role=Artist user_in_whitelist=true capability=write allowed=true reason=rbac_allowed`
   - 用户确认 `Saved/HCIAbilityKit/Audit/agent_exec_log.jsonl` 存在，且包含 `timestamp_utc/user/request_id/tool_name/asset_count/result/error_code` 等核心字段。
 
@@ -146,13 +146,13 @@
   - `Saved/Logs/Automation_AgentTools_E7.log`
   - `Saved/Logs/Automation_AgentDryRun_E7.log`
 - 自动化关键证据（助手本地已验证）：
-  - `Found 17 automation tests based on 'HCIAbilityKit.Editor.AgentExec'`
+  - `Found 17 automation tests based on 'HCI.Editor.AgentExec'`
   - `Result={成功} Name={MockRbacBlocksGuestWriteFallback}`
   - `Result={成功} Name={MockRbacAllowsGuestReadOnlyFallback}`
   - `Result={成功} Name={MockRbacAllowsConfiguredWriteUser}`
   - `Result={成功} Name={LocalAuditLogJsonLineIncludesCoreFields}`
-  - `Found 3 automation tests based on 'HCIAbilityKit.Editor.AgentTools'`
-  - `Found 2 automation tests based on 'HCIAbilityKit.Editor.AgentDryRun'`
+  - `Found 3 automation tests based on 'HCI.Editor.AgentTools'`
+  - `Found 2 automation tests based on 'HCI.Editor.AgentDryRun'`
 
 ## 9. 问题与后续动作
 

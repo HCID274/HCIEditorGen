@@ -42,23 +42,23 @@
 1. 编译（助手已完成）
    - `Build.bat HCIEditorGenEditor Win64 Development -Project=... -WaitMutex -FromMSBuild`
 2. 自动化测试（助手已完成）
-   - `HCIAbilityKit.Editor.AgentExecutor`（含 F5 新用例）
-   - `HCIAbilityKit.Editor.AgentPlanValidation`（F2 回归）
+   - `HCI.Editor.AgentExecutor`（含 F5 新用例）
+   - `HCI.Editor.AgentPlanValidation`（F2 回归）
 3. UE 手测（默认 6 案例摘要）
-   - `HCIAbilityKit.AgentExecutePlanPreflightDemo`
+   - `HCI.AgentExecutePlanPreflightDemo`
 4. UE 手测（Confirm Gate 阻断）
-   - `HCIAbilityKit.AgentExecutePlanPreflightDemo fail_confirm`
+   - `HCI.AgentExecutePlanPreflightDemo fail_confirm`
 5. UE 手测（Blast Radius 阻断）
-   - `HCIAbilityKit.AgentExecutePlanPreflightDemo fail_blast`
+   - `HCI.AgentExecutePlanPreflightDemo fail_blast`
 6. UE 手测（SourceControl Fail-Fast 阻断）
-   - `HCIAbilityKit.AgentExecutePlanPreflightDemo fail_sc`
+   - `HCI.AgentExecutePlanPreflightDemo fail_sc`
 7. UE 手测（LOD Safety 阻断）
-   - `HCIAbilityKit.AgentExecutePlanPreflightDemo fail_lod`
+   - `HCI.AgentExecutePlanPreflightDemo fail_lod`
 
 ## 5. 预期结果（Pass 判定标准）
 
 1. 上述 5 条 UE 命令（步骤 3~7）在合法参数下均无 `Error` 级日志（失败案例出现 `Warning` 属预期）。
-2. `HCIAbilityKit.AgentExecutePlanPreflightDemo`（无参）输出：
+2. `HCI.AgentExecutePlanPreflightDemo`（无参）输出：
    - 6 条案例前置日志（`[HCIAbilityKit][AgentExecutorPreflight] case=...`）
    - 每案例 `AgentExecutor` 的 `summary + row=`
    - 1 条 F5 总摘要，且包含：
@@ -98,13 +98,13 @@
 - 编译：通过
   - `Build.bat HCIEditorGenEditor Win64 Development ...` 成功。
 - 自动化：通过
-  - `HCIAbilityKit.Editor.AgentExecutor`：10/10 成功（含 F5 新增 5 条）
+  - `HCI.Editor.AgentExecutor`：10/10 成功（含 F5 新增 5 条）
     - `PreflightBlocksUnconfirmedWriteWithE4005`
     - `PreflightBlocksOverLimitWithE4004`
     - `PreflightBlocksSourceControlFailFastWithE4006`
     - `PreflightBlocksNaniteLodToolWithE4010`
     - `PreflightAuthorizedWritePassesAndMarksRow`
-  - `HCIAbilityKit.Editor.AgentPlanValidation`：8/8 成功（回归）
+  - `HCI.Editor.AgentPlanValidation`：8/8 成功（回归）
 - 说明：
   - 曾误并行启动两个 `UnrealEditor-Cmd` 导致一次 `AgentExecutor` 运行冲突；已串行重跑并通过。
   - `fail_blast` 案例为验证 F5 预检门禁归属，演示命令与自动化均关闭了该案例的 `PlanValidator` 预检（否则会被 F2 的 `E4004` 先拦截）。
@@ -125,5 +125,5 @@
 
 - 构建日志：`C:\Users\50428\AppData\Local\UnrealBuildTool\Log.txt`
 - 自动化日志（当前轮次，以 `Saved/Logs/HCIEditorGen.log` 为主证据）：
-  - `HCIAbilityKit.Editor.AgentExecutor`（Found 10 + 全部 `Result={成功}`）
-  - `HCIAbilityKit.Editor.AgentPlanValidation`（Found 8 + 全部 `Result={成功}`）
+  - `HCI.Editor.AgentExecutor`（Found 10 + 全部 `Result={成功}`）
+  - `HCI.Editor.AgentPlanValidation`（Found 8 + 全部 `Result={成功}`）

@@ -14,7 +14,7 @@
 
 - Runtime：`StageGExecuteFinalReport` 契约 / 桥接 / JSON 序列化。
 - Editor：`AgentDemoConsoleCommands` 新增 `...PrepareStageGExecuteFinalReport` / `...Json` 命令。
-- Tests：新增 `HCIAbilityKit.Editor.AgentExecutorStageGExecuteFinalReport` 自动化测试。
+- Tests：新增 `HCI.Editor.AgentExecutorStageGExecuteFinalReport` 自动化测试。
 
 ## 3. 前置条件
 
@@ -24,8 +24,8 @@
 ## 4. 操作步骤（UE 手测）
 
 1. 先跑通到 `StageGExecuteCommitReceipt` 的可通过链路（`...ReviewDemo -> ...Select -> ...PrepareApply -> ...PrepareConfirm -> ...PrepareExecuteTicket -> ...PrepareSimExecuteReceipt -> ...PrepareSimFinalReport -> ...PrepareSimArchiveBundle -> ...PrepareSimHandoffEnvelope -> ...PrepareStageGExecuteIntent -> ...PrepareStageGWriteEnableRequest 1 none -> ...PrepareStageGExecutePermitTicket 1 none -> ...PrepareStageGExecuteDispatchRequest 1 none -> ...PrepareStageGExecuteDispatchReceipt none -> ...PrepareStageGExecuteCommitRequest 1 none -> ...PrepareStageGExecuteCommitReceipt none`）。
-2. 执行正常场景：`HCIAbilityKit.AgentExecutePlanReviewPrepareStageGExecuteFinalReport none`。
-3. 执行 JSON 输出：`HCIAbilityKit.AgentExecutePlanReviewPrepareStageGExecuteFinalReportJson none`。
+2. 执行正常场景：`HCI.AgentExecutePlanReviewPrepareStageGExecuteFinalReport none`。
+3. 执行 JSON 输出：`HCI.AgentExecutePlanReviewPrepareStageGExecuteFinalReportJson none`。
 4. 执行阻断场景：
    - `...PrepareStageGExecuteFinalReport digest`
    - `...PrepareStageGExecuteFinalReport intent`
@@ -36,9 +36,9 @@
    - `...PrepareStageGExecuteFinalReport commitreceipt`
    - `...PrepareStageGExecuteFinalReport ready`
 5. （可选）验证未确认链路穿透：
-   - `HCIAbilityKit.AgentExecutePlanReviewPrepareStageGExecuteCommitRequest 0 none`
-   - `HCIAbilityKit.AgentExecutePlanReviewPrepareStageGExecuteCommitReceipt none`
-   - `HCIAbilityKit.AgentExecutePlanReviewPrepareStageGExecuteFinalReport none`
+   - `HCI.AgentExecutePlanReviewPrepareStageGExecuteCommitRequest 0 none`
+   - `HCI.AgentExecutePlanReviewPrepareStageGExecuteCommitReceipt none`
+   - `HCI.AgentExecutePlanReviewPrepareStageGExecuteFinalReport none`
 
 ## 5. 预期结果
 

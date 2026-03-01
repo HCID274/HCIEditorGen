@@ -9,8 +9,8 @@
 - UE 工程：`HCIEditorGen`
 - `Stage N-SliceN2` 已通过：审批卡能展示具体目录落点（DryRun Preview）
 - 本片新增夹具命令（Editor 控制台）：
-  - `HCIAbilityKit.SeedChaosBuildSnapshot`
-  - `HCIAbilityKit.SeedChaosReset`
+  - `HCI.SeedChaosBuildSnapshot`
+  - `HCI.SeedChaosReset`
 
 ## 2. 测试数据
 
@@ -22,14 +22,14 @@
 ## 3. 步骤
 
 1. 生成快照（首次运行）：
-   - `HCIAbilityKit.SeedChaosBuildSnapshot`
+   - `HCI.SeedChaosBuildSnapshot`
 2. 每次回归重置：
-   - `HCIAbilityKit.SeedChaosReset`
+   - `HCI.SeedChaosReset`
    - 预期会弹确认框，仅删除并重建：
      - `/Game/__HCI_Test/Incoming/SeedChaos`
      - `/Game/__HCI_Test/Organized/SeedClean`
 3. 运行 Agent 整理：
-   - `HCIAbilityKit.AgentChatUI`
+   - `HCI.AgentChatUI`
    - 输入：`扫描 /Game/__HCI_Test/Incoming/SeedChaos，然后按元数据规范命名并移动归档到 /Game/__HCI_Test/Organized/SeedClean。`
 4. 审批：
    - 写审批卡点击 `通过`

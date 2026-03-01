@@ -10,13 +10,13 @@
 - 已完成：
   - Runtime 新增 `StageGExecuteIntent` 契约 / 桥接 / JSON 序列化器。
   - Editor 新增命令：
-    - `HCIAbilityKit.AgentExecutePlanReviewPrepareStageGExecuteIntent`
-    - `HCIAbilityKit.AgentExecutePlanReviewPrepareStageGExecuteIntentJson`
+    - `HCI.AgentExecutePlanReviewPrepareStageGExecuteIntent`
+    - `HCI.AgentExecutePlanReviewPrepareStageGExecuteIntentJson`
   - 支持 `tamper=none|digest|apply|review|confirm|receipt|final|archive|handoff|ready` 模拟篡改/阻断。
 - 编译：`Build.bat HCIEditorGenEditor Win64 Development ...` ✅ 通过
 - 自动化：
-  - `HCIAbilityKit.Editor.AgentExecutorStageGExecuteIntent` ✅ `4/4`
-  - `HCIAbilityKit.Editor.AgentExecutorSimHandoffEnvelope`（回归）✅ `4/4`
+  - `HCI.Editor.AgentExecutorStageGExecuteIntent` ✅ `4/4`
+  - `HCI.Editor.AgentExecutorSimHandoffEnvelope`（回归）✅ `4/4`
 - 证据日志：
   - `Saved/Logs/Automation_G1_StageGExecuteIntent.log`
   - `Saved/Logs/Automation_G1_SimHandoffEnvelopeRegression.log`
@@ -25,37 +25,37 @@
 
 ### 2.1 先生成可通过链路（到 F15）
 
-1. `HCIAbilityKit.AgentExecutePlanReviewDemo ok_level_risk`
-2. `HCIAbilityKit.AgentExecutePlanReviewSelect 0`
-3. `HCIAbilityKit.AgentExecutePlanReviewPrepareApply`
-4. `HCIAbilityKit.AgentExecutePlanReviewPrepareConfirm 1 none`
-5. `HCIAbilityKit.AgentExecutePlanReviewPrepareExecuteTicket none`
-6. `HCIAbilityKit.AgentExecutePlanReviewPrepareSimExecuteReceipt none`
-7. `HCIAbilityKit.AgentExecutePlanReviewPrepareSimFinalReport none`
-8. `HCIAbilityKit.AgentExecutePlanReviewPrepareSimArchiveBundle none`
-9. `HCIAbilityKit.AgentExecutePlanReviewPrepareSimHandoffEnvelope none`
+1. `HCI.AgentExecutePlanReviewDemo ok_level_risk`
+2. `HCI.AgentExecutePlanReviewSelect 0`
+3. `HCI.AgentExecutePlanReviewPrepareApply`
+4. `HCI.AgentExecutePlanReviewPrepareConfirm 1 none`
+5. `HCI.AgentExecutePlanReviewPrepareExecuteTicket none`
+6. `HCI.AgentExecutePlanReviewPrepareSimExecuteReceipt none`
+7. `HCI.AgentExecutePlanReviewPrepareSimFinalReport none`
+8. `HCI.AgentExecutePlanReviewPrepareSimArchiveBundle none`
+9. `HCI.AgentExecutePlanReviewPrepareSimHandoffEnvelope none`
 
 ### 2.2 G1 正常桥接与 JSON
 
-10. `HCIAbilityKit.AgentExecutePlanReviewPrepareStageGExecuteIntent none`
-11. `HCIAbilityKit.AgentExecutePlanReviewPrepareStageGExecuteIntentJson none`
+10. `HCI.AgentExecutePlanReviewPrepareStageGExecuteIntent none`
+11. `HCI.AgentExecutePlanReviewPrepareStageGExecuteIntentJson none`
 
 ### 2.3 G1 篡改/阻断校验
 
-12. `HCIAbilityKit.AgentExecutePlanReviewPrepareStageGExecuteIntent digest`
-13. `HCIAbilityKit.AgentExecutePlanReviewPrepareStageGExecuteIntent confirm`
-14. `HCIAbilityKit.AgentExecutePlanReviewPrepareStageGExecuteIntent handoff`
-15. `HCIAbilityKit.AgentExecutePlanReviewPrepareStageGExecuteIntent ready`
+12. `HCI.AgentExecutePlanReviewPrepareStageGExecuteIntent digest`
+13. `HCI.AgentExecutePlanReviewPrepareStageGExecuteIntent confirm`
+14. `HCI.AgentExecutePlanReviewPrepareStageGExecuteIntent handoff`
+15. `HCI.AgentExecutePlanReviewPrepareStageGExecuteIntent ready`
 
 ### 2.4 未确认链路（应拦截 E4005）
 
-16. `HCIAbilityKit.AgentExecutePlanReviewPrepareConfirm 0 none`
-17. `HCIAbilityKit.AgentExecutePlanReviewPrepareExecuteTicket none`
-18. `HCIAbilityKit.AgentExecutePlanReviewPrepareSimExecuteReceipt none`
-19. `HCIAbilityKit.AgentExecutePlanReviewPrepareSimFinalReport none`
-20. `HCIAbilityKit.AgentExecutePlanReviewPrepareSimArchiveBundle none`
-21. `HCIAbilityKit.AgentExecutePlanReviewPrepareSimHandoffEnvelope none`
-22. `HCIAbilityKit.AgentExecutePlanReviewPrepareStageGExecuteIntent none`
+16. `HCI.AgentExecutePlanReviewPrepareConfirm 0 none`
+17. `HCI.AgentExecutePlanReviewPrepareExecuteTicket none`
+18. `HCI.AgentExecutePlanReviewPrepareSimExecuteReceipt none`
+19. `HCI.AgentExecutePlanReviewPrepareSimFinalReport none`
+20. `HCI.AgentExecutePlanReviewPrepareSimArchiveBundle none`
+21. `HCI.AgentExecutePlanReviewPrepareSimHandoffEnvelope none`
+22. `HCI.AgentExecutePlanReviewPrepareStageGExecuteIntent none`
 
 ## 3. 预期结果（Pass 判定标准）
 

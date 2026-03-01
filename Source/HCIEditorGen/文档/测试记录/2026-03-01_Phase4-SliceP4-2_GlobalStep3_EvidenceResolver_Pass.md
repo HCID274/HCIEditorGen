@@ -22,7 +22,7 @@
 ## 4. 操作步骤
 
 1. 本地编译：`Build.bat HCIEditorGenEditor Win64 Development ... -NoHotReloadFromIDE`
-2. （可选）运行现有 UE 回归：`HCIAbilityKit.AgentChatUI`，随便走一条只读链路，确认无行为变化（本切片不接线，不应改变输出）。
+2. （可选）运行现有 UE 回归：`HCI.AgentChatUI`，随便走一条只读链路，确认无行为变化（本切片不接线，不应改变输出）。
 
 ## 5. 预期结果
 

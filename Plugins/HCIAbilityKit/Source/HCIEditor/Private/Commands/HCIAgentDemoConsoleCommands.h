@@ -38,6 +38,7 @@ private:
 	TUniquePtr<FAutoConsoleCommand> SeedChaosResetCommand;
 	TUniquePtr<FAutoConsoleCommand> MatLinkBuildSnapshotCommand;
 	TUniquePtr<FAutoConsoleCommand> MatLinkResetCommand;
+	TUniquePtr<FAutoConsoleCommand> MatLinkResetFuzzyOkCommand;
 	TUniquePtr<FAutoConsoleCommand> AgentPlanWithLLMDemoCommand;
 	TUniquePtr<FAutoConsoleCommand> AgentPlanWithRealLLMDemoCommand;
 	TUniquePtr<FAutoConsoleCommand> AgentPlanWithRealLLMProbeCommand;

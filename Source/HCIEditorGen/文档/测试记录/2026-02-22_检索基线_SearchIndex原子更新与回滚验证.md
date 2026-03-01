@@ -22,12 +22,12 @@
 
 1. 修改 `RefreshAsset` 为“预检查冲突 -> 移除旧文档 -> 提交新文档 -> 失败回滚旧文档”。
 2. 修改 `RemoveAssetByPath` 为“先删索引成功再扣减统计”，避免失败时计数先变更。
-3. 新增自动化测试 `HCIAbilityKit.Editor.SearchIndex.AtomicRefreshRollback`，构造 duplicate id 冲突并验证旧数据仍保留、统计不变。
-4. 新增自动化测试 `HCIAbilityKit.Editor.SearchIndex.AtomicRemoveStaleMappingGuard`，构造 stale mapping（路径映射保留但索引文档被移除）并验证 `RemoveAssetByPath` fail-fast 且统计不变化。
+3. 新增自动化测试 `HCI.Editor.SearchIndex.AtomicRefreshRollback`，构造 duplicate id 冲突并验证旧数据仍保留、统计不变。
+4. 新增自动化测试 `HCI.Editor.SearchIndex.AtomicRemoveStaleMappingGuard`，构造 stale mapping（路径映射保留但索引文档被移除）并验证 `RemoveAssetByPath` fail-fast 且统计不变化。
 5. 执行编译：
    `Build.bat HCIEditorGenEditor Win64 Development -Project=... -WaitMutex -FromMSBuild`
 6. 执行自动化：
-   `UnrealEditor-Cmd.exe ... -ExecCmds="Automation RunTests HCIAbilityKit.Editor.SearchIndex.AtomicRefreshRollback+HCIAbilityKit.Editor.SearchIndex.AtomicRemoveStaleMappingGuard; Quit"`
+   `UnrealEditor-Cmd.exe ... -ExecCmds="Automation RunTests HCI.Editor.SearchIndex.AtomicRefreshRollback+HCI.Editor.SearchIndex.AtomicRemoveStaleMappingGuard; Quit"`
 
 ## 5. 预期结果
 

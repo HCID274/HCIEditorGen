@@ -91,12 +91,12 @@ Scope: whole repo.
   - `Stage I-SliceI6`：已通过 UE 手测（AgentChatUI 聊天式入口 + 真实 LLM 异步链路复用）。
   - `Stage I-SliceI7`：已通过 UE 手测（Prompt 摘要链路 + 快捷指令外置配置）。
 - UE 手测命令（G10，历史通过记录）：
-  - `HCIAbilityKit.AgentExecutePlanReviewPrepareStageGExecutionReadiness 1 none`
-  - `HCIAbilityKit.AgentExecutePlanReviewPrepareStageGExecutionReadiness 0 none`
-  - `HCIAbilityKit.AgentExecutePlanReviewPrepareStageGExecutionReadiness 1 digest`
-  - `HCIAbilityKit.AgentExecutePlanReviewPrepareStageGExecutionReadiness 1 archive`
-  - `HCIAbilityKit.AgentExecutePlanReviewPrepareStageGExecutionReadiness 1 mode`
-  - `HCIAbilityKit.AgentExecutePlanReviewPrepareStageGExecutionReadinessJson 1 none`
+  - `HCI.AgentExecutePlanReviewPrepareStageGExecutionReadiness 1 none`
+  - `HCI.AgentExecutePlanReviewPrepareStageGExecutionReadiness 0 none`
+  - `HCI.AgentExecutePlanReviewPrepareStageGExecutionReadiness 1 digest`
+  - `HCI.AgentExecutePlanReviewPrepareStageGExecutionReadiness 1 archive`
+  - `HCI.AgentExecutePlanReviewPrepareStageGExecutionReadiness 1 mode`
+  - `HCI.AgentExecutePlanReviewPrepareStageGExecutionReadinessJson 1 none`
 - 最近完成切片：
   - `Phase2-SliceP2-1`：已通过 UE 手测门禁（Commands LLM 处理器拆分，`No Semantic Changes`）。
   - `Phase2-SliceP2-2`：已通过 UE 手测门禁（Commands StageG 处理器拆分，`No Semantic Changes`）。

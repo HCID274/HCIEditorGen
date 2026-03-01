@@ -8,8 +8,8 @@
 ## 步骤
 
 1. 本地编译：`Build.bat HCIEditorGenEditor Win64 Development ... -NoHotReloadFromIDE`。
-2. UE 手测：`HCIAbilityKit.AgentChatUI`，验证输入与快捷指令链路。
-3. UE 手测：`HCIAbilityKit.AgentPlanPreviewUI "整理临时目录资产并归档"`，验证真实 LLM 链路。
+2. UE 手测：`HCI.AgentChatUI`，验证输入与快捷指令链路。
+3. UE 手测：`HCI.AgentPlanPreviewUI "整理临时目录资产并归档"`，验证真实 LLM 链路。
 4. 耦合检查：确认 `HCIAbilityKitAgentChatWindow.cpp` 未包含 `Planner/LlmClient/PromptBuilder/IHttp*` 头文件。
 
 ## 预期

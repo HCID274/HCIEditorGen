@@ -22,7 +22,7 @@
 
 ## 4. UE 手测门禁
 
-1. 控制台输入：`HCIAbilityKit.AgentChatUI`
+1. 控制台输入：`HCI.AgentChatUI`
 2. 聊天窗口输入：`帮我看看那个MNew文件夹里有什么`，点击发送
 3. 预期：
    - 日志出现 `source=AgentChatUI` 的 `dispatched`

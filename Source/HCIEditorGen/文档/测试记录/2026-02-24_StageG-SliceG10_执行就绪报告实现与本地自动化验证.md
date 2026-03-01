@@ -14,7 +14,7 @@
 1. 编译插件与编辑器目标：
    - `Build.bat HCIEditorGenEditor Win64 Development ...`
 2. 运行定向自动化测试：
-   - `Automation RunTests HCIAbilityKit.Editor.AgentExecutorStageGExecutionReadiness`
+   - `Automation RunTests HCI.Editor.AgentExecutorStageGExecutionReadiness`
 3. 检查日志关键行：
    - `Saved/Logs/HCIEditorGen.log` 中的测试发现与完成记录。
 

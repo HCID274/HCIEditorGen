@@ -27,7 +27,7 @@
 ## 2. UE 手测步骤（用户执行）
 
 1. 打开聊天入口
-   - `HCIAbilityKit.AgentChatUI`
+   - `HCI.AgentChatUI`
 2. 资产定位用例（Asset Focus）
    - 输入：`检查一下 /Game/HCI 目录下的模型面数`
    - 执行完成后点击“结果定位”面板中的资产项

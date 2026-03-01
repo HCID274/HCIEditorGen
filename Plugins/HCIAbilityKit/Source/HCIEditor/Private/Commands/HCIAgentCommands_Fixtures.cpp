@@ -1511,7 +1511,13 @@ static void HCI_RunMatLinkBuildSnapshotCommand(const TArray<FString>& Args)
 	GMatLinkJob.GroupHint = GroupHint;
 }
 
-static void HCI_RunMatLinkResetCommand(const TArray<FString>& Args)
+enum class EHCIMatLinkResetPreset : uint8
+{
+	FailOrphansNonContract = 0,
+	FuzzyOkNoOrphans = 1
+};
+
+static void HCI_RunMatLinkResetImpl(const TArray<FString>& Args, const EHCIMatLinkResetPreset Preset)
 {
 	if (!UEditorAssetLibrary::DoesDirectoryExist(HCI_MatLinkSnapshotRoot) || !UEditorAssetLibrary::DoesDirectoryExist(HCI_MatLinkMastersRoot))
 	{
@@ -1613,29 +1619,50 @@ static void HCI_RunMatLinkResetCommand(const TArray<FString>& Args)
 	UEditorAssetLibrary::MakeDirectory(S2Root + TEXT("/Whatever/Meshes"));
 	UEditorAssetLibrary::MakeDirectory(S2Root + TEXT("/TexturesLoose"));
 	UEditorAssetLibrary::MakeDirectory(S2Root + TEXT("/tmp"));
-	Tasks.Add({SnapshotMesh, S2Root + TEXT("/Whatever/Meshes"), *FString::Printf(TEXT("SM_Old_%s"), *GroupHint), TEXT("S2_mesh")});
-	if (SnapshotTexturesByRole.Contains(TEXT("BC")))
+	if (Preset == EHCIMatLinkResetPreset::FuzzyOkNoOrphans)
 	{
-		Tasks.Add({SnapshotBC, S2Root + TEXT("/TexturesLoose"), *FString::Printf(TEXT("T_%s_New_Color"), *GroupHint), TEXT("S2_bc")});
-		// Extra BC-like candidate to force fuzzy matching ambiguity (non-contract suffix).
-		Tasks.Add({SnapshotBC, S2Root + TEXT("/tmp"), *FString::Printf(TEXT("T_%s_Color"), *GroupHint), TEXT("S2_bc_2")});
+		// Still "fuzzy" in directory layout, but strictly contract-compliant so AutoMaterialSetupByNameContract can pass.
+		const FString Id = FString::Printf(TEXT("Old_%s_Variant"), *GroupHint);
+		Tasks.Add({SnapshotMesh, S2Root + TEXT("/Whatever/Meshes"), *FString::Printf(TEXT("SM_%s"), *Id), TEXT("S2_mesh_ok")});
+		if (SnapshotTexturesByRole.Contains(TEXT("BC")))
+		{
+			Tasks.Add({SnapshotBC, S2Root + TEXT("/TexturesLoose"), *FString::Printf(TEXT("T_%s_BC"), *Id), TEXT("S2_bc_ok")});
+		}
+		if (SnapshotTexturesByRole.Contains(TEXT("N")))
+		{
+			Tasks.Add({SnapshotN, S2Root + TEXT("/tmp"), *FString::Printf(TEXT("T_%s_N"), *Id), TEXT("S2_n_ok")});
+		}
+		if (SnapshotTexturesByRole.Contains(TEXT("ORM")))
+		{
+			Tasks.Add({SnapshotORM, S2Root + TEXT("/TexturesLoose"), *FString::Printf(TEXT("T_%s_ORM"), *Id), TEXT("S2_orm_ok")});
+		}
 	}
-	if (SnapshotTexturesByRole.Contains(TEXT("N")))
+	else
 	{
-		Tasks.Add({SnapshotN, S2Root + TEXT("/tmp"), *FString::Printf(TEXT("T_%s_NormalMap"), *GroupHint), TEXT("S2_n")});
-		// Extra N-like candidate to force fuzzy matching ambiguity (non-contract suffix).
-		Tasks.Add({SnapshotN, S2Root + TEXT("/TexturesLoose"), *FString::Printf(TEXT("T_%s_Normal"), *GroupHint), TEXT("S2_n_2")});
-	}
-	if (SnapshotTexturesByRole.Contains(TEXT("ORM")))
-	{
-		Tasks.Add({SnapshotORM, S2Root + TEXT("/tmp"), *FString::Printf(TEXT("T_%s_RMA"), *GroupHint), TEXT("S2_orm")});
-		// Extra ORM-like candidate to force fuzzy matching ambiguity (non-contract suffix).
-		Tasks.Add({SnapshotORM, S2Root + TEXT("/TexturesLoose"), *FString::Printf(TEXT("T_%s_ORMPacked"), *GroupHint), TEXT("S2_orm_2")});
-	}
-	// One obvious orphan (unrelated to any group hint) to test "orphan_assets" locate UX.
-	if (SnapshotTexturesByRole.Contains(TEXT("BC")))
-	{
-		Tasks.Add({SnapshotBC, S2Root + TEXT("/tmp"), TEXT("T_Orphan_Trash"), TEXT("S2_orphan_trash")});
+		Tasks.Add({SnapshotMesh, S2Root + TEXT("/Whatever/Meshes"), *FString::Printf(TEXT("SM_Old_%s"), *GroupHint), TEXT("S2_mesh")});
+		if (SnapshotTexturesByRole.Contains(TEXT("BC")))
+		{
+			Tasks.Add({SnapshotBC, S2Root + TEXT("/TexturesLoose"), *FString::Printf(TEXT("T_%s_New_Color"), *GroupHint), TEXT("S2_bc")});
+			// Extra BC-like candidate to force fuzzy matching ambiguity (non-contract suffix).
+			Tasks.Add({SnapshotBC, S2Root + TEXT("/tmp"), *FString::Printf(TEXT("T_%s_Color"), *GroupHint), TEXT("S2_bc_2")});
+		}
+		if (SnapshotTexturesByRole.Contains(TEXT("N")))
+		{
+			Tasks.Add({SnapshotN, S2Root + TEXT("/tmp"), *FString::Printf(TEXT("T_%s_NormalMap"), *GroupHint), TEXT("S2_n")});
+			// Extra N-like candidate to force fuzzy matching ambiguity (non-contract suffix).
+			Tasks.Add({SnapshotN, S2Root + TEXT("/TexturesLoose"), *FString::Printf(TEXT("T_%s_Normal"), *GroupHint), TEXT("S2_n_2")});
+		}
+		if (SnapshotTexturesByRole.Contains(TEXT("ORM")))
+		{
+			Tasks.Add({SnapshotORM, S2Root + TEXT("/tmp"), *FString::Printf(TEXT("T_%s_RMA"), *GroupHint), TEXT("S2_orm")});
+			// Extra ORM-like candidate to force fuzzy matching ambiguity (non-contract suffix).
+			Tasks.Add({SnapshotORM, S2Root + TEXT("/TexturesLoose"), *FString::Printf(TEXT("T_%s_ORMPacked"), *GroupHint), TEXT("S2_orm_2")});
+		}
+		// One obvious orphan (unrelated to any group hint) to test "orphan_assets" locate UX.
+		if (SnapshotTexturesByRole.Contains(TEXT("BC")))
+		{
+			Tasks.Add({SnapshotBC, S2Root + TEXT("/tmp"), TEXT("T_Orphan_Trash"), TEXT("S2_orphan_trash")});
+		}
 	}
 
 	// S3: no relation.
@@ -1659,6 +1686,16 @@ static void HCI_RunMatLinkResetCommand(const TArray<FString>& Args)
 	GMatLinkJob.SnapshotMasterMaterialObjectPath = SnapshotMaster;
 	GMatLinkJob.SnapshotTexturesByRole = SnapshotTexturesByRole;
 	GMatLinkJob.ChaosScenarioRoots = ScenarioRoots;
+}
+
+static void HCI_RunMatLinkResetCommand(const TArray<FString>& Args)
+{
+	HCI_RunMatLinkResetImpl(Args, EHCIMatLinkResetPreset::FailOrphansNonContract);
+}
+
+static void HCI_RunMatLinkResetFuzzyOkCommand(const TArray<FString>& Args)
+{
+	HCI_RunMatLinkResetImpl(Args, EHCIMatLinkResetPreset::FuzzyOkNoOrphans);
 }
 
 void FHCIAgentDemoConsoleCommands::StartupFixtureCommands()
@@ -1694,6 +1731,14 @@ void FHCIAgentDemoConsoleCommands::StartupFixtureCommands()
 			TEXT("Stage O fixtures: reset MatLink chaos + clean (deletes /Game/__HCI_Test/Incoming/MatLinkChaos and /Game/__HCI_Test/Organized/MatLinkClean; also cleans legacy /Game/_HCI_Test if present). Usage: HCI.MatLinkReset"),
 			FConsoleCommandWithArgsDelegate::CreateStatic(&HCI_RunMatLinkResetCommand));
 	}
+
+	if (!MatLinkResetFuzzyOkCommand.IsValid())
+	{
+		MatLinkResetFuzzyOkCommand = MakeUnique<FAutoConsoleCommand>(
+			TEXT("HCI.MatLinkResetFuzzyOk"),
+			TEXT("Stage O fixtures: reset MatLink chaos + clean, with S2_Fuzzy being contract-compliant (no orphans) but still directory-scattered. Usage: HCI.MatLinkResetFuzzyOk"),
+			FConsoleCommandWithArgsDelegate::CreateStatic(&HCI_RunMatLinkResetFuzzyOkCommand));
+	}
 }
 
 void FHCIAgentDemoConsoleCommands::ShutdownFixtureCommands()
@@ -1701,6 +1746,7 @@ void FHCIAgentDemoConsoleCommands::ShutdownFixtureCommands()
 	SeedChaosResetCommand.Reset();
 	SeedChaosBuildSnapshotCommand.Reset();
 	MatLinkResetCommand.Reset();
+	MatLinkResetFuzzyOkCommand.Reset();
 	MatLinkBuildSnapshotCommand.Reset();
 }
 

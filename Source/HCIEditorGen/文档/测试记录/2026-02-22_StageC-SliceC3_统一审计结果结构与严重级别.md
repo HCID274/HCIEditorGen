@@ -24,19 +24,19 @@
 - 工程编译通过。
 - `StageC-SliceC2` 已通过（项目内存在能触发 `HighPolyAutoLODRule` 的样本，便于观察 `Warn` 严重级别字符串）。
 - 可运行自动化测试：
-  - `HCIAbilityKit.Editor.AuditResults`
-  - `HCIAbilityKit.Editor.AuditScanAsync`
+  - `HCI.Editor.AuditResults`
+  - `HCI.Editor.AuditScanAsync`
 
 ## 4. 操作步骤
 
 1. 编译插件：
    - `Build.bat HCIEditorGenEditor Win64 Development -Project=... -WaitMutex -FromMSBuild`
 2. 自动化测试：
-   - `UnrealEditor-Cmd.exe ... -ExecCmds="Automation RunTests HCIAbilityKit.Editor.AuditResults; Quit"`
-   - `UnrealEditor-Cmd.exe ... -ExecCmds="Automation RunTests HCIAbilityKit.Editor.AuditScanAsync; Quit"`
+   - `UnrealEditor-Cmd.exe ... -ExecCmds="Automation RunTests HCI.Editor.AuditResults; Quit"`
+   - `UnrealEditor-Cmd.exe ... -ExecCmds="Automation RunTests HCI.Editor.AuditScanAsync; Quit"`
 3. UE 手测（控制台）：
-   - `HCIAbilityKit.AuditScan 20`
-   - `HCIAbilityKit.AuditScanAsync 1 20`
+   - `HCI.AuditScan 20`
+   - `HCI.AuditScanAsync 1 20`
 4. 检查行日志新增字段：
    - `first_issue_severity_name=...`
 5. 若样本命中 `HighPolyAutoLODRule`，检查同一行应满足：
@@ -47,9 +47,9 @@
 ## 5. 预期结果
 
 - 自动化测试通过：
-  - `HCIAbilityKit.Editor.AuditResults.SeverityStringMapping`
-  - `HCIAbilityKit.Editor.AuditResults.BuildReportFlattensIssues`
-  - `HCIAbilityKit.Editor.AuditScanAsync.*`（回归）
+  - `HCI.Editor.AuditResults.SeverityStringMapping`
+  - `HCI.Editor.AuditResults.BuildReportFlattensIssues`
+  - `HCI.Editor.AuditScanAsync.*`（回归）
 - UE 扫描日志出现新增字段 `first_issue_severity_name`。
 - 当存在规则命中时，数值严重级别与字符串严重级别一致（如 `1 <-> Warn`）。
 
@@ -61,7 +61,7 @@
   - `AuditScanAsync`：2/2 成功（回归）。
 - UE 手测：通过。
 - 用户手测结论（摘要）：
-  - 同步扫描 `HCIAbilityKit.AuditScan 20` 与异步扫描 `HCIAbilityKit.AuditScanAsync 1 20` 均完整执行，无异常报错。
+  - 同步扫描 `HCI.AuditScan 20` 与异步扫描 `HCI.AuditScanAsync 1 20` 均完整执行，无异常报错。
   - 行日志新增字段 `first_issue_severity_name` 已出现；无问题行为空值，有问题行输出 `Warn`，符合预期。
   - 命中 `HighPolyAutoLODRule` 的行中，`first_issue_severity=1` 与 `first_issue_severity_name=Warn` 映射一致。
 
@@ -74,10 +74,10 @@
 - 构建日志：`C:\Users\50428\AppData\Local\UnrealBuildTool\Log.txt`
 - 自动化日志：`Saved/Logs/HCIEditorGen.log`
 - 自动化关键证据：
-  - `Found 2 automation tests based on 'HCIAbilityKit.Editor.AuditResults'`
+  - `Found 2 automation tests based on 'HCI.Editor.AuditResults'`
   - `Result={成功} Name={BuildReportFlattensIssues}`
   - `Result={成功} Name={SeverityStringMapping}`
-  - `Found 2 automation tests based on 'HCIAbilityKit.Editor.AuditScanAsync'`
+  - `Found 2 automation tests based on 'HCI.Editor.AuditScanAsync'`
   - `Result={成功} Name={CancelAndRetry}`
   - `Result={成功} Name={FailureConvergence}`
 - UE 手测关键证据（用户回传结论）：

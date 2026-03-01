@@ -38,21 +38,21 @@
 1. 编译插件（助手已完成本地验证）
    - `Build.bat HCIEditorGenEditor Win64 Development -Project=... -WaitMutex -FromMSBuild`
 2. 自动化测试（助手已完成本地验证）
-   - `UnrealEditor-Cmd.exe ... -ExecCmds="Automation RunTests HCIAbilityKit.Editor.AgentExec; Quit"`（新增）
-   - `UnrealEditor-Cmd.exe ... -ExecCmds="Automation RunTests HCIAbilityKit.Editor.AgentTools; Quit"`（回归）
-   - `UnrealEditor-Cmd.exe ... -ExecCmds="Automation RunTests HCIAbilityKit.Editor.AgentDryRun; Quit"`（回归）
+   - `UnrealEditor-Cmd.exe ... -ExecCmds="Automation RunTests HCI.Editor.AgentExec; Quit"`（新增）
+   - `UnrealEditor-Cmd.exe ... -ExecCmds="Automation RunTests HCI.Editor.AgentTools; Quit"`（回归）
+   - `UnrealEditor-Cmd.exe ... -ExecCmds="Automation RunTests HCI.Editor.AgentDryRun; Quit"`（回归）
 3. UE 手测（默认三案例摘要）
-   - `HCIAbilityKit.AgentConfirmGateDemo`
+   - `HCI.AgentConfirmGateDemo`
 4. UE 手测（未确认写操作，期望被拦截）
-   - `HCIAbilityKit.AgentConfirmGateDemo RenameAsset 1 0`
+   - `HCI.AgentConfirmGateDemo RenameAsset 1 0`
 5. UE 手测（只读工具，无需确认）
-   - `HCIAbilityKit.AgentConfirmGateDemo ScanAssets 0 0`
+   - `HCI.AgentConfirmGateDemo ScanAssets 0 0`
 6. UE 手测（确认写操作，期望放行）
-   - `HCIAbilityKit.AgentConfirmGateDemo SetTextureMaxSize 1 1`
+   - `HCI.AgentConfirmGateDemo SetTextureMaxSize 1 1`
 
 ## 5. 预期结果
 
-- `HCIAbilityKit.AgentConfirmGateDemo`（无参数）输出 3 条案例日志 + 1 条摘要日志：
+- `HCI.AgentConfirmGateDemo`（无参数）输出 3 条案例日志 + 1 条摘要日志：
   - 案例字段包含：
     - `case`
     - `tool_name`
@@ -82,24 +82,24 @@
 - 编译：通过。
   - `Build.bat HCIEditorGenEditor Win64 Development ...` 成功。
 - 自动化：通过。
-  - `HCIAbilityKit.Editor.AgentExec`：3/3 成功
+  - `HCI.Editor.AgentExec`：3/3 成功
     - `ConfirmGateBlocksUnconfirmedWrite`
     - `ConfirmGateAllowsReadOnlyWithoutConfirm`
     - `ConfirmGateAllowsConfirmedWrite`
-  - `HCIAbilityKit.Editor.AgentTools`：3/3 成功（回归）
-  - `HCIAbilityKit.Editor.AgentDryRun`：2/2 成功（回归）
+  - `HCI.Editor.AgentTools`：3/3 成功（回归）
+  - `HCI.Editor.AgentDryRun`：2/2 成功（回归）
 - 说明（日志留证方式）：
   - 使用 `-abslog=` 分离日志文件，避免并发运行 `UnrealEditor-Cmd` 时覆盖 `Saved/Logs/HCIEditorGen.log`。
   - 包装层偶发 `UnrealEditorServer-HCIEditorGen` 网络报错出现在 UE-Cmd 退出阶段，不属于插件测试失败依据；以自动化测试结果行（`Result={成功}`）为准。
 - UE 手测：通过。
-  - `HCIAbilityKit.AgentConfirmGateDemo`（无参）无 `Error`，输出 3 条案例日志 + 1 条摘要日志：
+  - `HCI.AgentConfirmGateDemo`（无参）无 `Error`，输出 3 条案例日志 + 1 条摘要日志：
     - `summary total_cases=3 allowed=2 blocked=1 expected_blocked_code=E4005 validation=ok`
-  - `HCIAbilityKit.AgentConfirmGateDemo RenameAsset 1 0`：
+  - `HCI.AgentConfirmGateDemo RenameAsset 1 0`：
     - 命中 `allowed=false error_code=E4005 reason=user_not_confirmed`
     - 为预期拦截场景，出现 `Warning` 日志但无 `Error`
-  - `HCIAbilityKit.AgentConfirmGateDemo ScanAssets 0 0`：
+  - `HCI.AgentConfirmGateDemo ScanAssets 0 0`：
     - 命中 `capability=read_only allowed=true`
-  - `HCIAbilityKit.AgentConfirmGateDemo SetTextureMaxSize 1 1`：
+  - `HCI.AgentConfirmGateDemo SetTextureMaxSize 1 1`：
     - 命中 `capability=write allowed=true`
 
 ## 7. 结论
@@ -114,12 +114,12 @@
   - `Saved/Logs/Automation_AgentTools_E3.log`
   - `Saved/Logs/Automation_AgentDryRun_E3.log`
 - 自动化关键证据（助手本地已验证）：
-  - `Found 3 automation tests based on 'HCIAbilityKit.Editor.AgentExec'`
+  - `Found 3 automation tests based on 'HCI.Editor.AgentExec'`
   - `Result={成功} Name={ConfirmGateBlocksUnconfirmedWrite}`
   - `Result={成功} Name={ConfirmGateAllowsReadOnlyWithoutConfirm}`
   - `Result={成功} Name={ConfirmGateAllowsConfirmedWrite}`
-  - `Found 3 automation tests based on 'HCIAbilityKit.Editor.AgentTools'`
-  - `Found 2 automation tests based on 'HCIAbilityKit.Editor.AgentDryRun'`
+  - `Found 3 automation tests based on 'HCI.Editor.AgentTools'`
+  - `Found 2 automation tests based on 'HCI.Editor.AgentDryRun'`
 - UE 手测关键证据（用户回传结论）：
   - 无参命令输出 `3` 条案例日志 + `1` 条摘要日志，摘要命中 `total_cases=3 validation=ok`
   - `RenameAsset 1 0` 命中 `allowed=false error_code=E4005 reason=user_not_confirmed`

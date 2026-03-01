@@ -22,13 +22,13 @@
 - 编译：
   - `Build.bat HCIEditorGenEditor Win64 Development ...` 通过
 - 自动化（新增用例已编译通过，本轮未在 UE 内执行）：
-  - `HCIAbilityKit.Editor.AgentChat.ReviewCard.PipelineAssetPathsShowsDeferredImpactHint`
-  - `HCIAbilityKit.Editor.AgentChat.ReviewCard.ExplicitAssetPathsShowsImpactCount`
+  - `HCI.Editor.AgentChat.ReviewCard.PipelineAssetPathsShowsDeferredImpactHint`
+  - `HCI.Editor.AgentChat.ReviewCard.ExplicitAssetPathsShowsImpactCount`
 
 ## 2. UE 手测步骤（用户执行）
 
 1. 打开聊天入口
-   - `HCIAbilityKit.AgentChatUI`
+   - `HCI.AgentChatUI`
 2. 输入写请求并生成计划
    - `把 /Game/__HCI_Auto 下所有 Texture2D 的 Maximum Texture Size 设置为 1024，并执行修改。`
 3. 在聊天内审查卡点击 `取消`

@@ -13,7 +13,7 @@
 ## 2. 影响范围
 
 - Runtime: `FHCIAbilityKitAgentPlanner`（LLM preferred + fallback metadata）。
-- Editor: `HCIAbilityKit.AgentPlanWithLLMDemo` / `HCIAbilityKit.AgentPlanWithLLMFallbackDemo`。
+- Editor: `HCI.AgentPlanWithLLMDemo` / `HCI.AgentPlanWithLLMFallbackDemo`。
 
 ## 3. 前置条件
 
@@ -22,12 +22,12 @@
 
 ## 4. 操作步骤
 
-1. 执行：`HCIAbilityKit.AgentPlanWithLLMDemo "整理临时目录资产并归档"`
-2. 执行：`HCIAbilityKit.AgentPlanWithLLMDemo "扫描关卡里缺碰撞和默认材质"`
-3. 执行：`HCIAbilityKit.AgentPlanWithLLMDemo "把高面数网格做LOD检查"`
-4. 执行：`HCIAbilityKit.AgentPlanWithLLMFallbackDemo timeout`
-5. 执行：`HCIAbilityKit.AgentPlanWithLLMFallbackDemo invalid_json`
-6. 执行：`HCIAbilityKit.AgentPlanWithLLMFallbackDemo empty`
+1. 执行：`HCI.AgentPlanWithLLMDemo "整理临时目录资产并归档"`
+2. 执行：`HCI.AgentPlanWithLLMDemo "扫描关卡里缺碰撞和默认材质"`
+3. 执行：`HCI.AgentPlanWithLLMDemo "把高面数网格做LOD检查"`
+4. 执行：`HCI.AgentPlanWithLLMFallbackDemo timeout`
+5. 执行：`HCI.AgentPlanWithLLMFallbackDemo invalid_json`
+6. 执行：`HCI.AgentPlanWithLLMFallbackDemo empty`
 
 ## 5. 预期结果
 

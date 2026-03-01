@@ -20,7 +20,7 @@
 ## 4. 操作步骤
 
 1. 本地编译：`Build.bat HCIEditorGenEditor Win64 Development ... -NoHotReloadFromIDE`
-2. 进入 UE，运行：`HCIAbilityKit.AgentChatUI`
+2. 进入 UE，运行：`HCI.AgentChatUI`
 3. 回归三条主链路（只读 + 预览 + 写确认）：
    - `统计 /Game/Temp 的模型面数`
    - `检查当前关卡全场景的碰撞和默认材质`
@@ -34,7 +34,7 @@
 ## 6. 实际结果
 
 - 编译通过。
-- 进入 UE，运行 `HCIAbilityKit.AgentChatUI`。
+- 进入 UE，运行 `HCI.AgentChatUI`。
 - 回归三条主链路均按预期工作（计划生成 -> 执行/预览 -> UI 摘要输出 -> 可定位按钮可用），且行为与切片前一致：
   - `统计 /Game/Temp 的模型面数`：可输出关键结果摘要与定位入口。
   - `检查当前关卡全场景的碰撞和默认材质`：可输出关卡风险摘要与定位入口；“扫描数量”口径以 Actor 为准（避免被误解为“扫描了多少文件/资产”）。

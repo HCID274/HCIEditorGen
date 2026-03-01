@@ -23,7 +23,7 @@
 ## 4. 操作步骤
 
 1. 本地编译与自动化测试（由助手执行）。
-2. UE 中执行 `HCIAbilityKit.AgentPlanPreviewUI "整理临时目录资产并归档"`。
+2. UE 中执行 `HCI.AgentPlanPreviewUI "整理临时目录资产并归档"`。
 3. 在窗口中点击 `确认并执行（Commit Changes）`，先选择 `No`，再选择 `Yes`。
 
 ## 5. 预期结果
@@ -36,10 +36,10 @@
 
 - 本地编译：通过（`Build.bat ... -NoHotReloadFromIDE`，ExitCode=0）。
 - 本地自动化：通过。
-  - `Automation RunTests HCIAbilityKit.Editor.AgentPreviewUI`：3/3 成功，ExitCode=0。
-  - `Automation RunTests HCIAbilityKit.Editor.AgentExecutor.CommitModeUsesExecuteSemantics`：1/1 成功，ExitCode=0。
-  - `Automation RunTests HCIAbilityKit.Editor.AgentExecutor`：89 条回归通过，ExitCode=0。
-  - `Automation RunTests HCIAbilityKit.Editor.AgentTools`：6/6 成功，包含
+  - `Automation RunTests HCI.Editor.AgentPreviewUI`：3/3 成功，ExitCode=0。
+  - `Automation RunTests HCI.Editor.AgentExecutor.CommitModeUsesExecuteSemantics`：1/1 成功，ExitCode=0。
+  - `Automation RunTests HCI.Editor.AgentExecutor`：89 条回归通过，ExitCode=0。
+  - `Automation RunTests HCI.Editor.AgentTools`：6/6 成功，包含
     - `RenameAssetExecuteRenamesRealAsset`
     - `MoveAssetExecuteMovesRealAsset`
 - UE 手测：待执行。
@@ -52,12 +52,12 @@
 
 - 日志路径：`Saved/Logs/HCIEditorGen.log`
 - 关键日志：
-  - `Found 3 automation tests based on 'HCIAbilityKit.Editor.AgentPreviewUI'`
+  - `Found 3 automation tests based on 'HCI.Editor.AgentPreviewUI'`
   - `Result={成功} Name={CountsWriteAndDestructiveSteps}`
-  - `Found 1 automation tests based on 'HCIAbilityKit.Editor.AgentExecutor.CommitModeUsesExecuteSemantics'`
+  - `Found 1 automation tests based on 'HCI.Editor.AgentExecutor.CommitModeUsesExecuteSemantics'`
   - `Result={成功} Name={CommitModeUsesExecuteSemantics}`
-  - `Found 89 automation tests based on 'HCIAbilityKit.Editor.AgentExecutor'`
-  - `Found 6 automation tests based on 'HCIAbilityKit.Editor.AgentTools'`
+  - `Found 89 automation tests based on 'HCI.Editor.AgentExecutor'`
+  - `Found 6 automation tests based on 'HCI.Editor.AgentTools'`
   - `Result={成功} Name={RenameAssetExecuteRenamesRealAsset}`
   - `Result={成功} Name={MoveAssetExecuteMovesRealAsset}`
   - `**** TEST COMPLETE. EXIT CODE: 0 ****`

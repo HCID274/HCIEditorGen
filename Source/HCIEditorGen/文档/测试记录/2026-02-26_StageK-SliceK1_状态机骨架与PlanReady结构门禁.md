@@ -21,16 +21,16 @@
   - `Skills/H3_AgentPlanner/prompt.md`
 - 编译：`Build.bat HCIEditorGenEditor Win64 Development ...` 通过
 - 自动化（关键）：
-  - `HCIAbilityKit.Editor.AgentChat.StateMachine`（3/3）通过
-  - `HCIAbilityKit.Editor.AgentPlanValidation.ModifyIntentRequiresWriteStepAtPlanReady` 通过
-  - `HCIAbilityKit.Editor.AgentPlanValidation.WriteArgRequiresPipelineInputAtPlanReady` 通过
-  - `HCIAbilityKit.Editor.AgentPlanValidation.WriteArgPipelineInputPassesForScanChain` 通过
-  - `HCIAbilityKit.Editor.AgentExecutor.PipelineBypassAfterSearchBlockedWithE4009`（回归）通过
+  - `HCI.Editor.AgentChat.StateMachine`（3/3）通过
+  - `HCI.Editor.AgentPlanValidation.ModifyIntentRequiresWriteStepAtPlanReady` 通过
+  - `HCI.Editor.AgentPlanValidation.WriteArgRequiresPipelineInputAtPlanReady` 通过
+  - `HCI.Editor.AgentPlanValidation.WriteArgPipelineInputPassesForScanChain` 通过
+  - `HCI.Editor.AgentExecutor.PipelineBypassAfterSearchBlockedWithE4009`（回归）通过
 
 ## 2. UE 手测步骤（用户执行）
 
 1. 打开聊天入口
-   - `HCIAbilityKit.AgentChatUI`
+   - `HCI.AgentChatUI`
 2. 只读请求（应自动执行）
    - `检查一下 /Game/HCI 目录下的模型面数`
 3. 写请求（未确认前不得执行）

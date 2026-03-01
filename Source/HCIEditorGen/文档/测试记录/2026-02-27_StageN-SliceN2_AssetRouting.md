@@ -24,10 +24,10 @@
 1. 外部投递：
    - `python SourceData/AbilityKits/Python/hci_ingest_stage.py --input <测试目录> --source-app manual --suggest-target-root /Game/__HCI_Test/Incoming`
 2. UE 导入：
-   - `HCIAbilityKit.IngestDumpLatest`
-   - `HCIAbilityKit.IngestImportLatest`（确认导入）
+   - `HCI.IngestDumpLatest`
+   - `HCI.IngestImportLatest`（确认导入）
 3. Agent 整理：
-   - `HCIAbilityKit.AgentChatUI`
+   - `HCI.AgentChatUI`
    - 输入：`帮我规范化刚导入的批次，并归档到 /Game/__HCI_Test/Organized`
 4. 审批：
    - 在写审批卡点击 `通过`

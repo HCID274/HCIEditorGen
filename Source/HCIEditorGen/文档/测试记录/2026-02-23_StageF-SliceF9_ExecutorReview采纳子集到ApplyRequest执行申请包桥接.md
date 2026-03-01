@@ -36,17 +36,17 @@
 ## 4. 操作步骤（UE 手测）
 
 1. 生成关卡排雷审阅预览（Actor）
-   - `HCIAbilityKit.AgentExecutePlanReviewDemo ok_level_risk`
+   - `HCI.AgentExecutePlanReviewDemo ok_level_risk`
 2. （可选）筛选为单行，确保使用 F8 的“已采纳子集”
-   - `HCIAbilityKit.AgentExecutePlanReviewSelect 0`
+   - `HCI.AgentExecutePlanReviewSelect 0`
 3. 生成 ApplyRequest 摘要/行预览
-   - `HCIAbilityKit.AgentExecutePlanReviewPrepareApply`
+   - `HCI.AgentExecutePlanReviewPrepareApply`
 4. 生成 ApplyRequest JSON
-   - `HCIAbilityKit.AgentExecutePlanReviewPrepareApplyJson`
+   - `HCI.AgentExecutePlanReviewPrepareApplyJson`
 5. 生成预检阻断审阅预览（Asset，确认门禁失败）
-   - `HCIAbilityKit.AgentExecutePlanReviewDemo fail_confirm`
+   - `HCI.AgentExecutePlanReviewDemo fail_confirm`
 6. 再生成 ApplyRequest（应 `ready=false`）
-   - `HCIAbilityKit.AgentExecutePlanReviewPrepareApply`
+   - `HCI.AgentExecutePlanReviewPrepareApply`
 
 ## 5. 预期结果（Pass 判定标准）
 
@@ -89,13 +89,13 @@
 - 编译：通过
   - `Build.bat HCIEditorGenEditor Win64 Development ...` 成功。
 - 自动化：通过
-  - `HCIAbilityKit.Editor.AgentExecutorApply`：3/3 成功（F9 新增）
+  - `HCI.Editor.AgentExecutorApply`：3/3 成功（F9 新增）
     - `BlockedRowsMakeApplyRequestNotReady`
     - `JsonIncludesDigestReadyAndBlockedFields`
     - `ReadyWhenNoBlockedRows`
-  - `HCIAbilityKit.Editor.AgentExecutorReview`：通过（含 F6/F7/F8 审阅链路回归）
-  - `HCIAbilityKit.Editor.AgentExecutorReviewLocate`：2/2 成功（F7 回归）
-  - `HCIAbilityKit.Editor.AgentExecutorReviewSelect`：3/3 成功（F8 回归）
+  - `HCI.Editor.AgentExecutorReview`：通过（含 F6/F7/F8 审阅链路回归）
+  - `HCI.Editor.AgentExecutorReviewLocate`：2/2 成功（F7 回归）
+  - `HCI.Editor.AgentExecutorReviewSelect`：3/3 成功（F8 回归）
 - 留证日志：
   - `Saved/Logs/Automation_F9_AgentExecutorApply_serial.log`
   - `Saved/Logs/Automation_F9_AgentExecutorReview_serial.log`

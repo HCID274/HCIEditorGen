@@ -10,7 +10,7 @@
 
 ## 2. 影响范围
 
-- `HCIAbilityKit.AgentChatUI`（Slate Chat UI 展示层）
+- `HCI.AgentChatUI`（Slate Chat UI 展示层）
 - 写计划 `AwaitUserConfirm` 分支的审批交互（不改执行语义与门禁）
 
 ## 3. 前置条件
@@ -20,7 +20,7 @@
 
 ## 4. 操作步骤
 
-1. 打开 `HCIAbilityKit.AgentChatUI`。
+1. 打开 `HCI.AgentChatUI`。
 2. 输入写请求：`把 /Game/__HCI_Auto 下所有 Texture2D 的 Maximum Texture Size 设置为 1024，并执行修改。`
 3. 观察审批卡气泡内容与按钮样式。
 4. 点击 `打回`，确认不执行写操作。
@@ -44,7 +44,7 @@
 
 ## 8. 证据
 
-- 日志路径：`Saved/Logs/HCIEditorGen.log`（可检索 `HCIAbilityKit.AgentChatUI` / `AwaitUserConfirm` / `trigger=manual_commit`）
+- 日志路径：`Saved/Logs/HCIEditorGen.log`（可检索 `HCI.AgentChatUI` / `AwaitUserConfirm` / `trigger=manual_commit`）
 - 截图：用户在聊天中提供的 UE 截图（Image #1）
 
 ## 9. 问题与后续动作

@@ -39,10 +39,10 @@
 1. 编译插件：
    - `Build.bat HCIEditorGenEditor Win64 Development -Project=... -WaitMutex -FromMSBuild`
 2. 运行自动化测试：
-   - `UnrealEditor-Cmd.exe ... -ExecCmds="Automation RunTests HCIAbilityKit.Editor.AuditRules; Quit" -TestExit="Automation Test Queue Empty"`
+   - `UnrealEditor-Cmd.exe ... -ExecCmds="Automation RunTests HCI.Editor.AuditRules; Quit" -TestExit="Automation Test Queue Empty"`
 3. 在 UE 控制台执行（用户手测）：
-   - `HCIAbilityKit.AuditScan 20`
-   - `HCIAbilityKit.AuditScanAsync 1 20`
+   - `HCI.AuditScan 20`
+   - `HCI.AuditScanAsync 1 20`
 4. 观察摘要是否出现：
    - `issue_assets=... issue_info=... issue_warn=... issue_error=...`
 5. 观察行日志是否出现：
@@ -52,7 +52,7 @@
 ## 5. 预期结果
 
 - 编译通过，无新增编译错误。
-- 自动化测试发现并执行 2 条 `HCIAbilityKit.Editor.AuditRules.*`，结果均为成功。
+- 自动化测试发现并执行 2 条 `HCI.Editor.AuditRules.*`，结果均为成功。
 - 若某资产 `triangle_count_lod0_actual != triangle_count_lod0_expected_json`，日志中出现 `TriangleExpectedMismatchRule` 且严重级别为 `Warn`。
 - 若 expected 缺失，则不产生 mismatch issue（不误报）。
 
@@ -77,11 +77,11 @@
 - 构建日志：`C:\Users\50428\AppData\Local\UnrealBuildTool\Log.txt`
 - 自动化日志：`Saved/Logs/HCIEditorGen.log`
 - 自动化关键证据：
-  - `Found 2 automation tests based on 'HCIAbilityKit.Editor.AuditRules'`
+  - `Found 2 automation tests based on 'HCI.Editor.AuditRules'`
   - `Result={成功} Name={TriangleExpectedMismatchWarn}`
   - `Result={成功} Name={TriangleExpectedMissingShouldNotWarn}`
 - UE 手测关键证据（用户回传结论）：
-  - `HCIAbilityKit.AuditScan 20` 与 `HCIAbilityKit.AuditScanAsync 1 20` 执行成功
+  - `HCI.AuditScan 20` 与 `HCI.AuditScanAsync 1 20` 执行成功
   - `issue_assets=0 issue_info=0 issue_warn=0 issue_error=0`
   - 行日志含 `triangle_expected_lod0 / audit_issue_count / first_issue_rule`
 - 截图路径：待补

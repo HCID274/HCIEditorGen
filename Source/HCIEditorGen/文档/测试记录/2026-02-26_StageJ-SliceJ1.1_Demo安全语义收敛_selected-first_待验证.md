@@ -16,11 +16,11 @@
 
 ### 2.2 自动化测试验证
 - 用例 1：
-  - `HCIAbilityKit.Editor.AgentTools.ArgsSchemaFrozen`
+  - `HCI.Editor.AgentTools.ArgsSchemaFrozen`
   - 结果：通过。
   - 证据：`Saved/Logs/HCIEditorGen.log` 中存在 `Test Completed. Result={成功} Name={ArgsSchemaFrozen}`。
 - 用例 2：
-  - `HCIAbilityKit.Editor.AgentTools.ScanLevelMeshRisksSelectedWithoutSelectionFails`
+  - `HCI.Editor.AgentTools.ScanLevelMeshRisksSelectedWithoutSelectionFails`
   - 结果：通过。
   - 证据：`Saved/Logs/HCIEditorGen.log` 中存在 `Test Completed. Result={成功} Name={ScanLevelMeshRisksSelectedWithoutSelectionFails}`。
 
@@ -29,7 +29,7 @@
 ### 步骤 1：未选中对象触发扫描（通过）
 - 操作：
   1. 在关卡中取消所有 Actor 选择。
-  2. 打开 `HCIAbilityKit.AgentChatUI`，输入“扫描选中的物体风险”或同义指令。
+  2. 打开 `HCI.AgentChatUI`，输入“扫描选中的物体风险”或同义指令。
   3. 执行到 `ScanLevelMeshRisks(scope=selected)`。
 - 结果：
   1. 规划命中 `scope=selected`。

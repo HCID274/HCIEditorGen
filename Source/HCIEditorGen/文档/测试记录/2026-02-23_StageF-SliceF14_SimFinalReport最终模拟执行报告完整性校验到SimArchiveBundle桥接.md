@@ -11,46 +11,46 @@
   - `HCIAbilityKitAgentExecutorSimulateExecuteArchiveBundleBridge.*`
   - `HCIAbilityKitAgentSimulateExecuteArchiveBundleJsonSerializer.*`
 - 新增 Editor 命令：
-  - `HCIAbilityKit.AgentExecutePlanReviewPrepareSimArchiveBundle [tamper=none|digest|apply|review|confirm|receipt|final|ready]`
-  - `HCIAbilityKit.AgentExecutePlanReviewPrepareSimArchiveBundleJson [tamper=none|digest|apply|review|confirm|receipt|final|ready]`
+  - `HCI.AgentExecutePlanReviewPrepareSimArchiveBundle [tamper=none|digest|apply|review|confirm|receipt|final|ready]`
+  - `HCI.AgentExecutePlanReviewPrepareSimArchiveBundleJson [tamper=none|digest|apply|review|confirm|receipt|final|ready]`
 - 新增自动化测试：
-  - `HCIAbilityKit.Editor.AgentExecutorSimArchiveBundle.*`（成功 / `E4207` / `E4202` / JSON 字段）
+  - `HCI.Editor.AgentExecutorSimArchiveBundle.*`（成功 / `E4207` / `E4202` / JSON 字段）
 - 编译：`Build.bat HCIEditorGenEditor Win64 Development ...` 通过
 - 自动化：
-  - `HCIAbilityKit.Editor.AgentExecutorSimArchiveBundle`：`4/4` 通过（见 `Saved/Logs/Automation_F14_AgentExecutorSimArchiveBundle_serial.log`）
-  - `HCIAbilityKit.Editor.AgentExecutorSimFinalReport`：`4/4` 回归通过（见 `Saved/Logs/Automation_F14_AgentExecutorSimFinalReport_serial.log`）
+  - `HCI.Editor.AgentExecutorSimArchiveBundle`：`4/4` 通过（见 `Saved/Logs/Automation_F14_AgentExecutorSimArchiveBundle_serial.log`）
+  - `HCI.Editor.AgentExecutorSimFinalReport`：`4/4` 回归通过（见 `Saved/Logs/Automation_F14_AgentExecutorSimFinalReport_serial.log`）
   - 说明：并行启动 UE-Cmd 时出现 `UnrealEditorServer` 网络噪音日志，但 `abslog` 已稳定产出结果行，不影响本切片进入 `UE 手测门禁`。
 
 ## 2. UE 手测步骤（用户执行）
 
 1. 生成可通过链路（Review -> Select -> Apply -> Confirm -> ExecuteTicket -> SimExecuteReceipt -> SimFinalReport）
-   - `HCIAbilityKit.AgentExecutePlanReviewDemo ok_level_risk`
-   - `HCIAbilityKit.AgentExecutePlanReviewSelect 0`
-   - `HCIAbilityKit.AgentExecutePlanReviewPrepareApply`
-   - `HCIAbilityKit.AgentExecutePlanReviewPrepareConfirm 1 none`
-   - `HCIAbilityKit.AgentExecutePlanReviewPrepareExecuteTicket none`
-   - `HCIAbilityKit.AgentExecutePlanReviewPrepareSimExecuteReceipt none`
-   - `HCIAbilityKit.AgentExecutePlanReviewPrepareSimFinalReport none`
+   - `HCI.AgentExecutePlanReviewDemo ok_level_risk`
+   - `HCI.AgentExecutePlanReviewSelect 0`
+   - `HCI.AgentExecutePlanReviewPrepareApply`
+   - `HCI.AgentExecutePlanReviewPrepareConfirm 1 none`
+   - `HCI.AgentExecutePlanReviewPrepareExecuteTicket none`
+   - `HCI.AgentExecutePlanReviewPrepareSimExecuteReceipt none`
+   - `HCI.AgentExecutePlanReviewPrepareSimFinalReport none`
 2. 正常桥接（应通过）
-   - `HCIAbilityKit.AgentExecutePlanReviewPrepareSimArchiveBundle none`
+   - `HCI.AgentExecutePlanReviewPrepareSimArchiveBundle none`
 3. 输出 JSON
-   - `HCIAbilityKit.AgentExecutePlanReviewPrepareSimArchiveBundleJson none`
+   - `HCI.AgentExecutePlanReviewPrepareSimArchiveBundleJson none`
 4. digest 篡改（应拦截 `E4202`）
-   - `HCIAbilityKit.AgentExecutePlanReviewPrepareSimArchiveBundle digest`
+   - `HCI.AgentExecutePlanReviewPrepareSimArchiveBundle digest`
 5. confirm_id 篡改（应拦截 `E4202`）
-   - `HCIAbilityKit.AgentExecutePlanReviewPrepareSimArchiveBundle confirm`
+   - `HCI.AgentExecutePlanReviewPrepareSimArchiveBundle confirm`
 6. 回执未接受（应拦截 `E4206`）
-   - `HCIAbilityKit.AgentExecutePlanReviewPrepareSimArchiveBundle receipt`
+   - `HCI.AgentExecutePlanReviewPrepareSimArchiveBundle receipt`
 7. FinalReport 未完成（应拦截 `E4207`）
-   - `HCIAbilityKit.AgentExecutePlanReviewPrepareSimArchiveBundle final`
+   - `HCI.AgentExecutePlanReviewPrepareSimArchiveBundle final`
 8. 强制 not-ready（应拦截 `E4205`）
-   - `HCIAbilityKit.AgentExecutePlanReviewPrepareSimArchiveBundle ready`
+   - `HCI.AgentExecutePlanReviewPrepareSimArchiveBundle ready`
 9. 未确认链路（应拦截 `E4005`）
-   - `HCIAbilityKit.AgentExecutePlanReviewPrepareConfirm 0 none`
-   - `HCIAbilityKit.AgentExecutePlanReviewPrepareExecuteTicket none`
-   - `HCIAbilityKit.AgentExecutePlanReviewPrepareSimExecuteReceipt none`
-   - `HCIAbilityKit.AgentExecutePlanReviewPrepareSimFinalReport none`
-   - `HCIAbilityKit.AgentExecutePlanReviewPrepareSimArchiveBundle none`
+   - `HCI.AgentExecutePlanReviewPrepareConfirm 0 none`
+   - `HCI.AgentExecutePlanReviewPrepareExecuteTicket none`
+   - `HCI.AgentExecutePlanReviewPrepareSimExecuteReceipt none`
+   - `HCI.AgentExecutePlanReviewPrepareSimFinalReport none`
+   - `HCI.AgentExecutePlanReviewPrepareSimArchiveBundle none`
 
 ## 3. Pass 判定标准
 
@@ -87,7 +87,7 @@
 
 - 结果：`Pass`
 - 证据（用户日志结论摘要）：
-  - 正常场景 `HCIAbilityKit.AgentExecutePlanReviewPrepareSimArchiveBundle none` 命中 `archive_ready=true archive_status=ready reason=simulate_archive_bundle_ready`，并输出 `archive_digest=crc32_1DA50398` 与完整 7 级 ID 链；
+  - 正常场景 `HCI.AgentExecutePlanReviewPrepareSimArchiveBundle none` 命中 `archive_ready=true archive_status=ready reason=simulate_archive_bundle_ready`，并输出 `archive_digest=crc32_1DA50398` 与完整 7 级 ID 链；
   - 阻断场景命中：
     - `digest` -> `E4202 / selection_digest_mismatch`
     - `confirm` -> `E4202 / confirm_request_id_mismatch`

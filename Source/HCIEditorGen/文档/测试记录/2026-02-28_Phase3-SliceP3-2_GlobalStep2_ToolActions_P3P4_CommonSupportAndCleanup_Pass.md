@@ -18,7 +18,7 @@
 
 在 UE 控制台执行：
 
-1. 打开 ChatUI：`HCIAbilityKit.AgentChatUI`
+1. 打开 ChatUI：`HCI.AgentChatUI`
 2. 只读链路（应直接完成并给出简洁结果摘要）：
    - `统计 /Game/Temp 的模型面数`（`ScanMeshTriangleCount`）
    - `检查当前关卡全场景的碰撞和默认材质`（`ScanLevelMeshRisks`）

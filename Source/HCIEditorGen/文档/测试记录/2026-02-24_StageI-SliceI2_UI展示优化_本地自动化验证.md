@@ -16,13 +16,13 @@
 3. 编译验证（GREEN）  
    - `Build.bat HCIEditorGenEditor Win64 Development ... -NoHotReloadFromIDE`。
 4. 自动化测试  
-   - `Automation RunTests HCIAbilityKit.Editor.AgentPreviewUI.Rows`（2 条）。
+   - `Automation RunTests HCI.Editor.AgentPreviewUI.Rows`（2 条）。
 
 ## 2. 预期结果
 
 - 两条测试都通过：  
-  - `HCIAbilityKit.Editor.AgentPreviewUI.Rows.PendingStateForPlaceholderStep`  
-  - `HCIAbilityKit.Editor.AgentPreviewUI.Rows.AssetMissingStateForInvalidAssetPath`
+  - `HCI.Editor.AgentPreviewUI.Rows.PendingStateForPlaceholderStep`  
+  - `HCI.Editor.AgentPreviewUI.Rows.AssetMissingStateForInvalidAssetPath`
 - 测试完成退出码 `0`。
 
 ## 3. 实际结果
@@ -33,7 +33,7 @@
 ## 4. 证据
 
 - 日志关键行：
-  - `Found 2 automation tests based on 'HCIAbilityKit.Editor.AgentPreviewUI.Rows'`
+  - `Found 2 automation tests based on 'HCI.Editor.AgentPreviewUI.Rows'`
   - `Result={成功} Name={AssetMissingStateForInvalidAssetPath}`
   - `Result={成功} Name={PendingStateForPlaceholderStep}`
   - `**** TEST COMPLETE. EXIT CODE: 0 ****`
@@ -53,15 +53,15 @@
 - 回归验证：
   - 编译：`Build.bat ...` 通过（ExitCode=0）。
   - 新增自动化：
-    - `HCIAbilityKit.Editor.AgentPlanValidation.VariableSourceMustPrecedeConsumer` 通过。
+    - `HCI.Editor.AgentPlanValidation.VariableSourceMustPrecedeConsumer` 通过。
   - 既有自动化：
-    - `HCIAbilityKit.Editor.AgentPreviewUI.Rows` 2 条继续通过。
+    - `HCI.Editor.AgentPreviewUI.Rows` 2 条继续通过。
 
 ## 7. UE 手测门禁（通过）
 
 - 手测命令：
-  - `HCIAbilityKit.AgentPlanPreviewUI "帮我看看那个MNew文件夹里有什么"`
-  - `HCIAbilityKit.AgentPlanPreviewUI "整理临时目录资产并归档"`
+  - `HCI.AgentPlanPreviewUI "帮我看看那个MNew文件夹里有什么"`
+  - `HCI.AgentPlanPreviewUI "整理临时目录资产并归档"`
 - 关键证据：
   - 两条链路均 `provider=llm provider_mode=real_http fallback_used=false plan_validation=ok`。
   - 第一条命中 `route_reason=directory_discovery_search_first`，步骤顺序为：

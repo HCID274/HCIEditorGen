@@ -37,18 +37,18 @@
 1. 编译插件（助手已完成本地验证）：
    - `Build.bat HCIEditorGenEditor Win64 Development -Project=... -WaitMutex -FromMSBuild`
 2. 自动化测试（助手已完成本地验证）：
-   - `UnrealEditor-Cmd.exe ... -ExecCmds="Automation RunTests HCIAbilityKit.Editor.AgentDryRun; Quit"`
-   - `UnrealEditor-Cmd.exe ... -ExecCmds="Automation RunTests HCIAbilityKit.Editor.AgentTools; Quit"`（回归）
-   - `UnrealEditor-Cmd.exe ... -ExecCmds="Automation RunTests HCIAbilityKit.Editor.AuditResults; Quit"`（回归）
-   - `UnrealEditor-Cmd.exe ... -ExecCmds="Automation RunTests HCIAbilityKit.Editor.AuditScanAsync; Quit"`（回归）
+   - `UnrealEditor-Cmd.exe ... -ExecCmds="Automation RunTests HCI.Editor.AgentDryRun; Quit"`
+   - `UnrealEditor-Cmd.exe ... -ExecCmds="Automation RunTests HCI.Editor.AgentTools; Quit"`（回归）
+   - `UnrealEditor-Cmd.exe ... -ExecCmds="Automation RunTests HCI.Editor.AuditResults; Quit"`（回归）
+   - `UnrealEditor-Cmd.exe ... -ExecCmds="Automation RunTests HCI.Editor.AuditScanAsync; Quit"`（回归）
 3. UE 手测：生成 Dry-Run Diff 列表预览
-   - `HCIAbilityKit.DryRunDiffPreviewDemo`
+   - `HCI.DryRunDiffPreviewDemo`
 4. UE 手测：查看 JSON 契约输出（日志）
-   - `HCIAbilityKit.DryRunDiffPreviewJson`
+   - `HCI.DryRunDiffPreviewJson`
 5. UE 手测：测试定位入口（至少测 1 条 Asset 行）
-   - `HCIAbilityKit.DryRunDiffLocate 0`
+   - `HCI.DryRunDiffLocate 0`
 6. UE 手测：测试 Actor 行定位策略日志（可接受找不到 Actor，但策略必须是 `camera_focus`）
-   - `HCIAbilityKit.DryRunDiffLocate 2`
+   - `HCI.DryRunDiffLocate 2`
 
 ## 5. 预期结果
 
@@ -86,14 +86,14 @@
 
 - 编译：通过（助手本地已验证）。
 - 自动化：通过（助手本地已验证）。
-  - `HCIAbilityKit.Editor.AgentDryRun`：2/2 成功（`NormalizeLocateStrategy / JsonSerializerIncludesCoreFields`）。
-  - `HCIAbilityKit.Editor.AgentTools`：3/3 成功（回归）。
-  - `HCIAbilityKit.Editor.AuditResults`：3/3 成功（回归）。
-  - `HCIAbilityKit.Editor.AuditScanAsync`：5/5 成功（回归）。
+  - `HCI.Editor.AgentDryRun`：2/2 成功（`NormalizeLocateStrategy / JsonSerializerIncludesCoreFields`）。
+  - `HCI.Editor.AgentTools`：3/3 成功（回归）。
+  - `HCI.Editor.AuditResults`：3/3 成功（回归）。
+  - `HCI.Editor.AuditScanAsync`：5/5 成功（回归）。
 - 本地命令行 smoke（说明）：
-  - `UnrealEditor-Cmd -ExecCmds="HCIAbilityKit.DryRunDiffPreviewDemo; ..."` 仅稳定记录 `Cmd:`，未稳定执行插件控制台命令日志，判定为 `ExecCmds` 时机限制；不作为 E2 失败依据。
+  - `UnrealEditor-Cmd -ExecCmds="HCI.DryRunDiffPreviewDemo; ..."` 仅稳定记录 `Cmd:`，未稳定执行插件控制台命令日志，判定为 `ExecCmds` 时机限制；不作为 E2 失败依据。
 - UE 手测：通过。
-  - `HCIAbilityKit.DryRunDiffPreviewDemo` 无 `Error`，日志仅含正常 `Display` 输出。
+  - `HCI.DryRunDiffPreviewDemo` 无 `Error`，日志仅含正常 `Display` 输出。
   - 摘要日志命中：
     - `summary request_id=req_dryrun_demo_... total_candidates=4 modifiable=3 skipped=1`
   - `row=` 列表日志字段完整，包含：
@@ -103,14 +103,14 @@
     - `row0/row1/row3` 均为 `object_type=asset locate_strategy=sync_browser`
   - `actor` 行定位策略正确：
     - `row2` 为 `object_type=actor locate_strategy=camera_focus`
-  - `HCIAbilityKit.DryRunDiffPreviewJson` 输出中包含：
+  - `HCI.DryRunDiffPreviewJson` 输出中包含：
     - `request_id`
     - `summary`
     - `diff_items`
     - `locate_strategy`
     - `evidence_key`
-  - `HCIAbilityKit.DryRunDiffLocate 0` 输出 `strategy=sync_browser`，且定位成功。
-  - `HCIAbilityKit.DryRunDiffLocate 2` 输出 `strategy=camera_focus`；`actor_not_found` 为允许结果（样例 Actor 不在当前关卡）。
+  - `HCI.DryRunDiffLocate 0` 输出 `strategy=sync_browser`，且定位成功。
+  - `HCI.DryRunDiffLocate 2` 输出 `strategy=camera_focus`；`actor_not_found` 为允许结果（样例 Actor 不在当前关卡）。
 
 ## 7. 结论
 
@@ -121,12 +121,12 @@
 - 构建日志：`C:\Users\50428\AppData\Local\UnrealBuildTool\Log.txt`
 - 自动化日志：`Saved/Logs/HCIEditorGen.log`
 - 自动化关键证据（助手本地已验证）：
-  - `Found 2 automation tests based on 'HCIAbilityKit.Editor.AgentDryRun'`
+  - `Found 2 automation tests based on 'HCI.Editor.AgentDryRun'`
   - `Result={成功} Name={JsonSerializerIncludesCoreFields}`
   - `Result={成功} Name={NormalizeLocateStrategy}`
-  - `Found 3 automation tests based on 'HCIAbilityKit.Editor.AgentTools'`
-  - `Found 3 automation tests based on 'HCIAbilityKit.Editor.AuditResults'`
-  - `Found 5 automation tests based on 'HCIAbilityKit.Editor.AuditScanAsync'`
+  - `Found 3 automation tests based on 'HCI.Editor.AgentTools'`
+  - `Found 3 automation tests based on 'HCI.Editor.AuditResults'`
+  - `Found 5 automation tests based on 'HCI.Editor.AuditScanAsync'`
 - UE 手测关键证据（用户回传结论）：
   - `DryRunDiffPreviewDemo` 无 `Error`，摘要日志命中 `total_candidates=4 modifiable=3 skipped=1`
   - `row=` 列表日志字段完整（基础字段 + `object_type/locate_strategy/evidence_key`）

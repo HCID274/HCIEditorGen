@@ -6,7 +6,7 @@
 
 ## 1. 测试步骤
 
-1. UE 控制台执行：`HCIAbilityKit.AgentPlanWithLLMFallbackDemo contract_invalid 扫描关卡缺碰撞和默认材质`
+1. UE 控制台执行：`HCI.AgentPlanWithLLMFallbackDemo contract_invalid 扫描关卡缺碰撞和默认材质`
 2. 观察 Planner 与 AgentPlan 摘要日志。
 
 ## 2. 预期结果

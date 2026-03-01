@@ -14,7 +14,7 @@
 ## 3. 测试步骤与预期
 
 **步骤 1：触发贴图分辨率限制**
-- 操作：打开 UE，执行控制台命令 `HCIAbilityKit.AgentChatUI`。
+- 操作：打开 UE，执行控制台命令 `HCI.AgentChatUI`。
 - 操作：在聊天窗口中输入 `把临时目录里所有的贴图分辨率限制到 1024` 并发送。
 - 预期：
   1. 弹出 `PlanPreviewUI`，展示 `SearchPath -> ScanAssets -> SetTextureMaxSize` 计划。
@@ -32,9 +32,9 @@
 - **本地自动化结论**：通过。
 - **本地自动化证据（2026-02-26）**：
   1. 编译通过：`Build.bat HCIEditorGenEditor Win64 Development ... -NoHotReloadFromIDE`（ExitCode=0）。
-  2. 用例通过：`HCIAbilityKit.Editor.AgentTools.SetTextureMaxSizeExecuteModifiesRealTexture`。
-  3. 用例通过：`HCIAbilityKit.Editor.AgentTools.SetMeshLODGroupExecuteModifiesRealStaticMesh`。
-  4. 用例通过：`HCIAbilityKit.Editor.AgentTools.SetMeshLODGroupExecuteBlocksNaniteMesh`（拦截口径 `E4010 / lod_tool_nanite_enabled_blocked`）。
+  2. 用例通过：`HCI.Editor.AgentTools.SetTextureMaxSizeExecuteModifiesRealTexture`。
+  3. 用例通过：`HCI.Editor.AgentTools.SetMeshLODGroupExecuteModifiesRealStaticMesh`。
+  4. 用例通过：`HCI.Editor.AgentTools.SetMeshLODGroupExecuteBlocksNaniteMesh`（拦截口径 `E4010 / lod_tool_nanite_enabled_blocked`）。
 - **UE 手测门禁结论**：通过（用户反馈 `Pass`）。
 - **UE 手测证据（2026-02-26）**：
   1. 贴图链路：`ScanAssets -> SetTextureMaxSize`，执行后 `terminal=completed`、`succeeded=2 failed=0`，并出现资产保存日志（`LogSavePackage`）。

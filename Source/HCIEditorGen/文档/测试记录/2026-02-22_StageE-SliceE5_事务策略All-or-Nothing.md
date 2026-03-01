@@ -36,19 +36,19 @@
 1. 编译插件（助手已完成本地验证）
    - `Build.bat HCIEditorGenEditor Win64 Development -Project=... -WaitMutex -FromMSBuild`
 2. 自动化测试（助手已完成本地验证）
-   - `UnrealEditor-Cmd.exe ... -ExecCmds="Automation RunTests HCIAbilityKit.Editor.AgentExec; Quit"`（扩展至 9 条）
-   - `UnrealEditor-Cmd.exe ... -ExecCmds="Automation RunTests HCIAbilityKit.Editor.AgentTools; Quit"`（回归）
-   - `UnrealEditor-Cmd.exe ... -ExecCmds="Automation RunTests HCIAbilityKit.Editor.AgentDryRun; Quit"`（回归）
+   - `UnrealEditor-Cmd.exe ... -ExecCmds="Automation RunTests HCI.Editor.AgentExec; Quit"`（扩展至 9 条）
+   - `UnrealEditor-Cmd.exe ... -ExecCmds="Automation RunTests HCI.Editor.AgentTools; Quit"`（回归）
+   - `UnrealEditor-Cmd.exe ... -ExecCmds="Automation RunTests HCI.Editor.AgentDryRun; Quit"`（回归）
 3. UE 手测（默认三案例摘要）
-   - `HCIAbilityKit.AgentTransactionDemo`
+   - `HCI.AgentTransactionDemo`
 4. UE 手测（自定义：全部成功，期望全提交）
-   - `HCIAbilityKit.AgentTransactionDemo 3 0`
+   - `HCI.AgentTransactionDemo 3 0`
 5. UE 手测（自定义：第 2 步失败，期望整单回滚）
-   - `HCIAbilityKit.AgentTransactionDemo 3 2`
+   - `HCI.AgentTransactionDemo 3 2`
 
 ## 5. 预期结果
 
-- `HCIAbilityKit.AgentTransactionDemo`（无参数）输出 3 条案例日志 + 1 条摘要日志：
+- `HCI.AgentTransactionDemo`（无参数）输出 3 条案例日志 + 1 条摘要日志：
   - 案例字段包含：
     - `request_id`
     - `transaction_mode`
@@ -68,11 +68,11 @@
     - `transaction_mode=all_or_nothing`
     - `expected_failed_code=E4007`
     - `validation=ok`
-- `HCIAbilityKit.AgentTransactionDemo 3 0` 命中：
+- `HCI.AgentTransactionDemo 3 0` 命中：
   - `committed=true`
   - `rolled_back=false`
   - `committed_steps=3`
-- `HCIAbilityKit.AgentTransactionDemo 3 2` 命中：
+- `HCI.AgentTransactionDemo 3 2` 命中：
   - `committed=false`
   - `rolled_back=true`
   - `failed_step_index=2`
@@ -85,7 +85,7 @@
 - 编译：通过。
   - `Build.bat HCIEditorGenEditor Win64 Development ...` 成功。
 - 自动化：通过。
-  - `HCIAbilityKit.Editor.AgentExec`：9/9 成功
+  - `HCI.Editor.AgentExec`：9/9 成功
     - `ConfirmGateBlocksUnconfirmedWrite`
     - `ConfirmGateAllowsReadOnlyWithoutConfirm`
     - `ConfirmGateAllowsConfirmedWrite`
@@ -95,17 +95,17 @@
     - `TransactionCommitsAllStepsOnSuccess`
     - `TransactionRollsBackOnFailure`
     - `TransactionRejectsUnknownToolBeforeExecution`
-  - `HCIAbilityKit.Editor.AgentTools`：3/3 成功（回归）
-  - `HCIAbilityKit.Editor.AgentDryRun`：2/2 成功（回归）
+  - `HCI.Editor.AgentTools`：3/3 成功（回归）
+  - `HCI.Editor.AgentDryRun`：2/2 成功（回归）
 - 说明（日志留证方式）：
   - 使用 `-abslog=` 分离日志文件，避免覆盖 `Saved/Logs/HCIEditorGen.log`。
   - 包装层偶发 `UnrealEditorServer-HCIEditorGen` 网络报错出现在 UE-Cmd 退出阶段，不属于插件测试失败依据；以自动化测试结果行（`Result={成功}`）为准。
 - UE 手测：通过。
-  - `HCIAbilityKit.AgentTransactionDemo`（无参）无 `Error`，输出 3 条案例日志 + 1 条摘要日志：
+  - `HCI.AgentTransactionDemo`（无参）无 `Error`，输出 3 条案例日志 + 1 条摘要日志：
     - `summary total_cases=3 committed=1 rolled_back=2 transaction_mode=all_or_nothing expected_failed_code=E4007 validation=ok`
-  - `HCIAbilityKit.AgentTransactionDemo 3 0`：
+  - `HCI.AgentTransactionDemo 3 0`：
     - 命中 `committed=true rolled_back=false committed_steps=3`
-  - `HCIAbilityKit.AgentTransactionDemo 3 2`：
+  - `HCI.AgentTransactionDemo 3 2`：
     - 命中 `committed=false rolled_back=true failed_step_index=2 error_code=E4007 reason=step_failed_all_or_nothing_rollback committed_steps=0`
     - 为预期整单回滚场景，出现 `Warning` 日志但无 `Error`
 
@@ -121,12 +121,12 @@
   - `Saved/Logs/Automation_AgentTools_E5.log`
   - `Saved/Logs/Automation_AgentDryRun_E5.log`
 - 自动化关键证据（助手本地已验证）：
-  - `Found 9 automation tests based on 'HCIAbilityKit.Editor.AgentExec'`
+  - `Found 9 automation tests based on 'HCI.Editor.AgentExec'`
   - `Result={成功} Name={TransactionCommitsAllStepsOnSuccess}`
   - `Result={成功} Name={TransactionRollsBackOnFailure}`
   - `Result={成功} Name={TransactionRejectsUnknownToolBeforeExecution}`
-  - `Found 3 automation tests based on 'HCIAbilityKit.Editor.AgentTools'`
-  - `Found 2 automation tests based on 'HCIAbilityKit.Editor.AgentDryRun'`
+  - `Found 3 automation tests based on 'HCI.Editor.AgentTools'`
+  - `Found 2 automation tests based on 'HCI.Editor.AgentDryRun'`
 
 ## 9. 问题与后续动作
 

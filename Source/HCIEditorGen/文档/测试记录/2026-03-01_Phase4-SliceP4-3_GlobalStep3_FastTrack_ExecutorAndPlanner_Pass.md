@@ -25,7 +25,7 @@
 ## 4. 操作步骤
 
 1. 本地编译：`Build.bat HCIEditorGenEditor Win64 Development ... -NoHotReloadFromIDE`
-2. 进入 UE，运行：`HCIAbilityKit.AgentChatUI`
+2. 进入 UE，运行：`HCI.AgentChatUI`
 3. 回归三条主链路（只读 + 预览 + 写确认）：
    - `统计 /Game/Temp 的模型面数`
    - `检查当前关卡全场景的碰撞和默认材质`
@@ -39,7 +39,7 @@
 ## 6. 实际结果
 
 - 编译通过。
-- 进入 UE，运行 `HCIAbilityKit.AgentChatUI`，三条主链路回归通过；行为与切片前一致。
+- 进入 UE，运行 `HCI.AgentChatUI`，三条主链路回归通过；行为与切片前一致。
 
 ## 7. 结论
 

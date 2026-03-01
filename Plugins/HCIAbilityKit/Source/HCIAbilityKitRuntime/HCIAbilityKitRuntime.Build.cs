@@ -9,6 +9,7 @@ public class HCIAbilityKitRuntime : ModuleRules
 	public HCIAbilityKitRuntime(ReadOnlyTargetRules Target) : base(Target)
 	{
 		PCHUsage = PCHUsageMode.UseExplicitOrSharedPCHs;
+		bUseUnity = false;
 
 		// 运行时基础框架依赖项
 		PublicDependencyModuleNames.AddRange(

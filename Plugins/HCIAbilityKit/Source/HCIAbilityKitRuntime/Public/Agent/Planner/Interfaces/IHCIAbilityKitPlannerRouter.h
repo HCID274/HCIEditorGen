@@ -14,5 +14,7 @@ public:
 
 	virtual TSharedRef<IHCIAbilityKitPlannerProvider> SelectProvider(
 		const FHCIAbilityKitAgentPlannerBuildOptions& Options) = 0;
-};
 
+	virtual FHCIAbilityKitAgentPlannerMetricsSnapshot GetMetricsSnapshot() const = 0;
+	virtual void ResetMetricsForTesting() = 0;
+};

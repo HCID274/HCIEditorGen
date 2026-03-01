@@ -1,5 +1,7 @@
 #include "HCIAbilityKitEditorModule.h"
 
+#include "HCIAbilityKitRuntimeModule.h"
+
 #include "AssetRegistry/IAssetRegistry.h"
 #include "AssetRegistry/AssetRegistryModule.h"
 #include "Agent/Executor/HCIAbilityKitAgentExecutionGate.h"
@@ -1874,6 +1876,12 @@ static bool HCI_RunPythonHook(const FString& SourceFilename, FHCIAbilityKitParse
 
 void FHCIAbilityKitEditorModule::StartupModule()
 {
+	// Planner Router DI: Editor-side decides and registers the real router instance.
+	{
+		FHCIAbilityKitRuntimeModule& RuntimeModule = FHCIAbilityKitRuntimeModule::Get();
+		RuntimeModule.RegisterPlannerRouter(RuntimeModule.CreateDefaultPlannerRouter());
+	}
+
 	FHCIAbilityKitSearchIndexService::Get().RebuildFromAssetRegistry();
 
 	FHCIAbilityKitParserService::SetPythonHook(

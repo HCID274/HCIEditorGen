@@ -1,17 +1,10 @@
 #include "Agent/Planner/HCIAbilityKitAgentPlanner.h"
 
-#include "Agent/Planner/Interfaces/IHCIAbilityKitPlannerProvider.h"
-#include "Agent/Planner/Providers/HCIAbilityKitKeywordPlannerProvider.h"
-#include "Agent/Planner/Router/HCIAbilityKitPlannerRouter_Default.h"
+#include "HCIAbilityKitRuntimeModule.h"
 
-namespace
-{
-static FHCIAbilityKitPlannerRouter_Default& HCI_GetPlannerRouter()
-{
-	static FHCIAbilityKitPlannerRouter_Default Router;
-	return Router;
-}
-} // namespace
+#include "Agent/Planner/Interfaces/IHCIAbilityKitPlannerProvider.h"
+#include "Agent/Planner/Interfaces/IHCIAbilityKitPlannerRouter.h"
+#include "Agent/Planner/Providers/HCIAbilityKitKeywordPlannerProvider.h"
 
 bool FHCIAbilityKitAgentPlanner::BuildPlanFromNaturalLanguage(
 	const FString& UserText,
@@ -37,7 +30,7 @@ bool FHCIAbilityKitAgentPlanner::BuildPlanFromNaturalLanguageWithProvider(
 	FHCIAbilityKitAgentPlannerResultMetadata& OutMetadata,
 	FString& OutError)
 {
-	const TSharedRef<IHCIAbilityKitPlannerProvider> Provider = HCI_GetPlannerRouter().SelectProvider(Options);
+	const TSharedRef<IHCIAbilityKitPlannerProvider> Provider = FHCIAbilityKitRuntimeModule::Get().GetPlannerRouter()->SelectProvider(Options);
 	return Provider->BuildPlan(UserText, RequestId, ToolRegistry, Options, OutPlan, OutRouteReason, OutMetadata, OutError);
 }
 
@@ -53,17 +46,16 @@ void FHCIAbilityKitAgentPlanner::BuildPlanFromNaturalLanguageWithProviderAsync(
 		return;
 	}
 
-	const TSharedRef<IHCIAbilityKitPlannerProvider> Provider = HCI_GetPlannerRouter().SelectProvider(Options);
+	const TSharedRef<IHCIAbilityKitPlannerProvider> Provider = FHCIAbilityKitRuntimeModule::Get().GetPlannerRouter()->SelectProvider(Options);
 	Provider->BuildPlanAsync(UserText, RequestId, ToolRegistry, Options, MoveTemp(OnComplete));
 }
 
 FHCIAbilityKitAgentPlannerMetricsSnapshot FHCIAbilityKitAgentPlanner::GetMetricsSnapshot()
 {
-	return FHCIAbilityKitPlannerRouter_Default::GetMetricsSnapshot();
+	return FHCIAbilityKitRuntimeModule::Get().GetPlannerRouter()->GetMetricsSnapshot();
 }
 
 void FHCIAbilityKitAgentPlanner::ResetMetricsForTesting()
 {
-	FHCIAbilityKitPlannerRouter_Default::ResetMetricsForTesting();
+	FHCIAbilityKitRuntimeModule::Get().GetPlannerRouter()->ResetMetricsForTesting();
 }
-

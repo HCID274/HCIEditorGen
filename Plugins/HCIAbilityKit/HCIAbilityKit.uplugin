@@ -26,17 +26,17 @@
   ],
   "Modules": [
     {
-      "Name": "HCIAbilityKitRuntime",
+      "Name": "HCIRuntime",
       "Type": "Runtime",
       "LoadingPhase": "Default"
     },
     {
-      "Name": "HCIAbilityKitEditor",
+      "Name": "HCIEditor",
       "Type": "Editor",
       "LoadingPhase": "Default"
     },
     {
-      "Name": "HCIAbilityKitTests",
+      "Name": "HCITests",
       "Type": "DeveloperTool",
       "LoadingPhase": "Default"
     }

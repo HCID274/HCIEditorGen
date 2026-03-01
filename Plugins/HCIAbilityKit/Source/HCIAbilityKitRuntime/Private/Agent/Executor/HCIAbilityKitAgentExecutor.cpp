@@ -1,6 +1,8 @@
 #include "Agent/Executor/HCIAbilityKitAgentExecutor.h"
 
 #include "Agent/Executor/HCIAbilityKitAgentExecutionGate.h"
+#include "Agent/Executor/Resolver/HCIAbilityKitEvidenceContext_Default.h"
+#include "Agent/Executor/Resolver/HCIAbilityKitEvidenceResolver_Default.h"
 #include "Common/HCIAbilityKitTimeFormat.h"
 #include "Dom/JsonObject.h"
 #include "Dom/JsonValue.h"
@@ -10,7 +12,12 @@ DEFINE_LOG_CATEGORY_STATIC(LogHCIAbilityKitAgentExecutor, Log, All);
 
 namespace
 {
-static bool HCI_ParseVariableTemplate(
+static bool HCI_TextMayContainVariableTemplate(const FString& InText)
+{
+	return InText.Contains(TEXT("{{")) && InText.Contains(TEXT("}}"));
+}
+
+static bool HCI_TryParseVariableTemplateReference(
 	const FString& InText,
 	FString& OutStepId,
 	FString& OutEvidenceKey,
@@ -46,313 +53,16 @@ static bool HCI_ParseVariableTemplate(
 	return !OutStepId.IsEmpty() && !OutEvidenceKey.IsEmpty();
 }
 
-static bool HCI_StringMayContainVariableTemplate(const FString& InText)
-{
-	return InText.Contains(TEXT("{{")) && InText.Contains(TEXT("}}"));
-}
-
-static bool HCI_JsonValueContainsVariableTemplate(const TSharedPtr<FJsonValue>& Value)
-{
-	if (!Value.IsValid())
-	{
-		return false;
-	}
-
-	switch (Value->Type)
-	{
-	case EJson::String:
-		return HCI_StringMayContainVariableTemplate(Value->AsString());
-	case EJson::Array:
-	{
-		for (const TSharedPtr<FJsonValue>& Item : Value->AsArray())
-		{
-			if (HCI_JsonValueContainsVariableTemplate(Item))
-			{
-				return true;
-			}
-		}
-		return false;
-	}
-	case EJson::Object:
-	{
-		const TSharedPtr<FJsonObject> Obj = Value->AsObject();
-		if (!Obj.IsValid())
-		{
-			return false;
-		}
-		for (const TPair<FString, TSharedPtr<FJsonValue>>& Pair : Obj->Values)
-		{
-			if (HCI_JsonValueContainsVariableTemplate(Pair.Value))
-			{
-				return true;
-			}
-		}
-		return false;
-	}
-	default:
-		return false;
-	}
-}
-
-static bool HCI_JsonObjectContainsVariableTemplate(const TSharedPtr<FJsonObject>& Obj)
-{
-	if (!Obj.IsValid())
-	{
-		return false;
-	}
-
-	for (const TPair<FString, TSharedPtr<FJsonValue>>& Pair : Obj->Values)
-	{
-		if (HCI_JsonValueContainsVariableTemplate(Pair.Value))
-		{
-			return true;
-		}
-	}
-	return false;
-}
-
-static bool HCI_PlanContainsVariableTemplate(const FHCIAbilityKitAgentPlan& Plan)
+static bool HCI_PlanContainsVariableTemplate(const FHCIAbilityKitAgentPlan& Plan, const IHCIAbilityKitEvidenceResolver& EvidenceResolver)
 {
 	for (const FHCIAbilityKitAgentPlanStep& Step : Plan.Steps)
 	{
-		if (HCI_JsonObjectContainsVariableTemplate(Step.Args))
+		if (EvidenceResolver.StepArgsMayContainTemplates(Step.Args))
 		{
 			return true;
 		}
 	}
 	return false;
-}
-
-static bool HCI_TryResolveEvidenceReference(
-	const TMap<FString, FString>& Evidence,
-	const FString& EvidenceKey,
-	const bool bHasIndex,
-	const int32 Index,
-	FString& OutValue)
-{
-	OutValue.Reset();
-
-	if (bHasIndex)
-	{
-		const FString IndexedKey = FString::Printf(TEXT("%s[%d]"), *EvidenceKey, Index);
-		if (const FString* IndexedValue = Evidence.Find(IndexedKey))
-		{
-			OutValue = *IndexedValue;
-			return !OutValue.IsEmpty();
-		}
-
-		if (const FString* BaseValue = Evidence.Find(EvidenceKey))
-		{
-			TArray<FString> Tokens;
-			BaseValue->ParseIntoArray(Tokens, TEXT("|"), true);
-			if (Tokens.IsValidIndex(Index))
-			{
-				OutValue = Tokens[Index];
-				return !OutValue.IsEmpty();
-			}
-		}
-		return false;
-	}
-
-	if (const FString* Value = Evidence.Find(EvidenceKey))
-	{
-		OutValue = *Value;
-		return !OutValue.IsEmpty();
-	}
-	return false;
-}
-
-static void HCI_ParsePipeDelimitedEvidenceList(const FString& InText, TArray<FString>& OutValues)
-{
-	OutValues.Reset();
-	if (!InText.Contains(TEXT("|")))
-	{
-		return;
-	}
-
-	TArray<FString> Tokens;
-	InText.ParseIntoArray(Tokens, TEXT("|"), true);
-	for (FString& Token : Tokens)
-	{
-		Token.TrimStartAndEndInline();
-		if (!Token.IsEmpty())
-		{
-			OutValues.Add(Token);
-		}
-	}
-}
-
-static bool HCI_ResolveJsonValueInternal(
-	const TSharedPtr<FJsonValue>& InValue,
-	const TMap<FString, TMap<FString, FString>>& StepEvidenceContext,
-	TSharedPtr<FJsonValue>& OutValue,
-	FString& OutErrorCode,
-	FString& OutReason)
-{
-	if (!InValue.IsValid())
-	{
-		OutValue = InValue;
-		return true;
-	}
-
-	switch (InValue->Type)
-	{
-	case EJson::String:
-	{
-		FString Raw = InValue->AsString();
-		if (!HCI_StringMayContainVariableTemplate(Raw))
-		{
-			OutValue = MakeShared<FJsonValueString>(Raw);
-			return true;
-		}
-
-		FString StepId;
-		FString EvidenceKey;
-		bool bHasIndex = false;
-		int32 Index = INDEX_NONE;
-		if (!HCI_ParseVariableTemplate(Raw, StepId, EvidenceKey, bHasIndex, Index))
-		{
-			OutErrorCode = TEXT("E4311");
-			OutReason = TEXT("variable_template_invalid");
-			return false;
-		}
-
-		const TMap<FString, FString>* StepEvidence = StepEvidenceContext.Find(StepId);
-		if (StepEvidence == nullptr)
-		{
-			OutErrorCode = TEXT("E4311");
-			OutReason = TEXT("variable_source_step_missing");
-			return false;
-		}
-
-		FString ResolvedValue;
-			if (!HCI_TryResolveEvidenceReference(*StepEvidence, EvidenceKey, bHasIndex, Index, ResolvedValue))
-			{
-				OutErrorCode = TEXT("E4311");
-				OutReason = TEXT("variable_reference_unresolved");
-				return false;
-			}
-
-			if (!bHasIndex)
-			{
-				TArray<FString> ExpandedValues;
-				HCI_ParsePipeDelimitedEvidenceList(ResolvedValue, ExpandedValues);
-				if (ExpandedValues.Num() > 0)
-				{
-					TArray<TSharedPtr<FJsonValue>> ExpandedJsonArray;
-					ExpandedJsonArray.Reserve(ExpandedValues.Num());
-					for (const FString& ExpandedValue : ExpandedValues)
-					{
-						ExpandedJsonArray.Add(MakeShared<FJsonValueString>(ExpandedValue));
-					}
-					OutValue = MakeShared<FJsonValueArray>(ExpandedJsonArray);
-					return true;
-				}
-			}
-
-			OutValue = MakeShared<FJsonValueString>(ResolvedValue);
-			return true;
-		}
-
-	case EJson::Array:
-	{
-		TArray<TSharedPtr<FJsonValue>> ResolvedArray;
-		const TArray<TSharedPtr<FJsonValue>>& InArray = InValue->AsArray();
-		ResolvedArray.Reserve(InArray.Num());
-		for (const TSharedPtr<FJsonValue>& Item : InArray)
-		{
-			TSharedPtr<FJsonValue> ResolvedItem;
-			if (!HCI_ResolveJsonValueInternal(Item, StepEvidenceContext, ResolvedItem, OutErrorCode, OutReason))
-			{
-				return false;
-			}
-				if (!ResolvedItem.IsValid())
-				{
-					ResolvedItem = MakeShared<FJsonValueNull>();
-				}
-				if (ResolvedItem->Type == EJson::Array)
-				{
-					for (const TSharedPtr<FJsonValue>& ExpandedItem : ResolvedItem->AsArray())
-					{
-						ResolvedArray.Add(ExpandedItem.IsValid() ? ExpandedItem : MakeShared<FJsonValueNull>());
-					}
-				}
-				else
-				{
-					ResolvedArray.Add(ResolvedItem);
-				}
-			}
-			OutValue = MakeShared<FJsonValueArray>(ResolvedArray);
-			return true;
-		}
-
-	case EJson::Object:
-	{
-		const TSharedPtr<FJsonObject> InObj = InValue->AsObject();
-		if (!InObj.IsValid())
-		{
-			OutValue = InValue;
-			return true;
-		}
-
-		TSharedPtr<FJsonObject> ResolvedObj = MakeShared<FJsonObject>();
-		for (const TPair<FString, TSharedPtr<FJsonValue>>& Pair : InObj->Values)
-		{
-			TSharedPtr<FJsonValue> ResolvedChild;
-			if (!HCI_ResolveJsonValueInternal(Pair.Value, StepEvidenceContext, ResolvedChild, OutErrorCode, OutReason))
-			{
-				return false;
-			}
-			if (!ResolvedChild.IsValid())
-			{
-				ResolvedChild = MakeShared<FJsonValueNull>();
-			}
-			ResolvedObj->SetField(Pair.Key, ResolvedChild);
-		}
-
-		OutValue = MakeShared<FJsonValueObject>(ResolvedObj);
-		return true;
-	}
-
-	default:
-		OutValue = InValue;
-		return true;
-	}
-}
-
-static bool HCI_ResolveStepArguments(
-	const FHCIAbilityKitAgentPlanStep& InStep,
-	const TMap<FString, TMap<FString, FString>>& StepEvidenceContext,
-	FHCIAbilityKitAgentPlanStep& OutResolvedStep,
-	FString& OutErrorCode,
-	FString& OutReason)
-{
-	OutResolvedStep = InStep;
-	OutErrorCode.Reset();
-	OutReason.Reset();
-
-	if (!InStep.Args.IsValid())
-	{
-		return true;
-	}
-
-	TSharedPtr<FJsonObject> ResolvedArgs = MakeShared<FJsonObject>();
-	for (const TPair<FString, TSharedPtr<FJsonValue>>& Pair : InStep.Args->Values)
-	{
-		TSharedPtr<FJsonValue> ResolvedValue;
-		if (!HCI_ResolveJsonValueInternal(Pair.Value, StepEvidenceContext, ResolvedValue, OutErrorCode, OutReason))
-		{
-			return false;
-		}
-		if (!ResolvedValue.IsValid())
-		{
-			ResolvedValue = MakeShared<FJsonValueNull>();
-		}
-		ResolvedArgs->SetField(Pair.Key, ResolvedValue);
-	}
-
-	OutResolvedStep.Args = MoveTemp(ResolvedArgs);
-	return true;
 }
 
 static FString HCI_GetCapabilityString(const FHCIAbilityKitToolDescriptor* Tool)
@@ -723,14 +433,14 @@ static bool HCI_TryDetectPipelineBypassWarning(
 			continue;
 		}
 
-		const bool bUsesPipelineTemplate = HCI_StringMayContainVariableTemplate(RawText);
+		const bool bUsesPipelineTemplate = HCI_TextMayContainVariableTemplate(RawText);
 		if (bUsesPipelineTemplate)
 		{
 			FString SourceStepId;
 			FString SourceEvidenceKey;
 			bool bHasIndex = false;
 			int32 SourceIndex = INDEX_NONE;
-			if (HCI_ParseVariableTemplate(RawText, SourceStepId, SourceEvidenceKey, bHasIndex, SourceIndex) &&
+			if (HCI_TryParseVariableTemplateReference(RawText, SourceStepId, SourceEvidenceKey, bHasIndex, SourceIndex) &&
 				SourceStepId.Equals(PrevStep.StepId, ESearchCase::CaseSensitive) &&
 				(SourceEvidenceKey.Equals(TEXT("matched_directories"), ESearchCase::CaseSensitive) ||
 				 SourceEvidenceKey.Equals(TEXT("best_directory"), ESearchCase::CaseSensitive)))
@@ -777,7 +487,8 @@ bool FHCIAbilityKitAgentExecutor::ExecutePlan(
 	OutResult.bPreflightEnabled = Options.bEnablePreflightGates;
 	OutResult.StartedAtUtc = FHCIAbilityKitTimeFormat::FormatNowBeijingIso8601();
 
-	const bool bContainsVariableTemplate = HCI_PlanContainsVariableTemplate(Plan);
+	const FHCIAbilityKitEvidenceResolver_Default EvidenceResolver;
+	const bool bContainsVariableTemplate = HCI_PlanContainsVariableTemplate(Plan, EvidenceResolver);
 	const bool bUsePerStepValidation = Options.bValidatePlanBeforeExecute && bContainsVariableTemplate;
 
 	if (Options.bValidatePlanBeforeExecute && !bUsePerStepValidation)
@@ -816,31 +527,32 @@ bool FHCIAbilityKitAgentExecutor::ExecutePlan(
 			Options.OnStepBegin(StepIndex, Step);
 		}
 		FHCIAbilityKitAgentPlanStep ResolvedStep;
-		FString ResolveErrorCode;
-		FString ResolveReason;
-			const bool bResolveOk = HCI_ResolveStepArguments(Step, StepEvidenceContext, ResolvedStep, ResolveErrorCode, ResolveReason);
-			const FHCIAbilityKitToolDescriptor* Tool = ToolRegistry.FindTool(Step.ToolName);
-			FHCIAbilityKitAgentExecutorStepResult& StepResult = HCI_AddStepResultSkeleton(ResolvedStep, StepIndex, ToolRegistry, OutResult);
-			StepResult.bAttempted = true;
-			bool bHasPipelineBypassWarning = false;
-			FString PipelineBypassWarningDetail;
-			if (bResolveOk)
-			{
-				bHasPipelineBypassWarning = HCI_TryDetectPipelineBypassWarning(
-					Plan,
-					StepIndex,
-					Step,
-					ResolvedStep,
-					StepEvidenceContext,
-					PipelineBypassWarningDetail);
-			}
+		const FHCIAbilityKitEvidenceContext_Default EvidenceContext(StepEvidenceContext);
+		FHCIAbilityKitEvidenceResolveError ResolveError;
+		const bool bResolveOk = EvidenceResolver.ResolveStepArgs(Step, EvidenceContext, ResolvedStep, ResolveError);
+
+		const FHCIAbilityKitToolDescriptor* Tool = ToolRegistry.FindTool(Step.ToolName);
+		FHCIAbilityKitAgentExecutorStepResult& StepResult = HCI_AddStepResultSkeleton(ResolvedStep, StepIndex, ToolRegistry, OutResult);
+		StepResult.bAttempted = true;
+		bool bHasPipelineBypassWarning = false;
+		FString PipelineBypassWarningDetail;
+		if (bResolveOk)
+		{
+			bHasPipelineBypassWarning = HCI_TryDetectPipelineBypassWarning(
+				Plan,
+				StepIndex,
+				Step,
+				ResolvedStep,
+				StepEvidenceContext,
+				PipelineBypassWarningDetail);
+		}
 
 		if (!bResolveOk)
 		{
 			StepResult.bSucceeded = false;
 			StepResult.Status = TEXT("failed");
-			StepResult.ErrorCode = ResolveErrorCode.IsEmpty() ? TEXT("E4311") : ResolveErrorCode;
-			StepResult.Reason = ResolveReason.IsEmpty() ? TEXT("resolve_arguments_failed") : ResolveReason;
+			StepResult.ErrorCode = ResolveError.ErrorCode.IsEmpty() ? TEXT("E4311") : ResolveError.ErrorCode;
+			StepResult.Reason = ResolveError.Reason.IsEmpty() ? TEXT("resolve_arguments_failed") : ResolveError.Reason;
 			StepResult.FailurePhase = TEXT("precheck");
 		}
 		else if (bUsePerStepValidation)

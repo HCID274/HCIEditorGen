@@ -3,17 +3,12 @@
 > 基于 LLM Agent 的 UE 智能资产审计与安全执行系统
 > 关键词：UE 编辑器工具 / Technical Art / 资产合规审计 / AI 辅助规划 / Dry-Run Diff / 安全执行门禁 / 批量处理
 
-
 ## 演示视频
 
-> GitHub README 对 `github.com/user-attachments/...` 视频通常只显示为链接，不一定支持仓库首页内联播放；点击链接跳转播放属于正常行为。
-
-- 视频 1（8s）：文件整理、规范命名、自动文件夹归类  
+> - 视频 1（8s）：文件整理、规范命名、自动文件夹归类  
   https://github.com/user-attachments/assets/de2a4f6a-587f-4958-b7b5-852f302a29b3
-- 视频 2（8s）：按命名契约自动创建材质实例并挂贴图  
+> - 视频 2（8s）：按命名契约自动创建材质实例并挂贴图  
   https://github.com/user-attachments/assets/59471a75-4778-4b51-b356-8a466d4fa9d4
-
-
 
 ---
 
@@ -68,7 +63,7 @@
 
 ---
 
-## 覆盖的典型美术痛点（示例）
+## 覆盖的典型美术痛点
 
 - 网格合规：StaticMesh 面数扫描（LOD0 triangle count）
 - 关卡排雷：StaticMeshActor 缺失碰撞 / 默认材质风险检测 + 一键定位
@@ -92,7 +87,7 @@
 
 > 说明：以下命令用于“快速复现能力”。录视频时建议只挑 1～2 条最稳的链路展示即可。
 
-### A. 不依赖 LLM 的稳定演示（推荐）
+### A. 不依赖 LLM 的稳定演示
 
 - `HCI.AuditScan`  
   使用 AssetRegistry 做同步元数据枚举（轻量）。
@@ -102,7 +97,7 @@
 - `HCI.AuditExportJson <output_json_path>`  
   扫描并导出 JSON 报告（便于作品集展示“结果可留档”）。
 
-### B. 打开 AI 辅助入口 UI（推荐录视频用）
+### B. 打开 AI 辅助入口 UI
 
 - `HCI.AgentPlanPreviewUI "<自然语言>"`  
   触发规划并弹出 Plan Preview（含步骤证据与审阅/确认入口）。
@@ -119,9 +114,7 @@
 
 ---
 
-## 可选：启用真实 LLM Provider（本地配置）
-
-> 注意：请勿把 API Key 提交到仓库。
+## 可选：配置 LLM Provider（本地配置）
 
 创建本地配置文件：
 - `Saved/HCIAbilityKit/Config/llm_provider.local.json`

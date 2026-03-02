@@ -1,15 +1,17 @@
-# HCIEditorGen（UE5 工具链Demo）— HCIAbilityKit
+# HCIEditorGen（UE5 工具链 Demo）— HCIAbilityKit
 
-> 基于 LLM Agent 的 UE 智能资产管线与审计系统
+> 基于 LLM Agent 的 UE 智能资产审计与安全执行系统
 > 关键词：UE 编辑器工具 / Technical Art / 资产合规审计 / AI 辅助规划 / Dry-Run Diff / 安全执行门禁 / 批量处理
 
 
-视频8s展示：文件整理，规范命名，自动文件夹归类整理
-https://github.com/user-attachments/assets/de2a4f6a-587f-4958-b7b5-852f302a29b3
+## 演示视频
 
+> GitHub README 对 `github.com/user-attachments/...` 视频通常只显示为链接，不一定支持仓库首页内联播放；点击链接跳转播放属于正常行为。
 
-视频8s展示：按照文件名自动挂载资产Link
-https://github.com/user-attachments/assets/59471a75-4778-4b51-b356-8a466d4fa9d4
+- 视频 1（8s）：文件整理、规范命名、自动文件夹归类  
+  https://github.com/user-attachments/assets/de2a4f6a-587f-4958-b7b5-852f302a29b3
+- 视频 2（8s）：按命名契约自动创建材质实例并挂贴图  
+  https://github.com/user-attachments/assets/59471a75-4778-4b51-b356-8a466d4fa9d4
 
 
 
@@ -17,14 +19,24 @@ https://github.com/user-attachments/assets/59471a75-4778-4b51-b356-8a466d4fa9d4
 
 ## 这个项目解决什么问题？
 
-面向美术/TA 的编辑器内工具化管线：把“**大批量资产合规检查**”与“**受控的批量修复**”做成一条可审阅、可回滚的闭环，减少重复性劳动项目背景： 针对工业化生产中海量资产导入引发的规范混乱等痛点，且传统批量工具极易引发内存溢出，主导开发底层管线安全管控插件。并降低改错成本。
-● 项目背景： 针对工业化生产中海量资产导入引发的规范混乱等痛点，且传统批量工具极易引发内存溢出，主导开发底层管线安全管控插件。
-● 核心成果：
-摒弃传统硬加载方案，深度重构底层资产检索链路，在零内存溢出风险的前提下，将 200+ 复杂模型的全量规范扫描（面数/碰撞体/材质等风险项）耗时极速压缩至 1 秒以内。
-● 关键问题解决： 
-1. 设计「三段式 AI 安全工作流 (Plan JSON 契约 + Dry-Run)」，杜绝大模型幻觉对资产进行灾难性修改，实现修改操作的 All-or-Nothing。
-2. 基于底层硬拓扑关系开发「依赖感知路由」，解决离散白模与材质在弃用模糊命名匹配后的精准成组与挂载难题。
-本项目的核心定位不是“接一个 LLM”，而是把 AI 变成**可审计、可控爆炸半径、可拒绝、可回滚**的生产工具链能力。
+面向美术/TA 的编辑器内工具化管线：把“**大批量资产合规检查**”与“**受控的批量修复**”做成一条可审阅、可回滚的闭环，减少重复劳动与改错成本。
+
+项目核心不是“接一个 LLM”，而是把 AI 变成**可审计、可控爆炸半径、可拒绝、可回滚**的生产工具能力：
+- 大批量资产审计：基于 AssetRegistry 元数据链路，避免无脑硬加载带来的编辑器卡顿与风险。
+- 安全执行闭环：Plan JSON 契约、Dry-Run Diff、人工确认、All-or-Nothing 执行。
+- 失败可解释：输出 `error_code + reason + evidence`，支持定位目标与复核。
+
+## 系统链路（真实实现）
+
+1. `Slate C++ UI`（`HCI.AgentChatUI` / `HCI.AgentPlanPreviewUI`）接收自然语言输入。  
+2. `C++ Runtime Planner` 组装 `prompt + tools_schema + context` 并请求 LLM。  
+3. `C++ LLM Client(FHttpModule)` 直连 Provider，按 `llm_router.local.json` 做路由、重试与熔断。  
+4. 解析回包 JSON，进行契约校验与步骤依赖归一化。  
+5. `Tool Registry` 做工具白名单与参数边界收敛。  
+6. `Executor` 先 Dry-Run，生成可审阅证据与差异。  
+7. 用户确认后才进入写操作执行，结果回传 UI 展示。  
+
+> 说明：Python 脚本主要用于离线测试/生成路由配置（如 `hci_bailian_model_router.py`），不是在线请求的必经中间层。
 
 ---
 
@@ -34,6 +46,7 @@ https://github.com/user-attachments/assets/59471a75-4778-4b51-b356-8a466d4fa9d4
 
 - 自然语言输入先转为 **Plan JSON**（步骤化、可验证、可留档）
 - 执行前生成 **Dry-Run Diff**（before/after 变更预览，而不是黑盒改写）
+- 审阅阶段支持逐项采纳与风险提示（Human-in-the-loop）
 - UI 支持“定位目标”以快速复核：
   - 关卡 Actor：Camera Focus
   - 纯资产：Sync to Content Browser
@@ -50,6 +63,7 @@ https://github.com/user-attachments/assets/59471a75-4778-4b51-b356-8a466d4fa9d4
 
 - AssetRegistry 元数据扫描（避免无脑 Load）
 - Slice-based 非阻塞扫描：进度查询 / 中断 / 重试
+- 路径纠偏与上下文注入：优先使用 AssetRegistry 已校验目录候选
 - 输出以“证据 + 摘要”为中心（适配审阅与报告）
 
 ---
@@ -59,7 +73,7 @@ https://github.com/user-attachments/assets/59471a75-4778-4b51-b356-8a466d4fa9d4
 - 网格合规：StaticMesh 面数扫描（LOD0 triangle count）
 - 关卡排雷：StaticMeshActor 缺失碰撞 / 默认材质风险检测 + 一键定位
 - 命名归档：基于 `UAssetImportData/AssetUserData` 的自动前缀命名与批量 Move 归档
-- 材质连线：基于命名契约的材质实例创建、贴图参数绑定与 Mesh 赋材（支持 Dry-Run 预览）
+- 材质连线：基于严格命名契约的材质实例创建、贴图参数绑定与 Mesh 赋材（支持 Dry-Run 预览）
 
 ---
 
@@ -124,6 +138,7 @@ https://github.com/user-attachments/assets/59471a75-4778-4b51-b356-8a466d4fa9d4
 
 （可选）路由配置：
 - `Saved/HCIAbilityKit/Config/llm_router.local.json`
+- 路由压测脚本：`SourceData/AbilityKits/Python/hci_bailian_model_router.py`
 
 ---
 
